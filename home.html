@@ -1,0 +1,314 @@
+<!doctype html><html lang="en" dir="rtl"><head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover,user-scalable=no"/>
+<meta name="theme-color" content="#0b67ff"/>
+<meta name="theme-color" media="(prefers-color-scheme:light)" content="#0b67ff"/>
+<meta name="theme-color" media="(prefers-color-scheme:dark)" content="#02142f"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>BINO8 | Login</title>
+<style>
+:root{--r:1px;--bg1:#02142f;--bg2:#063a8f;--bg3:#0b67ff;--bd:rgba(255,255,255,.22);--txt:#eaf4ff;--g1:#fff7ce;--g2:#ffe05f;--g3:#d79b00}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0;font-family:Segoe UI,Tahoma,Arial,sans-serif}
+html,body{width:100%;min-height:100%;height:100%}
+body{min-height:100dvh;overflow-x:hidden;color:var(--txt);background:radial-gradient(950px 520px at 50% -10%,#1f7dff55 0,transparent 55%),radial-gradient(520px 280px at 8% 12%,rgba(255,255,255,.09) 0,transparent 45%),radial-gradient(420px 240px at 90% 85%,rgba(14,105,255,.22) 0,transparent 55%),linear-gradient(180deg,var(--bg3) 0,var(--bg2) 28%,var(--bg1) 100%)}
+.orb,.orb2,.orb3{position:fixed;border-radius:50%;pointer-events:none;filter:blur(16px);z-index:0}
+.orb{width:260px;height:260px;top:-70px;right:-70px;background:radial-gradient(circle,#ffffff20 0,#0b67ff22 40%,transparent 72%)}
+.orb2{width:240px;height:240px;left:-80px;bottom:-60px;background:radial-gradient(circle,#79b7ff24 0,#0b67ff18 42%,transparent 75%)}
+.orb3{width:180px;height:180px;left:50%;top:18%;transform:translateX(-50%);background:radial-gradient(circle,rgba(255,255,255,.10) 0,rgba(255,255,255,0) 68%)}
+.wrap{width:100%;min-height:100dvh;display:flex;flex-direction:column;position:relative;z-index:2}
+.hero{text-align:center;padding:max(18px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 16px max(16px,env(safe-area-inset-left))}
+.badge{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:0 14px;border-radius:999px;background:linear-gradient(135deg,#08214acc,#0e58c7cc 55%,#2d9bffcc);border:2px solid var(--bd);box-shadow:0 8px 18px rgba(0,0,0,.24);font-size:12px;font-weight:900;color:#fff;margin-bottom:14px}
+.brand{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px}
+.brand svg{width:34px;height:34px;filter:drop-shadow(0 5px 12px rgba(0,0,0,.28))}
+.bname{font-size:32px;font-weight:900;color:#fff;text-shadow:0 4px 14px rgba(0,0,0,.25)}
+.bname .ac{color:#8fd0ff}
+.htitle{font-size:28px;font-weight:900;margin-bottom:8px;color:#fff;text-shadow:0 4px 14px rgba(0,0,0,.20)}
+.hsub{font-size:13px;line-height:1.9;color:#d6e7ff;opacity:.95}
+.card{position:relative;flex:1;width:100%;border-radius:28px 28px 0 0;overflow:hidden;background:linear-gradient(135deg,rgba(4,20,47,.96) 0,rgba(8,33,74,.96) 52%,rgba(11,103,255,.78) 100%);border-top:3px solid var(--bd);backdrop-filter:blur(18px);display:flex;flex-direction:column}
+.card::before{content:"";position:absolute;right:-60px;top:-60px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.10);filter:blur(8px);pointer-events:none}
+.card::after{content:"";position:absolute;left:-50px;bottom:-80px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.06);pointer-events:none}
+.ctop{position:relative;z-index:2;width:100%;padding:16px max(16px,env(safe-area-inset-right)) 12px max(16px,env(safe-area-inset-left));border-bottom:2px solid rgba(255,255,255,.10);background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,0))}
+.tabs{display:flex;gap:8px;background:linear-gradient(135deg,#08214a,#0e58c7 55%,#2d9bff);border:2px solid rgba(255,255,255,.12);border-radius:20px;padding:6px;box-shadow:inset 0 2px 10px rgba(255,255,255,.08)}
+.tab{flex:1;border:none;background:transparent;color:#cfe7ff;height:48px;border-radius:14px;font-size:14px;font-weight:900;cursor:pointer;transition:.2s}
+.tab.active{color:#fff;background:linear-gradient(135deg,#0d4db0,#1d88ff);border:2px solid rgba(255,255,255,.18);box-shadow:0 8px 18px rgba(0,0,0,.22)}
+.cbody{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;overflow:auto;-webkit-overflow-scrolling:touch;padding:18px max(16px,env(safe-area-inset-right)) max(22px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+.form{display:none;animation:fade .22s ease}
+.form.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.stitle{font-size:21px;font-weight:900;color:#fff;margin-bottom:6px}
+.ssub{font-size:12px;line-height:1.9;color:#d8e8ff;opacity:.88;margin-bottom:18px}
+.field{margin-bottom:14px}
+.field label{display:block;margin-bottom:7px;font-size:12px;font-weight:900;color:#d7e7ff}
+.iw{position:relative}
+.inp{width:100%;height:54px;outline:none;border-radius:17px;padding:0 16px;color:#fff;font-size:14px;font-weight:900;background:linear-gradient(135deg,#06245a,#0b56c8);border:2.5px solid rgba(255,255,255,.16);box-shadow:inset 0 2px 10px rgba(255,255,255,.10);transition:.18s;direction:ltr;text-align:left}
+.inp.ht{padding-left:54px}
+.inp::placeholder{color:#dbe9ff88;font-weight:800}
+.inp:focus{border-color:rgba(255,255,255,.30);box-shadow:inset 0 2px 10px rgba(255,255,255,.12),0 0 0 4px rgba(143,208,255,.14);background:linear-gradient(135deg,#082a67,#0c63df)}
+.tpass{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#0d4db0,#1d88ff);border:2px solid rgba(255,255,255,.18);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 14px rgba(0,0,0,.20)}
+.tpass svg{width:18px;height:18px;stroke:#fff;fill:none;stroke-width:2}
+.hint{margin-top:6px;font-size:11px;line-height:1.7;font-weight:800;color:#dbe9ffb3}
+.mbtn{width:100%;height:54px;margin-top:8px;border:none;border-radius:17px;background:linear-gradient(135deg,var(--g1),var(--g2) 35%,var(--g3));color:#2d1700;font-size:16px;font-weight:900;cursor:pointer;box-shadow:0 10px 22px rgba(91,51,0,.25),inset 0 2px 10px rgba(255,254,240,.92);transition:.18s}
+.mbtn:active{transform:scale(.985)}
+.mbtn:disabled{opacity:.65;cursor:not-allowed;transform:none}
+.mrow{margin:14px 2px 4px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.gl{color:#dff0ff;font-size:12px;font-weight:900;cursor:pointer;text-decoration:none}
+.sep{display:flex;align-items:center;gap:10px;margin:18px 0 14px;color:#dbe9ffaa;font-size:12px;font-weight:900}
+.sep::before,.sep::after{content:"";flex:1;height:2px;background:rgba(255,255,255,.12);border-radius:999px}
+.socials{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.sbtn{height:50px;border-radius:16px;background:linear-gradient(135deg,#06245a,#0b56c8);border:2.5px solid rgba(255,255,255,.14);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;font-weight:900;box-shadow:inset 0 2px 8px rgba(255,255,255,.08);transition:.18s}
+.sbtn:active{transform:scale(.985)}
+.sbtn svg{width:18px;height:18px;flex-shrink:0}
+.bnote{text-align:center;margin-top:auto;padding-top:16px;font-size:11px;line-height:1.9;font-weight:800;color:#dbe9ff99}
+.toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(14px);min-width:220px;max-width:calc(100vw - 28px);background:linear-gradient(135deg,#08214a,#1a7fff);color:#fff;padding:11px 18px;border-radius:16px;font-size:13px;font-weight:900;text-align:center;opacity:0;pointer-events:none;transition:.22s;z-index:99;border:2px solid rgba(255,255,255,.18);box-shadow:0 10px 25px rgba(0,0,0,.30)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.ld{display:inline-flex;align-items:center;gap:8px}
+.sp{width:16px;height:16px;border-radius:50%;border:2px solid rgba(45,23,0,.20);border-top-color:#2d1700;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:380px){.socials{grid-template-columns:1fr}.htitle{font-size:24px}.bname{font-size:28px}}
+</style>
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+import{getAnalytics}from"https://www.gstatic.com/firebasejs/12.11.0/firebase-analytics.js";
+import{getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,GoogleAuthProvider,FacebookAuthProvider,TwitterAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult}from"https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+import{getFirestore,doc,getDoc,setDoc,updateDoc,serverTimestamp}from"https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+const C={apiKey:"AIzaSyBOUqLixfphg3b8hajc4hkwV-VJmldGBVw",authDomain:"randers-c640b.firebaseapp.com",projectId:"randers-c640b",storageBucket:"randers-c640b.firebasestorage.app",messagingSenderId:"391496092929",appId:"1:391496092929:web:58208b4eb3e6f9a8571f00",measurementId:"G-DBDSVVF7PS"};
+const app=initializeApp(C);
+try{getAnalytics(app)}catch(e){}
+const auth=getAuth(app),db=getFirestore(app);
+const $=s=>document.querySelector(s);
+const lT=$('#lT'),sT=$('#sT'),lF=$('#lF'),sF=$('#sF');
+const lE=$('#lE'),lP=$('#lP'),sE=$('#sE'),sI=$('#sI'),sP=$('#sP');
+const lB=$('#lB'),sB=$('#sB'),gB=$('#gB'),fB=$('#fB'),xB=$('#xB');
+const s2L=$('#s2L'),s2S=$('#s2S'),toast=$('#toast');
+
+function resize(){const w=Math.min(innerWidth,520);document.documentElement.style.setProperty("--r",(w/460)*.616+"px")}
+resize();addEventListener("resize",resize);
+
+function showT(m,ok){
+  toast.textContent=m;
+  toast.style.borderColor=ok?"rgba(125,255,156,.35)":"rgba(255,255,255,.18)";
+  toast.classList.add("show");
+  clearTimeout(window._tt);
+  window._tt=setTimeout(()=>toast.classList.remove("show"),2600);
+}
+
+function setL(b,s,t){
+  if(!b)return;
+  if(s){b.disabled=true;b._o=b.innerHTML;b.innerHTML=`<span class="ld"><span class="sp"></span><span>${t||"..."}</span></span>`}
+  else{b.disabled=false;b.innerHTML=b._o||b.innerHTML}
+}
+
+function act(w){
+  const l=w==="login";
+  lT.classList.toggle("active",l);sT.classList.toggle("active",!l);
+  lF.classList.toggle("active",l);sF.classList.toggle("active",!l);
+}
+
+lT.onclick=()=>act("login");sT.onclick=()=>act("signup");
+s2L.onclick=()=>act("login");s2S.onclick=()=>act("signup");
+
+function bindTog(bId,iId){
+  const b=document.getElementById(bId),i=document.getElementById(iId);
+  if(!b||!i)return;
+  b.addEventListener("click",()=>{
+    const h=i.type==="password";i.type=h?"text":"password";
+    b.innerHTML=h?`<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20C5 20 1 12 1 12a21.8 21.8 0 0 1 5.06-5.94"/><path d="M9.9 4.24A10.93 10.93 0 0 1 12 4c7 0 11 8 11 8a21.77 21.77 0 0 1-3.17 4.36"/><path d="M14.12 14.12A3 3 0 1 1 9.88 9.88"/><path d="M1 1l22 22"/></svg>`:`<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+  });
+}
+bindTog("tLP","lP");bindTog("tSP","sP");
+
+function mkId(){return String(Math.floor(100000000+Math.random()*900000000))}
+
+async function ensureDoc(user,extra={}){
+  if(!user?.uid)return;
+  const ref=doc(db,"users",user.uid),snap=await getDoc(ref);
+  if(!snap.exists()){
+    await setDoc(ref,{
+      email:user.email||"",
+      profileName:user.displayName||(user.email?user.email.split("@")[0]:"User"),
+      uniqueId:mkId(),
+      balance:0,
+      isVerified:false,
+      inviteCode:extra.inviteCode||"",
+      provider:extra.provider||"email",
+      createdAt:serverTimestamp()
+    },{merge:true});
+  }else{
+    const d=snap.data()||{},p={};
+    if(!d.uniqueId)p.uniqueId=mkId();
+    if(d.balance==null)p.balance=0;
+    if(d.isVerified==null)p.isVerified=false;
+    if(!d.email&&user.email)p.email=user.email;
+    if(!d.profileName)p.profileName=user.displayName||(user.email?user.email.split("@")[0]:"User");
+    if(extra.inviteCode&&!d.inviteCode)p.inviteCode=extra.inviteCode;
+    if(extra.provider&&!d.provider)p.provider=extra.provider;
+    if(Object.keys(p).length)await updateDoc(ref,p);
+  }
+}
+
+function errMsg(e){
+  const c=e?.code||"";
+  if(c.includes("invalid-credential"))return"Invalid credentials.";
+  if(c.includes("wrong-password"))return"Incorrect password.";
+  if(c.includes("user-not-found"))return"No account found.";
+  if(c.includes("invalid-email"))return"Invalid email.";
+  if(c.includes("email-already-in-use"))return"Email already in use.";
+  if(c.includes("weak-password"))return"Weak password (min 6 chars).";
+  if(c.includes("popup-closed"))return"Popup closed.";
+  if(c.includes("popup-blocked"))return"Popup blocked.";
+  if(c.includes("account-exists"))return"Account exists with different method.";
+  if(c.includes("operation-not-allowed"))return"Method not enabled.";
+  if(c.includes("network"))return"Check your connection.";
+  return"Something went wrong.";
+}
+
+lB.addEventListener("click",async()=>{
+  const e=lE.value.trim(),p=lP.value.trim();
+  if(!e||!p){showT("Enter email and password.");return}
+  try{
+    setL(lB,true,"Signing in...");
+    const c=await signInWithEmailAndPassword(auth,e,p);
+    await ensureDoc(c.user,{provider:"email"});
+    showT("Signed in!",true);setTimeout(()=>location.replace("index.html"),500);
+  }catch(err){showT(errMsg(err))}finally{setL(lB,false)}
+});
+
+sB.addEventListener("click",async()=>{
+  const e=sE.value.trim(),inv=sI.value.trim(),p=sP.value.trim();
+  if(!e||!p){showT("Enter email and password.");return}
+  if(p.length<6){showT("Password min 6 chars.");return}
+  try{
+    setL(sB,true,"Creating...");
+    const c=await createUserWithEmailAndPassword(auth,e,p);
+    await ensureDoc(c.user,{inviteCode:inv,provider:"email"});
+    showT("Account created!",true);setTimeout(()=>location.replace("index.html"),600);
+  }catch(err){showT(errMsg(err))}finally{setL(sB,false)}
+});
+
+async function social(name){
+  const P=name==="google"?new GoogleAuthProvider():name==="facebook"?new FacebookAuthProvider():new TwitterAuthProvider();
+  const btn=name==="google"?gB:name==="facebook"?fB:xB;
+  try{
+    setL(btn,true,"Please wait...");
+    if(/Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent)){await signInWithRedirect(auth,P);return}
+    const c=await signInWithPopup(auth,P);
+    if(c?.user){await ensureDoc(c.user,{provider:name});showT("Signed in!",true);setTimeout(()=>location.replace("index.html"),500)}
+  }catch(e){showT(errMsg(e))}finally{setL(btn,false)}
+}
+
+gB.onclick=()=>social("google");
+fB.onclick=()=>social("facebook");
+xB.onclick=()=>social("twitter");
+
+getRedirectResult(auth).then(async r=>{
+  if(r?.user){
+    const pid=r.providerData?.[0]?.providerId||"";
+    const pv=pid.includes("google")?"google":pid.includes("facebook")?"facebook":pid.includes("twitter")?"twitter":"social";
+    await ensureDoc(r.user,{provider:pv});
+    showT("Signed in!",true);setTimeout(()=>location.replace("index.html"),500);
+  }
+}).catch(e=>{if(e)showT(errMsg(e))});
+
+onAuthStateChanged(auth,async u=>{
+  if(u)try{await ensureDoc(u,{provider:u.providerData?.[0]?.providerId||"email"})}catch(e){}
+});
+</script>
+</head>
+<body>
+<div class="orb"></div><div class="orb2"></div><div class="orb3"></div>
+<div class="page"><div class="wrap">
+
+<div class="hero">
+  <div class="badge">🔐 Secure Access Portal</div>
+  <div class="brand">
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="#ffe05f" stroke-width="1.9" stroke-linejoin="round"/>
+      <path d="M2 17l10 5 10-5" stroke="#8fd0ff" stroke-width="1.9" stroke-linejoin="round"/>
+      <path d="M2 12l10 5 10-5" stroke="#fff" stroke-width="1.9" stroke-linejoin="round"/>
+    </svg>
+    <div class="bname">BINO<span class="ac">8</span></div>
+  </div>
+  <div class="htitle">Welcome</div>
+  <div class="hsub">Sign in to your account or create a new one with the premium BINO8 experience.</div>
+</div>
+
+<div class="card">
+  <div class="ctop">
+    <div class="tabs">
+      <button class="tab active" id="lT" type="button">Login</button>
+      <button class="tab" id="sT" type="button">Sign Up</button>
+    </div>
+  </div>
+
+  <div class="cbody">
+    <div class="form active" id="lF">
+      <div class="stitle">Login</div>
+      <div class="ssub">Enter your email and password to access your BINO8 account.</div>
+      <div class="field">
+        <label>Email Address</label>
+        <div class="iw"><input id="lE" class="inp" type="email" placeholder="example@email.com"/></div>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <div class="iw">
+          <input id="lP" class="inp ht" type="password" placeholder="Enter your password"/>
+          <button class="tpass" id="tLP" type="button" aria-label="Toggle password">
+            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <button class="mbtn" id="lB" type="button">Login</button>
+      <div class="mrow"><span class="gl" id="s2S">Don't have an account? Sign Up</span></div>
+    </div>
+
+    <div class="form" id="sF">
+      <div class="stitle">Create Account</div>
+      <div class="ssub">Create your account with email, and add an invite code if you have one.</div>
+      <div class="field">
+        <label>Email Address</label>
+        <div class="iw"><input id="sE" class="inp" type="email" placeholder="example@email.com"/></div>
+      </div>
+      <div class="field">
+        <label>Invite Code <span style="opacity:.7;font-weight:700">(Optional)</span></label>
+        <div class="iw"><input id="sI" class="inp" type="text" placeholder="Enter invite code if available"/></div>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <div class="iw">
+          <input id="sP" class="inp ht" type="password" placeholder="Enter your password"/>
+          <button class="tpass" id="tSP" type="button" aria-label="Toggle password">
+            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <div class="hint">Use a password with at least 6 characters.</div>
+      </div>
+      <button class="mbtn" id="sB" type="button">Create Account</button>
+      <div class="mrow"><span class="gl" id="s2L">Already have an account? Login</span></div>
+    </div>
+
+    <div class="sep">Or continue with</div>
+
+    <div class="socials">
+      <button class="sbtn" id="gB" type="button">
+        <svg viewBox="0 0 24 24"><path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.2-1.4 3.6-5.5 3.6-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.2 14.7 2.4 12 2.4A9.6 9.6 0 0 0 2.4 12 9.6 9.6 0 0 0 12 21.6c5.5 0 9.2-3.9 9.2-9.4 0-.6-.1-1.1-.2-1.6H12z"/></svg>
+        <span>Google</span>
+      </button>
+      <button class="sbtn" id="fB" type="button">
+        <svg viewBox="0 0 24 24"><path fill="#1877F2" d="M24 12a12 12 0 1 0-13.9 11.9v-8.4H7.1V12h3V9.4c0-3 1.8-4.6 4.4-4.6 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-1.9.9-1.9 1.9V12h3.3l-.5 3.5h-2.8v8.4A12 12 0 0 0 24 12z"/></svg>
+        <span>Facebook</span>
+      </button>
+      <button class="sbtn" id="xB" type="button">
+        <svg viewBox="0 0 24 24"><path fill="#1DA1F2" d="M18.9 2H22l-6.8 7.8L23.2 22H17l-4.9-6.4L6.5 22H3.4l7.2-8.2L.8 2H7l4.4 5.8L18.9 2zm-1.1 18h1.7L6.1 3.9H4.3L17.8 20z"/></svg>
+        <span>Twitter</span>
+      </button>
+    </div>
+
+    <div class="bnote">By continuing, you agree to the platform policy and terms of use of BINO8.</div>
+  </div>
+</div>
+
+</div></div>
+<div class="toast" id="toast"></div>
+</body></html>
