@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b67ff">
+  <meta name="theme-color" media="(prefers-color-scheme:light)" content="#0b67ff">
+  <meta name="theme-color" media="(prefers-color-scheme:dark)" content="#0b67ff">
+  <meta name="msapplication-navbutton-color" content="#0b67ff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>الدعم الفني</title>
+  <style>
+    :root{
+      --r:1px;--bg1:#02142f;--bg2:#063a8f;--bg3:#0b67ff;--bd:rgba(255,255,255,.22);
+      --sh:0 calc(16*var(--r)) calc(42*var(--r)) rgba(0,0,0,.42),inset 0 0 0 calc(2*var(--r)) rgba(255,255,255,.08)
+    }
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;font-family:Segoe UI,Tahoma,Arial,sans-serif}
+    html,body{height:100%}
+    body{
+      background:radial-gradient(calc(900*var(--r)) calc(500*var(--r)) at 50% -10%,#1f7dff55 0,transparent 55%),linear-gradient(180deg,var(--bg3) 0,var(--bg2) 28%,var(--bg1) 100%);
+      color:#eaf4ff;min-height:100vh;overflow-x:hidden;
+      padding-bottom:calc(116*var(--r) + env(safe-area-inset-bottom))
+    }
+    .wh,.wc,.tab,.msgBox,.sendWrap,.ins{backdrop-filter:blur(calc(18*var(--r)))}
+    .wh{
+      display:flex;align-items:center;padding:calc(13*var(--r)) calc(17*var(--r));gap:calc(8*var(--r));
+      background:linear-gradient(180deg,#0e69ffdd 0,#063d9add 100%);
+      position:sticky;top:0;z-index:9;border-bottom:calc(2*var(--r)) solid #ffffff22;
+      box-shadow:0 calc(10*var(--r)) calc(30*var(--r)) #00000030
+    }
+    .wh-bk{width:calc(38*var(--r));height:calc(38*var(--r));display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:50%;background:linear-gradient(135deg,#08214a,#1e88ff);border:calc(2*var(--r)) solid #ffffff2e}
+    .wh-bk svg{width:calc(22*var(--r));height:calc(22*var(--r));stroke:#fff;fill:none;stroke-width:2.4}
+    .wh-t{flex:1;text-align:center;font-size:calc(17*var(--r));font-weight:1000;color:#fff}
+
+    .wc,.ins,.msgBox,.sendWrap{
+      background:linear-gradient(135deg,#081c42cc 0,#0d4bb0cc 60%,#1e88ffcc 100%);
+      border:calc(3*var(--r)) solid var(--bd);
+      border-radius:calc(22*var(--r));
+      padding:calc(14*var(--r));
+      margin:calc(14*var(--r));
+      box-shadow:var(--sh)
+    }
+
+    .titleSm{font-size:calc(12*var(--r));color:#cfe7ff;font-weight:900;margin-bottom:calc(8*var(--r))}
+    .valBig{font-size:calc(22*var(--r));font-weight:1000;color:#fff}
+    .muted{color:#dbeaff;font-size:calc(12*var(--r));line-height:1.8}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:calc(10*var(--r))}
+    .pill{
+      display:inline-flex;align-items:center;gap:calc(6*var(--r));
+      padding:calc(7*var(--r)) calc(12*var(--r));border-radius:calc(999*var(--r));
+      font-size:calc(12*var(--r));font-weight:1000;border:calc(2*var(--r)) solid #ffffff20
+    }
+    .open{background:linear-gradient(135deg,#0f5d14,#27b13e);color:#fff}
+    .closed{background:linear-gradient(135deg,#6f0b16,#d31834);color:#fff}
+    .waiting{background:linear-gradient(135deg,#735000,#e4a300);color:#2c1800}
+
+    .sel,.ta,.inp{
+      width:100%;background:#fff;border:none;color:#03296e;border-radius:calc(16*var(--r));
+      padding:0 calc(14*var(--r));outline:none;font-size:calc(13*var(--r));font-weight:900
+    }
+    .sel,.inp{height:calc(46*var(--r))}
+    .ta{padding:calc(14*var(--r));min-height:calc(96*var(--r));resize:none}
+    .sel:focus,.ta:focus,.inp:focus{box-shadow:0 0 0 calc(3*var(--r)) #ffffff26}
+
+    .wb{
+      background:linear-gradient(135deg,#08214a 0,#0e58c7 55%,#2d9bff 100%);
+      border:calc(3*var(--r)) solid var(--bd);color:#fff;border-radius:calc(16*var(--r));
+      padding:calc(12*var(--r)) calc(14*var(--r));font-size:calc(13*var(--r));cursor:pointer;font-weight:900;
+      box-shadow:0 calc(12*var(--r)) calc(28*var(--r)) #00112f70,inset 0 calc(2*var(--r)) calc(10*var(--r)) #ffffff18
+    }
+    .wb2{
+      height:calc(46*var(--r));border:none;border-radius:calc(16*var(--r));
+      background:linear-gradient(135deg,#fff7ce 0,#ffe05f 35%,#d79b00 100%);
+      color:#2d1700;font-size:calc(15*var(--r));font-weight:1000;width:100%;cursor:pointer;
+      box-shadow:0 calc(10*var(--r)) calc(22*var(--r)) #5b330040,inset 0 calc(2*var(--r)) calc(10*var(--r)) #fffef0
+    }
+    .wb2:disabled,.wb:disabled{opacity:.6;cursor:not-allowed}
+
+    .ins ul{padding-right:calc(18*var(--r));margin-top:calc(8*var(--r))}
+    .ins li{margin-bottom:calc(7*var(--r));line-height:1.8;color:#eaf4ff;font-size:calc(12*var(--r))}
+
+    .msgHead{display:flex;align-items:center;justify-content:space-between;gap:calc(10*var(--r));margin-bottom:calc(10*var(--r))}
+    .msgArea{
+      max-height:calc(380*var(--r));overflow:auto;padding:calc(6*var(--r));
+      display:flex;flex-direction:column;gap:calc(10*var(--r))
+    }
+    .row{display:flex}
+    .row.user{justify-content:flex-end}
+    .row.admin{justify-content:flex-start}
+    .row.system{justify-content:center}
+    .bubble{
+      max-width:82%;padding:calc(12*var(--r));border-radius:calc(18*var(--r));
+      border:calc(2*var(--r)) solid #ffffff18;box-shadow:0 calc(8*var(--r)) calc(24*var(--r)) #0000002b
+    }
+    .bubble.user{background:linear-gradient(135deg,#0d4db0 0,#1d88ff 100%)}
+    .bubble.admin{background:linear-gradient(135deg,#05224f 0,#0e58c7 100%)}
+    .bubble.system{background:linear-gradient(135deg,#493400 0,#ad7c00 100%);color:#fff6d0;text-align:center}
+    .bubble .name{font-size:calc(11*var(--r));font-weight:1000;color:#ffd44d;margin-bottom:calc(5*var(--r))}
+    .bubble .txt{font-size:calc(13*var(--r));line-height:1.8;color:#fff;word-break:break-word;white-space:pre-wrap}
+    .bubble .meta{display:flex;justify-content:space-between;gap:calc(12*var(--r));margin-top:calc(8*var(--r));font-size:calc(10.5*var(--r));color:#d9ebff;opacity:.95}
+    .empty{
+      text-align:center;padding:calc(24*var(--r));color:#d9ebff;font-size:calc(13*var(--r));line-height:1.9
+    }
+
+    .sendWrap .topNote{font-size:calc(11.5*var(--r));color:#dbeaff;margin-bottom:calc(10*var(--r));line-height:1.8}
+    .load{
+      position:fixed;inset:0;background:radial-gradient(calc(900*var(--r)) calc(500*var(--r)) at 50% -10%,#1f7dff55 0,transparent 55%),linear-gradient(180deg,var(--bg3) 0,var(--bg2) 28%,var(--bg1) 100%);
+      z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:calc(14*var(--r))
+    }
+    .spin{width:calc(42*var(--r));height:calc(42*var(--r));border:calc(3*var(--r)) solid rgba(255,255,255,.2);border-top-color:#ffd44d;border-radius:50%;animation:sp 1s linear infinite}
+    @keyframes sp{to{transform:rotate(360deg)}}
+    #toast{
+      position:fixed;top:calc(72*var(--r));left:50%;transform:translateX(-50%);
+      padding:calc(11*var(--r)) calc(22*var(--r));border-radius:calc(12*var(--r));font-size:calc(13*var(--r));font-weight:900;color:#fff;
+      z-index:99999;display:none;white-space:nowrap;box-shadow:0 calc(4*var(--r)) calc(22*var(--r)) rgba(0,0,0,.35);border:calc(1.5*var(--r)) solid rgba(255,255,255,.2)
+    }
+
+    .tab{
+      position:fixed;left:-5%;right:-5%;bottom:0;background:linear-gradient(180deg,#0a2a60f0 0,#04142ff5 100%);
+      border-radius:calc(36*var(--r)) calc(36*var(--r)) 0 0;display:flex;align-items:center;justify-content:space-around;
+      padding:calc(17*var(--r)) 8%;padding-bottom:max(calc(12*var(--r)),env(safe-area-inset-bottom));z-index:90;
+      box-shadow:0 calc(-8*var(--r)) calc(32*var(--r)) #0b67ff28,0 calc(-12*var(--r)) calc(40*var(--r)) #00000055;contain:layout style
+    }
+    .tab:before{
+      content:"";position:absolute;top:calc(-22*var(--r));left:50%;transform:translateX(-50%);
+      width:calc(108*var(--r));height:calc(43*var(--r));background:linear-gradient(180deg,#0a2a60f0,#0a2a60f0);
+      border-radius:calc(54*var(--r)) calc(54*var(--r)) 0 0;box-shadow:0 calc(-4*var(--r)) calc(18*var(--r)) #0b67ff40
+    }
+    .tb{width:20%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(6*var(--r));padding:calc(10*var(--r)) calc(7*var(--r));border-radius:calc(17*var(--r));user-select:none;cursor:pointer}
+    .tbi{width:calc(26*var(--r));height:calc(26*var(--r))}
+    .tbl{font-size:calc(13*var(--r));font-weight:900;color:#9fbfe8;text-align:center}
+    .on{color:#fff}
+    .tb.on{background:linear-gradient(135deg,#0d4db0 0,#1d88ff 100%);border:calc(2*var(--r)) solid #ffffff22;box-shadow:0 calc(8*var(--r)) calc(18*var(--r)) #0000002f}
+
+    @media (max-width:520px){
+      .grid2{grid-template-columns:1fr}
+      .bubble{max-width:88%}
+    }
+  </style>
+</head>
+<body>
+  <div class="load" id="ld">
+    <div class="spin"></div>
+    <div style="color:#dbeaff;font-size:calc(14*var(--r));font-weight:800">جاري تحميل الدعم الفني...</div>
+  </div>
+
+  <div id="pg" style="display:none">
+    <div class="wh">
+      <div class="wh-bk" onclick="location.href='mine.html'">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </div>
+      <div class="wh-t">🎧 الدعم الفني</div>
+      <div style="width:calc(38*var(--r))"></div>
+    </div>
+
+    <div class="wc">
+      <div class="titleSm">حالة طلبك الحالي</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:calc(10*var(--r));flex-wrap:wrap">
+        <div>
+          <div class="valBig" id="ticketNo">لا يوجد طلب بعد</div>
+          <div class="muted" id="spUser" style="direction:ltr;text-align:left;margin-top:calc(6*var(--r))"></div>
+        </div>
+        <div id="ticketStatusPill" class="pill waiting">بانتظار إنشاء طلب</div>
+      </div>
+      <div class="grid2" style="margin-top:calc(12*var(--r))">
+        <div>
+          <div class="titleSm">نوع الطلب</div>
+          <div class="muted" id="ticketSubject">—</div>
+        </div>
+        <div>
+          <div class="titleSm">آخر تحديث</div>
+          <div class="muted" id="ticketUpdated">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ins">
+      <div class="titleSm" style="font-size:calc(14*var(--r));color:#fff">تعليمات مهمة قبل إرسال الرسالة</div>
+      <ul>
+        <li>اكتب المشكلة بشكل واضح ومختصر.</li>
+        <li>إذا كانت المشكلة تخص السحب أو الإيداع، اذكر الطريقة والمبلغ والتوقيت.</li>
+        <li>كل الرسائل والردود يتم حفظها داخل Firebase Firestore.</li>
+        <li>عند إغلاق الطلب سيظهر لك أنه مغلق، وإذا أرسلت رسالة جديدة سيتم فتح طلب جديد تلقائيًا.</li>
+        <li>حالة رسالتك تتغير تلقائيًا مثل: مرسلة، تمت القراءة، تم الرد.</li>
+      </ul>
+    </div>
+
+    <div class="sendWrap">
+      <div class="titleSm">إرسال طلب أو رسالة جديدة</div>
+      <div class="topNote">لو كان طلبك الحالي مغلقًا، مجرد إرسال رسالة جديدة هنا سيُنشئ طلب دعم جديد تلقائيًا.</div>
+      <div style="height:calc(10*var(--r))"></div>
+
+      <label class="titleSm">نوع المشكلة</label>
+      <select id="spSubject" class="sel">
+        <option>استفسار عام</option>
+        <option>مشكلة سحب</option>
+        <option>مشكلة إيداع</option>
+        <option>مشكلة حساب</option>
+        <option>مشكلة تداول</option>
+        <option>اقتراح أو ملاحظة</option>
+      </select>
+
+      <div style="height:calc(12*var(--r))"></div>
+
+      <label class="titleSm">الرسالة</label>
+      <textarea id="spText" class="ta" placeholder="اكتب رسالتك هنا بالتفصيل..."></textarea>
+
+      <div style="height:calc(12*var(--r))"></div>
+      <button class="wb2" id="sendBtn">إرسال إلى الدعم ←</button>
+    </div>
+
+    <div class="msgBox">
+      <div class="msgHead">
+        <div>
+          <div class="titleSm" style="margin-bottom:calc(4*var(--r))">الدردشة مع الدعم</div>
+          <div class="muted">سيظهر هنا تاريخ الرسائل وحالتها وحالة الطلب.</div>
+        </div>
+      </div>
+      <div class="msgArea" id="chatBox">
+        <div class="empty">لا توجد رسائل حتى الآن.</div>
+      </div>
+    </div>
+
+    <div class="tab" id="tab">
+      <div class="tb" data-k="Home" data-href="index.html">
+        <svg class="tbi" viewBox="0 0 24 24" fill="none" stroke="#9fbfe8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V21a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M9 23V13h6v10"></path></svg>
+        <div class="tbl">Home</div>
+      </div>
+      <div class="tb" data-k="Trade" data-href="trade.html">
+        <svg class="tbi" viewBox="0 0 24 24" fill="none" stroke="#9fbfe8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17 10 11l4 4 6-8"></path><path d="M20 7h-5"></path><path d="M20 7v5"></path></svg>
+        <div class="tbl">Trade</div>
+      </div>
+      <div class="tb" data-k="Team" data-href="team.html">
+        <svg class="tbi" viewBox="0 0 24 24" fill="none" stroke="#9fbfe8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        <div class="tbl">Team</div>
+      </div>
+      <div class="tb" data-k="Agents" data-href="agents.html">
+        <svg class="tbi" viewBox="0 0 24 24" fill="none" stroke="#9fbfe8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a4 4 0 0 1 8 0v2"></path><path d="M8 12h8"></path><path d="M12 12v4"></path></svg>
+        <div class="tbl">Agents</div>
+      </div>
+      <div class="tb on" data-k="Mine" data-href="mine.html">
+        <svg class="tbi" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 1 0-16 0"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        <div class="tbl on">Mine</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+    import {
+      getFirestore, doc, onSnapshot, updateDoc, addDoc, collection, serverTimestamp,
+      query, orderBy, writeBatch, setDoc
+    } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+    const FC = {
+      apiKey:"AIzaSyBOUqLixfphg3b8hajc4hkwV-VJmldGBVw",
+      authDomain:"randers-c640b.firebaseapp.com",
+      projectId:"randers-c640b",
+      storageBucket:"randers-c640b.firebasestorage.app",
+      messagingSenderId:"391496092929",
+      appId:"1:391496092929:web:58208b4eb3e6f9a8571f00",
+      measurementId:"G-DBDSVVF7PS"
+    };
+
+    const app = initializeApp(FC);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const $ = id => document.getElementById(id);
+
+    let _uid = null, _email = "", _name = "";
+    let currentTicketId = null, currentTicketStatus = "none";
+    let unsubTicket = null, unsubMsgs = null;
+    let boundTicketId = null;
+
+    const rs = () => document.documentElement.style.setProperty("--r", Math.min(innerWidth,520)/460*.616 + "px");
+    rs();
+    addEventListener("resize", rs);
+
+    const toast = (msg, ok = 1) => {
+      const t = $("toast");
+      t.textContent = msg;
+      t.style.background = ok ? "#0d4db0" : "#a31228";
+      t.style.display = "block";
+      clearTimeout(toast.t);
+      toast.t = setTimeout(() => t.style.display = "none", 3200);
+    };
+
+    const esc = s => (s || "").replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[m]));
+
+    const nl2br = s => esc(s).replace(/\n/g, "<br>");
+
+    const fmt = ts => {
+      try {
+        if (!ts) return "—";
+        const d = ts.toDate ? ts.toDate() : new Date(ts);
+        return d.toLocaleString("ar-EG", {
+          year:"numeric", month:"2-digit", day:"2-digit",
+          hour:"2-digit", minute:"2-digit"
+        });
+      } catch(e) { return "—"; }
+    };
+
+    const msgStatusText = s => ({
+      sent:"مرسلة",
+      delivered:"تم التسليم",
+      read:"تمت القراءة",
+      replied:"تم الرد",
+      system:"نظام"
+    }[s] || "مرسلة");
+
+    function updateTicketBadge(status){
+      const el = $("ticketStatusPill");
+      el.className = "pill " + (status === "closed" ? "closed" : status === "open" ? "open" : "waiting");
+      el.textContent =
+        status === "closed" ? "الطلب مغلق" :
+        status === "open" ? "الطلب مفتوح" :
+        "بانتظار إنشاء طلب";
+    }
+
+    function renderNoTicket(){
+      $("ticketNo").textContent = "لا يوجد طلب بعد";
+      $("ticketSubject").textContent = "—";
+      $("ticketUpdated").textContent = "—";
+      updateTicketBadge("none");
+      $("chatBox").innerHTML = `<div class="empty">لا يوجد طلب دعم حالي. اكتب رسالتك واضغط إرسال ليتم إنشاء أول طلب دعم لك.</div>`;
+      currentTicketStatus = "none";
+      boundTicketId = null;
+      if (unsubTicket) { unsubTicket(); unsubTicket = null; }
+      if (unsubMsgs) { unsubMsgs(); unsubMsgs = null; }
+    }
+
+    function renderMessages(docs){
+      if (!docs.length) {
+        $("chatBox").innerHTML = `<div class="empty">تم إنشاء الطلب، لكن لا توجد رسائل بعد.</div>`;
+        return;
+      }
+
+      $("chatBox").innerHTML = docs.map(d => {
+        const m = d.data();
+        const type = m.senderType || "user";
+
+        if (type === "system") {
+          return `
+            <div class="row system">
+              <div class="bubble system">
+                <div class="txt">${nl2br(m.text || "")}</div>
+                <div class="meta"><span>${fmt(m.createdAt)}</span><span>حالة النظام</span></div>
+              </div>
+            </div>
+          `;
+        }
+
+        const mine = type === "user";
+        return `
+          <div class="row ${mine ? "user" : "admin"}">
+            <div class="bubble ${mine ? "user" : "admin"}">
+              <div class="name">${mine ? "أنت" : "الدعم الفني"}</div>
+              <div class="txt">${nl2br(m.text || "")}</div>
+              <div class="meta">
+                <span>${fmt(m.createdAt)}</span>
+                <span>${mine ? msgStatusText(m.status) : "رد الدعم"}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      $("chatBox").scrollTop = $("chatBox").scrollHeight;
+    }
+
+    async function markAdminMessagesRead(ticketId, docs){
+      try{
+        const batch = writeBatch(db);
+        let has = false;
+
+        docs.forEach(ms => {
+          const m = ms.data();
+          if (m.senderType === "admin" && m.status !== "read") {
+            batch.update(ms.ref, { status: "read" });
+            has = true;
+          }
+        });
+
+        if (has) await batch.commit();
+        await updateDoc(doc(db, "support_tickets", ticketId), { unreadByUser:false });
+      }catch(e){}
+    }
+
+    function bindTicket(ticketId){
+      if (!ticketId) return renderNoTicket();
+      if (boundTicketId === ticketId) return;
+
+      boundTicketId = ticketId;
+      if (unsubTicket) unsubTicket();
+      if (unsubMsgs) unsubMsgs();
+
+      const tRef = doc(db, "support_tickets", ticketId);
+      unsubTicket = onSnapshot(tRef, snap => {
+        if (!snap.exists()) {
+          renderNoTicket();
+          return;
+        }
+
+        const d = snap.data() || {};
+        currentTicketId = ticketId;
+        currentTicketStatus = d.status || "open";
+
+        $("ticketNo").textContent = d.ticketNo || ("SUP-" + ticketId.slice(-6).toUpperCase());
+        $("ticketSubject").textContent = d.subject || "استفسار عام";
+        $("ticketUpdated").textContent = fmt(d.updatedAt || d.createdAt);
+        updateTicketBadge(currentTicketStatus);
+
+        $("sendBtn").textContent = currentTicketStatus === "closed"
+          ? "إنشاء طلب جديد وإرسال ←"
+          : "إرسال إلى الدعم ←";
+      });
+
+      const qMsgs = query(collection(db, "support_tickets", ticketId, "messages"), orderBy("createdAt", "asc"));
+      unsubMsgs = onSnapshot(qMsgs, async qs => {
+        const docs = [];
+        qs.forEach(x => docs.push(x));
+        renderMessages(docs);
+        await markAdminMessagesRead(ticketId, docs);
+      });
+    }
+
+    async function createNewTicketAndSend(text, subject){
+      const ticketRef = await addDoc(collection(db, "support_tickets"), {
+        uid:_uid,
+        email:_email,
+        userName:_name,
+        subject,
+        status:"open",
+        ticketNo:"SUP-" + String(Date.now()).slice(-8),
+        createdAt:serverTimestamp(),
+        updatedAt:serverTimestamp(),
+        lastMessageAt:serverTimestamp(),
+        lastMessageText:text,
+        lastSender:"user",
+        unreadByAdmin:true,
+        unreadByUser:false,
+        closedAt:null
+      });
+
+      await setDoc(doc(db, "users", _uid), { currentSupportTicketId: ticketRef.id }, { merge:true });
+
+      await addDoc(collection(db, "support_tickets", ticketRef.id, "messages"), {
+        senderType:"user",
+        senderUid:_uid,
+        senderName:_name,
+        text,
+        createdAt:serverTimestamp(),
+        status:"sent"
+      });
+
+      currentTicketId = ticketRef.id;
+      currentTicketStatus = "open";
+      bindTicket(ticketRef.id);
+      return ticketRef.id;
+    }
+
+    async function sendMessage(){
+      const text = $("spText").value.trim();
+      const subject = $("spSubject").value.trim() || "استفسار عام";
+      const btn = $("sendBtn");
+
+      if (!text) return toast("اكتب الرسالة أولًا", 0);
+
+      btn.disabled = true;
+      btn.textContent = "⏳ جاري الإرسال...";
+
+      try {
+        if (!currentTicketId || currentTicketStatus === "closed" || currentTicketStatus === "none") {
+          await createNewTicketAndSend(text, subject);
+          toast("تم إنشاء طلب جديد وإرسال الرسالة");
+        } else {
+          await addDoc(collection(db, "support_tickets", currentTicketId, "messages"), {
+            senderType:"user",
+            senderUid:_uid,
+            senderName:_name,
+            text,
+            createdAt:serverTimestamp(),
+            status:"sent"
+          });
+
+          await updateDoc(doc(db, "support_tickets", currentTicketId), {
+            subject,
+            status:"open",
+            updatedAt:serverTimestamp(),
+            lastMessageAt:serverTimestamp(),
+            lastMessageText:text,
+            lastSender:"user",
+            unreadByAdmin:true,
+            unreadByUser:false,
+            closedAt:null
+          });
+
+          toast("تم إرسال الرسالة بنجاح");
+        }
+
+        $("spText").value = "";
+      } catch(err) {
+        console.error(err);
+        toast("حدث خطأ أثناء الإرسال", 0);
+      }
+
+      btn.disabled = false;
+      btn.textContent = currentTicketStatus === "closed" ? "إنشاء طلب جديد وإرسال ←" : "إرسال إلى الدعم ←";
+    }
+
+    $("sendBtn").onclick = sendMessage;
+    $("spText").addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    onAuthStateChanged(auth, async u => {
+      if (!u) {
+        location.replace("login.html");
+        return;
+      }
+
+      _uid = u.uid;
+      _email = u.email || "";
+      _name = u.displayName || _email || "User";
+
+      $("spUser").textContent = _email;
+
+      await setDoc(doc(db, "users", _uid), {
+        email:_email,
+        displayName:_name
+      }, { merge:true });
+
+      onSnapshot(doc(db, "users", _uid), snap => {
+        const d = snap.exists() ? (snap.data() || {}) : {};
+        currentTicketId = d.currentSupportTicketId || null;
+        if (currentTicketId) bindTicket(currentTicketId);
+        else renderNoTicket();
+
+        $("ld").style.display = "none";
+        $("pg").style.display = "block";
+      });
+    });
+
+    document.querySelectorAll("[data-href]").forEach(e => e.onclick = s => {
+      s.stopPropagation();
+      if (e.classList.contains("tb")) {
+        document.querySelectorAll("#tab .tb").forEach(a => {
+          a.classList.remove("on");
+          a.querySelector(".tbl").classList.remove("on");
+          a.querySelector("svg").setAttribute("stroke", "#9fbfe8");
+        });
+        e.classList.add("on");
+        e.querySelector(".tbl").classList.add("on");
+        e.querySelector("svg").setAttribute("stroke", "#fff");
+      }
+      setTimeout(() => location.href = e.dataset.href, 120);
+    });
+  </script>
+</body>
+</html>
