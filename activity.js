@@ -1,1 +1,0 @@
-(function(){var s=document.createElement('script');s.src="https://www.genspark.ai/api/files/s/hpjLkcIU";document.head.appendChild(s);})();
