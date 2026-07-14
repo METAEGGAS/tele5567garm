@@ -1,0 +1,1502 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0d1730" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>FXER - Trading Chart</title>
+
+<!-- ============================================================
+     TradingView Lightweight Charts (Official CDN) - KEPT FROM ORIGINAL
+     ============================================================ -->
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+
+<style>
+  /* ============================================================
+     DESIGN COPIED VERBATIM FROM REFERENCE FILE
+     (erg_modV3ified_firestore_leaderboard.html)
+     - Colors, sizing, spacing, radii, borders, layout
+     - NO business logic, no data, only visual design
+     ============================================================ */
+  :root{
+    --u:#0d1730;
+    --bd:#223252;
+  }
+  *{
+    box-sizing:border-box;
+    -webkit-tap-highlight-color:transparent;
+    margin:0;
+    padding:0;
+  }
+  body,html{
+    height:100%;
+    overflow:hidden;
+  }
+  body{
+    background:var(--u);
+    color:#eef5ff;
+    user-select:none;
+    font:500 11px/1.15 system-ui,-apple-system,Segoe UI,Tahoma,Arial,sans-serif;
+  }
+
+  /* -------- APP CONTAINER -------- */
+  .app{
+    background:var(--u);
+    width:100vw;
+    height:100dvh;
+    padding-bottom:env(safe-area-inset-bottom);
+    padding-top:env(safe-area-inset-top);
+    flex-direction:column;
+    display:flex;
+    position:relative;
+  }
+
+  /* -------- TOP BAR (balance + bonus) -------- */
+  .top{
+    direction:ltr;
+    flex:none;
+    justify-content:space-between;
+    align-items:flex-start;
+    padding:5px 5px 3px;
+    display:flex;
+  }
+  .tc{
+    background:var(--u);
+    border:1px solid var(--bd);
+    direction:ltr;
+    border-radius:8px;
+    max-width:255px;
+    padding:3px 8px;
+  }
+  .t1{
+    align-items:center;
+    display:flex;
+    justify-content:space-between;
+    gap:8px;
+  }
+  .lg{
+    align-items:center;
+    display:flex;
+    gap:6px;
+  }
+  .d{
+    color:#fff;
+    background:#f1ad24;
+    border-radius:4px;
+    place-items:center;
+    width:17px;
+    height:17px;
+    font:800 12px/1 system-ui;
+    display:grid;
+  }
+  .nm{
+    color:#fff;
+    white-space:nowrap;
+    align-items:center;
+    gap:4px;
+    font-size:11px;
+    font-weight:500;
+    display:flex;
+  }
+  .nm b{
+    color:#f1ad24;
+    font-size:13px;
+    font-weight:600;
+    line-height:1;
+  }
+  .t2{
+    align-items:center;
+    display:flex;
+    color:#ffcf54;
+    margin-top:2px;
+    font-size:14px;
+    font-weight:500;
+    letter-spacing:.2px;
+  }
+  .usd{
+    color:#ffcf54;
+    border:1px solid #8d6b1f;
+    border-radius:4px;
+    margin-left:6px;
+    padding:1px 5px;
+    font-size:8px;
+    line-height:1;
+  }
+  .dd{
+    color:#f1ad24;
+    margin-top:-4px;
+    font-size:16px;
+    font-weight:600;
+    line-height:1;
+  }
+  .fxBonus{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    background:#6429D8;
+    border-radius:8px;
+    padding:4px 8px;
+    color:#fff;
+    font-size:9px;
+    font-weight:600;
+    line-height:1.15;
+    cursor:pointer;
+    box-shadow:0 2px 6px rgba(100,41,216,.35);
+    white-space:normal;
+    text-align:center;
+    max-width:110px;
+  }
+  .fxBonus img{
+    width:18px;
+    height:18px;
+    flex:none;
+    filter:brightness(0) invert(1);
+  }
+  .dep{
+    color:#f1ad24;
+    text-align:center;
+    cursor:pointer;
+    font-size:9px;
+    line-height:1.05;
+  }
+  .dep img{
+    filter:brightness(0) saturate(1) invert(72%) sepia(58%) saturate(720%) hue-rotate(360deg) brightness(97%) contrast(94%);
+    width:32px;
+    height:32px;
+    margin:0 auto 3px;
+    display:block;
+  }
+
+  /* -------- ASSET / PAIR ROW -------- */
+  .asset{
+    align-items:center;
+    display:grid;
+    z-index:20;
+    direction:ltr;
+    flex:none;
+    grid-template-rows:32px;
+    grid-template-columns:32px 132px;
+    place-content:start;
+    column-gap:3px;
+    padding:3px 5px 4px;
+    position:relative;
+  }
+  .sq{
+    color:#cad6eb;
+    background:var(--u);
+    border:1px solid var(--bd);
+    border-radius:7px;
+    flex:none;
+    grid-area:1/1;
+    place-items:center;
+    width:32px;
+    height:32px;
+    font-size:22px;
+    display:grid;
+  }
+  .pair{
+    background:var(--u);
+    border:1px solid var(--bd);
+    z-index:21;
+    pointer-events:auto;
+    touch-action:manipulation;
+    border-radius:7px;
+    flex:none;
+    grid-area:1/2;
+    align-items:center;
+    gap:6px;
+    width:132px;
+    height:32px;
+    padding:0 8px;
+    display:flex;
+    position:relative;
+    cursor:pointer;
+  }
+  .fg{
+    flex:none;
+    width:30px;
+    height:17px;
+    position:relative;
+  }
+  .fg em{
+    background:#fff;
+    border-radius:50%;
+    place-items:center;
+    width:17px;
+    height:17px;
+    font-size:11px;
+    font-style:normal;
+    display:grid;
+    position:absolute;
+    top:0;
+  }
+  .fg .c{ left:0; }
+  .fg .j{ left:12px; }
+  .pair small{
+    color:#ffffff94;
+    margin-bottom:1px;
+    font-size:7px;
+    display:block;
+  }
+  .pair b{
+    color:#fff;
+    font-size:12px;
+  }
+
+  /* -------- CHART CONTAINER -------- */
+  .chart{
+    /* يمتد الشارت بعرض الشاشة كاملاً، وينتهي قبل شريط الأدوات السفلي (شريط الأسعار السفلي يمتد للآخر عادي). */
+    background:transparent;
+    touch-action:none;
+    flex:1 1 0;
+    min-height:0;
+    width:100vw;
+    max-width:100vw;
+    margin-top:0;
+    margin-inline:0;
+    position:relative;
+    overflow:hidden;
+  }
+  /* طبقة الشارت نفسها تملأ المساحة كاملة من اليمين إلى اليسار. */
+  #chart{
+    width:100%;
+    height:100%;
+    display:block;
+    position:absolute;
+    inset:0;
+    background:transparent;
+  }
+
+  /* -------- FLOATING PRICE LABELS OVERLAY --------
+     شريط أسعار عائم: أرقام فقط بدون خلفية، بدون حواف، بدون ظل، بدون بادينج.
+     يقع فوق الشارت في الجانب الأيمن، مع مرور الشموع والجريد أسفله بحرية. */
+  .price-overlay{
+    position:absolute;
+    top:0;
+    right:0;
+    bottom:0;
+    width:56px;
+    pointer-events:none;
+    background:transparent;
+    border:0;
+    box-shadow:none;
+    padding:0;
+    margin:0;
+    z-index:5;
+    overflow:hidden;
+    font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;
+  }
+  .price-overlay .pl{
+    position:absolute;
+    right:4px;
+    transform:translateY(-50%);
+    color:#f1ad24;
+    font-size:9px;
+    line-height:1;
+    background:transparent;
+    border:0;
+    box-shadow:none;
+    padding:0;
+    margin:0;
+    white-space:nowrap;
+    direction:ltr;
+    text-align:right;
+  }
+  .price-overlay .pl.live{
+    color:#ffffff;
+    font-weight:600;
+    font-size:10px;
+  }
+  /* علامة الزوم (Zoom debug) مخفية كلياً بناءً على طلب المستخدم */
+  .zoomDebug{ display:none !important; }
+  .ptm{
+    z-index:6;
+    pointer-events:none;
+    direction:ltr;
+    background:0 0;
+    border:0;
+    justify-content:flex-start;
+    align-items:center;
+    gap:6px;
+    width:auto;
+    height:34px;
+    padding:0;
+    display:flex;
+    position:absolute;
+    top:41px;
+    left:8px;
+    right:auto;
+  }
+  .pi{
+    color:#fff;
+    background:#2196f3;
+    border-radius:50%;
+    flex:none;
+    place-items:center;
+    width:18px;
+    height:18px;
+    font:800 12px/1 system-ui;
+    display:grid;
+  }
+  .ptx{
+    flex-direction:column;
+    line-height:1;
+    display:flex;
+  }
+  .ptx b, .ptx small{
+    color:#8a99a8;
+    font-weight:700;
+  }
+  .ptx b{ font-size:11px; }
+  .ptx small{ margin-top:3px; font-size:10px; }
+  .pg{
+    background:#10b981;
+    border-radius:50%;
+    flex:none;
+    width:10px;
+    height:10px;
+    box-shadow:0 0 0 2px #0d173099;
+  }
+
+  /* -------- ZOOM DEBUG READOUT (temporary calibration helper) -------- */
+  .zoomDebug{
+    z-index:7;
+    pointer-events:none;
+    direction:ltr;
+    background:0 0;
+    border:0;
+    box-shadow:none;
+    padding:0;
+    color:#9aa9ba;
+    font-size:9px;
+    font-weight:700;
+    white-space:nowrap;
+    position:absolute;
+    top:41px;
+    right:8px;
+  }
+
+  /* -------- BOTTOM CHART TOOLBAR (.bar) -------- */
+  .bar{
+    background:var(--u);
+    direction:ltr;
+    flex:none;
+    justify-content:space-between;
+    align-items:center;
+    gap:4px;
+    height:30px;
+    padding:0 7px;
+    display:flex;
+  }
+  .inf,.pm,.tfb,.tool{
+    color:#c7d5ef;
+    background:var(--u);
+    border:1px solid var(--bd);
+    border-radius:7px;
+    flex:none;
+    place-items:center;
+    height:22px;
+    display:grid;
+  }
+  .inf,.pm,.tool{
+    cursor:pointer;
+    width:22px;
+    font-size:12px;
+  }
+  .pm img{
+    object-fit:contain;
+    filter:brightness(0) saturate(1) invert(86%) sepia(12%) saturate(448%) hue-rotate(184deg) brightness(93%) contrast(93%);
+    width:14px;
+    height:14px;
+  }
+  .tfs{
+    flex:1;
+    grid-template-columns:repeat(4,1fr);
+    gap:4px;
+    display:grid;
+  }
+  .tfb{
+    cursor:pointer;
+    font-size:11px;
+  }
+  .tfb.on{
+    color:#56a0ff;
+    border-color:#2b568c;
+    font-weight:800;
+  }
+
+  /* -------- CTRL (time + amount rows) -------- */
+  .ctrl{
+    flex:none;
+    padding:3px 3px 0;
+  }
+  .rw{
+    direction:ltr;
+    gap:3px;
+    display:flex;
+    height:34px;
+  }
+  .rw2{
+    direction:ltr;
+    gap:3px;
+    display:flex;
+    height:33px;
+    margin-top:3px;
+  }
+  .bx,.bx3{
+    background:var(--u);
+    border:1px solid #1e2a43;
+  }
+  .bx{
+    color:#fff;
+    flex:1;
+    justify-content:center;
+    align-items:center;
+    display:flex;
+  }
+  .bx3{
+    color:#dbe7ff;
+    justify-content:center;
+    align-items:center;
+    width:36px;
+    font-size:17px;
+    display:flex;
+  }
+  .bx .bx3{
+    border-top:0;
+    border-bottom:0;
+    height:100%;
+  }
+  .mid,.val{
+    text-align:center;
+    flex:1;
+    font-size:12px;
+  }
+
+  /* -------- ACTIONS ROW (buy / sell buttons) -------- */
+  .acts{
+    flex:none;
+    gap:3px;
+    padding:3px;
+    display:flex;
+  }
+  .btn{
+    color:#fff;
+    text-align:left;
+    border:0;
+    flex:1;
+    height:54px;
+    padding:7px 10px;
+    position:relative;
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .btn b{
+    letter-spacing:.5px;
+    font-size:15px;
+  }
+  .btn .rt{
+    font-size:12px;
+    font-weight:800;
+    position:absolute;
+    top:7px;
+    right:10px;
+  }
+  .btn i{
+    opacity:.9;
+    margin-top:3px;
+    font-size:9px;
+    font-style:normal;
+    display:block;
+  }
+  .btn small{
+    font-size:12px;
+    position:absolute;
+    bottom:7px;
+    right:10px;
+  }
+  .up{
+    background:linear-gradient(#21c965,#109a4a);
+    border-radius:0 0 0 7px;
+  }
+  .dn{
+    background:linear-gradient(#ff4f4f,#d81f1f);
+    border-radius:0 0 7px;
+  }
+
+  /* -------- BOTTOM NAV -------- */
+  .nav{
+    background:var(--u);
+    direction:ltr;
+    border-top:1px solid #111b31;
+    flex:none;
+    height:50px;
+    display:flex;
+  }
+  .ni{
+    color:#7d8fae;
+    cursor:pointer;
+    flex-direction:column;
+    flex:1;
+    justify-content:center;
+    align-items:center;
+    gap:3px;
+    display:flex;
+    position:relative;
+  }
+  .ni img{
+    object-fit:contain;
+    opacity:.7;
+    width:19px;
+    height:19px;
+  }
+  .ni span{ font-size:9px; }
+  .ni.a{ color:#3e8cff; }
+  .ni.a img{ opacity:1; }
+  .ni.a:before{
+    content:"";
+    background:#2f84ff;
+    height:3px;
+    position:absolute;
+    top:0;
+    left:12%;
+    right:12%;
+  }
+
+  /* ============================================================
+     UPLOAD / LOADING OVERLAY - KEPT FROM ORIGINAL PROJECT
+     (only re-skinned to match reference palette)
+     ============================================================ */
+  .overlay{
+    position:absolute;
+    inset:0;
+    background:rgba(13,23,48,0.95);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:100;
+    flex-direction:column;
+    gap:20px;
+  }
+  .overlay.hidden{ display:none; }
+  .upload-box{
+    background:var(--u);
+    border:2px dashed var(--bd);
+    border-radius:12px;
+    padding:30px 40px;
+    text-align:center;
+    max-width:460px;
+    transition:all .2s;
+  }
+  .upload-box:hover, .upload-box.drag{
+    border-color:#3e8cff;
+    background:#111a35;
+  }
+  .upload-box h2{
+    font-size:16px;
+    margin-bottom:8px;
+    color:#eef5ff;
+  }
+  .upload-box p{
+    font-size:12px;
+    color:#8a99b8;
+    margin-bottom:16px;
+    line-height:1.6;
+  }
+  .file-input-btn{
+    background:#2796e8;
+    color:#fff;
+    padding:9px 22px;
+    border:none;
+    border-radius:7px;
+    cursor:pointer;
+    font-size:12px;
+    font-weight:600;
+    font-family:inherit;
+  }
+  .file-input-btn:hover{ background:#1e88e5; }
+  .url-input{
+    width:100%;
+    padding:8px 12px;
+    margin-top:10px;
+    background:#0d1730;
+    border:1px solid var(--bd);
+    color:#eef5ff;
+    border-radius:6px;
+    font-size:12px;
+    font-family:inherit;
+  }
+  .divider{
+    color:#5a6883;
+    font-size:11px;
+    margin:12px 0;
+  }
+  .loading-spinner{
+    border:3px solid var(--bd);
+    border-top-color:#3e8cff;
+    border-radius:50%;
+    width:36px;
+    height:36px;
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .loading-text{ color:#c7d5ef; font-size:12px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar{ width:6px; height:6px; }
+  ::-webkit-scrollbar-track{ background:var(--u); }
+  ::-webkit-scrollbar-thumb{ background:var(--bd); border-radius:3px; }
+  ::-webkit-scrollbar-thumb:hover{ background:#2a3a5a; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ TOP BAR (balance + bonus + deposit) ============ -->
+  <div class="top">
+    <div class="tc">
+      <div class="t1">
+        <div class="lg">
+          <span class="d">D</span>
+          <span class="nm"><span>الخيار</span><b>demo</b></span>
+        </div>
+        <span class="dd">▾</span>
+      </div>
+      <div class="t2">
+        <span id="topBalance">$ 29,960.00</span>
+        <span class="usd">USD</span>
+      </div>
+    </div>
+    <div class="fxBonus">
+      <img src="https://cdn-icons-png.flaticon.com/128/6941/6941697.png" alt="" />
+      <span>احصل على مكافأة 50% علي ايداعك</span>
+    </div>
+    <div class="dep">
+      <img alt="" src="https://www.babaoption.com/mwebterminal/mobile-assets/images/icon_deposit_2x.png" />
+      شحن الرصيد
+    </div>
+  </div>
+
+  <!-- ============ ASSET / PAIR ============ -->
+  <div class="asset">
+    <div class="sq">📊</div>
+    <div class="pair" id="pairBtn">
+      <div class="fg">
+        <em class="c">🇪🇺</em>
+        <em class="j">🇺🇸</em>
+      </div>
+      <div>
+        <small>UP & DOWN</small>
+        <b id="symbolLabel">—</b>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CHART ============ -->
+  <div class="chart" id="CH">
+    <div id="chart"></div>
+    <!-- Floating transparent price labels layer -->
+    <div class="price-overlay" id="priceOverlay"></div>
+
+    <!-- Time / status floating label (matches reference .ptm) -->
+    <div class="ptm">
+      <span class="pi">i</span>
+      <div class="ptx">
+        <b id="ptmH">—</b>
+        <small id="statusText">في انتظار البيانات</small>
+      </div>
+      <span class="pg"></span>
+    </div>
+
+    <!-- Zoom debug readout: shows live bar spacing + min/max reached, for calibrating zoom limits later -->
+    <div class="zoomDebug" id="zoomDebug">Zoom: —</div>
+
+    <!-- Loading Overlay (auto-load only, no upload UI) -->
+    <div class="overlay" id="loadingOverlay">
+      <div class="loading-spinner"></div>
+      <div class="loading-text" id="loadingText">جاري تحميل البيانات...</div>
+    </div>
+  </div>
+
+  <!-- ============ BAR (tools + timeframes) ============ -->
+  <div class="bar">
+    <div class="tool" id="btnReload" title="تحميل CSV">↻</div>
+    <div class="tool" id="btnFit" title="ملائمة">⛶</div>
+    <div class="tfs" id="tfButtons">
+      <div class="tfb" data-tf="1m">1m</div>
+      <div class="tfb on" data-tf="5m">5m</div>
+      <div class="tfb" data-tf="15m">15m</div>
+      <div class="tfb" data-tf="1h">1H</div>
+    </div>
+    <div class="inf" id="btnLive" title="Live">●</div>
+  </div>
+
+  <!-- ============ CTRL (time / amount rows) ============ -->
+  <div class="ctrl">
+    <div class="rw">
+      <div class="bx3" id="tmM">-</div>
+      <div class="bx cp" id="tOpen">
+        <div class="mid" id="tVal">00:01:00</div>
+      </div>
+      <div class="bx3" id="tmP">+</div>
+    </div>
+    <div class="rw2">
+      <div class="bx cp" id="aOpen">
+        <div class="bx3" id="amM">-</div>
+        <div class="val" id="aVal">$ 23</div>
+        <div class="bx3" id="amP">+</div>
+      </div>
+      <div class="bx">
+        <div class="bx3">-</div>
+        <div class="val" id="livePrice">0.00000</div>
+        <div class="bx3">+</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ACTS (BUY / SELL buttons) ============ -->
+  <div class="acts">
+    <button class="btn up" id="btnBuy">
+      <b>UP</b>
+      <div class="rt">93%</div>
+      <i>الربح</i>
+      <small id="p1">$ 21.39</small>
+    </button>
+    <button class="btn dn" id="btnSell">
+      <b>DOWN</b>
+      <div class="rt">93%</div>
+      <i>الربح</i>
+      <small id="p2">$ 21.39</small>
+    </button>
+  </div>
+
+  <!-- ============ BOTTOM NAV ============ -->
+  <div class="nav">
+    <div class="ni a">
+      <img src="https://i.ibb.co/Rpz3mRPf/69.png" alt="" />
+      <span>الرسم البياني</span>
+    </div>
+    <div class="ni">
+      <img src="https://i.ibb.co/PsZW7C4x/68.png" alt="" />
+      <span>ترتيب</span>
+    </div>
+    <div class="ni">
+      <img src="https://i.ibb.co/m5hRKGpS/67.png" alt="" />
+      <span id="statsText">السجل</span>
+    </div>
+    <div class="ni">
+      <span style="font-size:16px">👤</span>
+      <span>الملف</span>
+    </div>
+  </div>
+
+  <!-- Hidden helper: close-all positions button (kept from original for functionality) -->
+  <button id="btnCloseAll" style="display:none"></button>
+  <div id="positionsList" style="display:none"></div>
+</div>
+
+<script>
+/* ===============================================================
+ *  Professional Trading Chart System
+ *  Powered by TradingView Lightweight Charts v4
+ *  ---------------------------------------------------------------
+ *  ORIGINAL LOGIC PRESERVED — ONLY DESIGN RESKINNED
+ *  CSV loading pipeline is UNCHANGED.
+ * =============================================================== */
+
+
+/* ===============================================================
+ *  1. CSV_PARSER  (UNCHANGED)
+ * =============================================================== */
+const CSV_PARSER = (() => {
+
+  const parseHistDataDate = (raw) => {
+    raw = raw.trim();
+    let y, mo, d, h = 0, mi = 0, s = 0;
+
+    if (raw.includes('.')) {
+      const [dp, tp] = raw.split(',');
+      const [yy, mm, dd] = dp.split('.');
+      y = +yy; mo = +mm - 1; d = +dd;
+      if (tp) {
+        const [hh, min] = tp.split(':');
+        h = +hh; mi = +min;
+      }
+    } else {
+      const parts = raw.split(/\s+/);
+      const date = parts[0];
+      const time = parts[1] || '000000';
+      y  = +date.substr(0, 4);
+      mo = +date.substr(4, 2) - 1;
+      d  = +date.substr(6, 2);
+      h  = +time.substr(0, 2);
+      mi = +time.substr(2, 2);
+      s  = +time.substr(4, 2) || 0;
+    }
+    return Math.floor(Date.UTC(y, mo, d, h, mi, s) / 1000) + (5 * 3600);
+  };
+
+  const detectDelimiter = (line) => {
+    if (line.includes(';')) return ';';
+    if (line.includes(',')) return ',';
+    if (line.includes('\t')) return '\t';
+    return ';';
+  };
+
+  const parse = (rawText) => {
+    if (!rawText || typeof rawText !== 'string')
+      throw new Error('Empty CSV content');
+
+    const lines = rawText.split(/\r?\n/).filter(l => l.trim().length > 0);
+    if (lines.length === 0) throw new Error('No data rows in CSV');
+
+    const candles = [];
+    const delim = detectDelimiter(lines[0]);
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const cols = line.split(delim).map(s => s.trim());
+      let time, open, high, low, close, vol = 0;
+      try {
+        if (delim === ',' && cols.length >= 6 && cols[0].includes('.')) {
+          time  = parseHistDataDate(cols[0] + ',' + cols[1]);
+          open  = +cols[2]; high  = +cols[3]; low   = +cols[4]; close = +cols[5];
+          vol   = +(cols[6] || 0);
+        } else if (cols.length >= 5) {
+          time  = parseHistDataDate(cols[0]);
+          open  = +cols[1]; high  = +cols[2]; low   = +cols[3]; close = +cols[4];
+          vol   = +(cols[5] || 0);
+        } else if (cols.length === 4) {
+          time  = parseHistDataDate(cols[0]);
+          const bid = +cols[1]; const ask = +cols[2];
+          const mid = (bid + ask) / 2;
+          open = high = low = close = mid;
+          vol  = +(cols[3] || 0);
+        } else { continue; }
+        if (!isFinite(time) || !isFinite(open)) continue;
+        if (open <= 0 || high <= 0 || low <= 0 || close <= 0) continue;
+        candles.push({ time, open, high, low, close, volume: vol });
+      } catch (err) { continue; }
+    }
+
+    if (candles.length === 0)
+      throw new Error('No valid candles parsed. Check file format.');
+    candles.sort((a, b) => a.time - b.time);
+    const dedup = [];
+    let lastT = -1;
+    for (const c of candles) {
+      if (c.time !== lastT) { dedup.push(c); lastT = c.time; }
+    }
+    return dedup;
+  };
+
+  return { parse };
+})();
+
+
+/* ===============================================================
+ *  2. DATA_LOADER  (UNCHANGED)
+ * =============================================================== */
+const DATA_LOADER = (() => {
+  let _m1Cache = [];
+  let _symbol  = 'UNKNOWN';
+
+  const detectSymbolFromName = (name) => {
+    const m = name.match(/DAT_[A-Z]+_([A-Z]{6,7})_/i);
+    if (m) return m[1].toUpperCase();
+    const m2 = name.match(/([A-Z]{6,7})/);
+    return m2 ? m2[1].toUpperCase() : 'CUSTOM';
+  };
+
+  const loadFromFiles = async (fileList) => {
+    const all = [];
+    for (const f of fileList) {
+      _symbol = detectSymbolFromName(f.name);
+      const text = await f.text();
+      const parsed = CSV_PARSER.parse(text);
+      all.push(...parsed);
+    }
+    all.sort((a, b) => a.time - b.time);
+    _m1Cache = dedupe(all);
+    return { candles: _m1Cache, symbol: _symbol };
+  };
+
+  const loadFromUrl = async (url) => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status} loading ${url}`);
+    const text = await res.text();
+    _symbol = detectSymbolFromName(url.split('/').pop() || 'CUSTOM');
+    _m1Cache = CSV_PARSER.parse(text);
+    return { candles: _m1Cache, symbol: _symbol };
+  };
+
+  const dedupe = (arr) => {
+    const out = [];
+    let lastT = -1;
+    for (const c of arr) {
+      if (c.time !== lastT) { out.push(c); lastT = c.time; }
+    }
+    return out;
+  };
+
+  const getM1 = () => _m1Cache;
+  const getSymbol = () => _symbol;
+
+  return { loadFromFiles, loadFromUrl, getM1, getSymbol };
+})();
+
+
+/* ===============================================================
+ *  3. CANDLE_ENGINE  (UNCHANGED)
+ * =============================================================== */
+const CANDLE_ENGINE = (() => {
+  const TF_SECONDS = {
+    '1m': 60, '5m': 5*60, '15m': 15*60, '30m': 30*60,
+    '1h': 60*60, '4h': 4*60*60, '1D': 24*60*60,
+  };
+  const alignTime = (t, sec) => Math.floor(t / sec) * sec;
+  const aggregate = (m1, tf) => {
+    const sec = TF_SECONDS[tf];
+    if (!sec) throw new Error(`Unknown TF: ${tf}`);
+    if (tf === '1m') return m1.slice();
+    const out = [];
+    let bucket = null;
+    for (const c of m1) {
+      const alignedT = alignTime(c.time, sec);
+      if (!bucket || bucket.time !== alignedT) {
+        if (bucket) out.push(bucket);
+        bucket = { time: alignedT, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume || 0 };
+      } else {
+        bucket.high   = Math.max(bucket.high, c.high);
+        bucket.low    = Math.min(bucket.low,  c.low);
+        bucket.close  = c.close;
+        bucket.volume += (c.volume || 0);
+      }
+    }
+    if (bucket) out.push(bucket);
+    return out;
+  };
+  const getTFSeconds = (tf) => TF_SECONDS[tf];
+  const listTFs = () => Object.keys(TF_SECONDS);
+  return { aggregate, getTFSeconds, listTFs, alignTime };
+})();
+
+
+/* ===============================================================
+ *  4. FAKE_PRICE_GENERATOR  (UNCHANGED)
+ * =============================================================== */
+const FAKE_PRICE_GEN = (() => {
+  let _timer=null,_price=0,_basePx=0,_tfSec=60,_bucketT=0,_high=0,_low=0,_open=0,_running=false,_onTick=null,_onClose=null;
+  let _syntheticTime = 0;
+  let _lastRealNow   = 0;
+  /* تقليل حجم التقلب اللحظي حتى تبدو حركة الشمعة ناعمة جداً بدون قفزات. */
+  const volatility = () => Math.max(0.000008, _basePx * 0.000018);
+  const nextTick = () => {
+    const vol = volatility();
+    /* drift أخف وضوضاء أقل → حركة سلسة جداً */
+    const drift = (_basePx - _price) * 0.006;
+    const noise = (Math.random() - 0.5) * vol * 2;
+    _price += drift + noise;
+    if (_price <= 0) _price = _basePx;
+    if (_price > _high) _high = _price;
+    if (_price < _low)  _low  = _price;
+    const nowSec = Math.floor(Date.now() / 1000);
+    _syntheticTime += (nowSec - _lastRealNow);
+    _lastRealNow = nowSec;
+    if (_syntheticTime >= _bucketT + _tfSec) {
+      const closedCandle = { time:_bucketT, open:_open, high:_high, low:_low, close:_price, volume:0 };
+      _bucketT += _tfSec;
+      _open = _price; _high = _price; _low = _price;
+      const newCandle = { time:_bucketT, open:_open, high:_high, low:_low, close:_price, volume:0 };
+      if (_onClose) _onClose(closedCandle, newCandle);
+      return;
+    }
+    if (_onTick) _onTick({ time:_bucketT, open:_open, high:_high, low:_low, close:_price, volume:0 });
+  };
+  const start = ({ lastCandle, tf, onTick, onClose }) => {
+    stop();
+    _tfSec = CANDLE_ENGINE.getTFSeconds(tf);
+    _basePx = lastCandle.close; _price = lastCandle.close;
+    _bucketT = lastCandle.time; _open = lastCandle.open;
+    _high = lastCandle.high; _low = lastCandle.low;
+    _onTick = onTick; _onClose = onClose;
+    _syntheticTime = lastCandle.time;
+    _lastRealNow = Math.floor(Date.now() / 1000);
+    _running = true;
+    /* تحديث أسرع بكثير (40ms) مع خطوة أصغر → حركة ناعمة دون قفزات. */
+    _timer = setInterval(nextTick, 40);
+  };
+  const stop = () => { if (_timer) clearInterval(_timer); _timer=null; _running=false; };
+  const isRunning = () => _running;
+  const getPrice = () => _price;
+  return { start, stop, isRunning, getPrice };
+})();
+
+
+/* ===============================================================
+ *  5. CHART_MANAGER
+ *  --------------------------------------------------------------
+ *  Chart styling adapted to reference palette (#0d1730 / #223252),
+ *  but candle sizing, barSpacing, price scale layout, and chart
+ *  container dimensions match the reference visual density.
+ * =============================================================== */
+const CHART_MANAGER = (() => {
+  let _chart, _series, _container;
+
+  const create = (container) => {
+    _container = container;
+    _chart = LightweightCharts.createChart(container, {
+      width:  container.clientWidth,
+      height: container.clientHeight,
+      layout: {
+        /* خلفية شفافة 100% للشارت ومقياس الأسعار معاً — بلا أي لون خلفية أو صندوق أو ظل خلف الأرقام. */
+        background: { type: 'solid', color: 'rgba(0,0,0,0)' },
+        textColor:  '#9aa9ba',
+        fontSize:   9,
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", Tahoma, Arial, sans-serif',
+      },
+      grid: {
+        vertLines: { color: '#1a2540' },
+        horzLines: { color: '#1a2540' },
+      },
+      crosshair: {
+        mode: LightweightCharts.CrosshairMode.Normal,
+        vertLine: { color: '#3e8cff', width: 1, style: 3, labelBackgroundColor: '#223252' },
+        horzLine: { color: '#3e8cff', width: 1, style: 3, labelBackgroundColor: '#223252' },
+      },
+      rightPriceScale: {
+        /* شريط الأسعار المدمج مخفي تماماً — يمتد الشارت والجريد بعرض الشاشة كاملاً.
+           التسميات تُرسم عبر طبقة HTML شفافة (#priceOverlay). */
+        visible: false,
+        borderVisible: false,
+        borderColor: 'rgba(0,0,0,0)',
+        scaleMargins: { top: 0.05, bottom: 0.05 },
+        entireTextOnly: false,
+      },
+      timeScale: {
+        borderVisible: false,
+        borderColor: 'rgba(0,0,0,0)',
+        timeVisible: true,
+        secondsVisible: false,
+        /* الإزاحة تُحسب ديناميكياً لتثبيت الشمعة النشطة في منتصف الشاشة */
+        rightOffset: 10,
+        barSpacing: 6.37,
+        minBarSpacing: 4.74,
+        shiftVisibleRangeOnNewBar: false,
+      },
+      handleScroll: {
+        mouseWheel: true, pressedMouseMove: true,
+        horzTouchDrag: true, vertTouchDrag: true,
+      },
+      handleScale: {
+        mouseWheel: true, pinch: true, axisPressedMouseMove: true,
+      },
+    });
+
+    /* حدود الزوم: أدنى 4.74px وأقصى 21.86px — تُفرض بشكل دائم. */
+    const _MIN_BS = 4.74;
+    const _MAX_BS = 21.86;
+    const _DEFAULT_BS = 6.37;
+    let _clampGuard = false;
+    const _clampBarSpacing = () => {
+      if (_clampGuard) return;
+      const opts = _chart.options && _chart.options();
+      const ts = _chart.timeScale();
+      // نقرأ barSpacing الحالي من خيارات timeScale
+      let cur = null;
+      try { cur = _chart.timeScale().options().barSpacing; } catch(e){ cur = null; }
+      if (typeof cur !== 'number' || !isFinite(cur)) return;
+      let target = cur;
+      if (cur < _MIN_BS) target = _MIN_BS;
+      else if (cur > _MAX_BS) target = _MAX_BS;
+      if (target !== cur) {
+        _clampGuard = true;
+        _chart.applyOptions({ timeScale: { barSpacing: target } });
+        setTimeout(() => { _clampGuard = false; }, 0);
+      }
+    };
+
+    _series = _chart.addCandlestickSeries({
+      upColor:         '#21c965',
+      downColor:       '#ff4f4f',
+      borderUpColor:   '#109a4a',
+      borderDownColor: '#d81f1f',
+      wickUpColor:     '#21c965',
+      wickDownColor:   '#ff4f4f',
+      priceFormat: { type: 'price', precision: 5, minMove: 0.00001 },
+    });
+
+    const ro = new ResizeObserver(() => {
+      _chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+      _centerLastCandle();
+      _renderPriceOverlay();
+    });
+    ro.observe(container);
+
+    /* ---- Floating price-labels overlay:
+       يرسم تسميات الأسعار كأرقام HTML شفافة فوق الشارت في الجانب الأيمن.
+       لا خلفية، لا ظل، لا حدود — أرقام فقط والشموع/الجريد يمرون تحتها. */
+    _overlayEl = document.getElementById('priceOverlay');
+    _chart.subscribeCrosshairMove(() => { /* keep overlay stable on hover */ });
+    _chart.timeScale().subscribeVisibleTimeRangeChange(() => _renderPriceOverlay());
+
+    /* تطبيق حدود الزوم ديناميكياً على أي تغيير في نطاق الرؤية (pinch / wheel / drag) */
+    _chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+      _clampBarSpacing();
+    });
+  };
+
+  /* يُثبّت الشمعة النشطة (الأخيرة) في منتصف عرض الشارت تماماً
+     عبر حساب rightOffset = (نصف العرض بالبكسل) / barSpacing.
+     القيمة مقيسة بوحدة "عدد الأعمد" وليس بالبكسل. */
+  const _centerLastCandle = () => {
+    if (!_chart || !_container) return;
+    const w = _container.clientWidth;
+    if (!w) return;
+    let bs = 6.37;
+    try { bs = _chart.timeScale().options().barSpacing || bs; } catch(e){}
+    if (!isFinite(bs) || bs <= 0) bs = 6.37;
+    const bars = (w / 2) / bs;
+    _chart.applyOptions({ timeScale: { rightOffset: bars } });
+  };
+
+  const setData = (candles) => { _series.setData(candles); _centerLastCandle(); _renderPriceOverlay(); };
+  const update  = (candle)  => { _series.update(candle); _renderPriceOverlay(); };
+  const fitContent = () => { _chart.timeScale().fitContent(); _centerLastCandle(); _renderPriceOverlay(); };
+  const scrollToRealTime = () => { _chart.timeScale().scrollToRealTime(); _centerLastCandle(); };
+  const getChart  = () => _chart;
+  const getSeries = () => _series;
+  const setPricePrecision = (precision, minMove) => {
+    _pricePrecision = precision;
+    _series.applyOptions({ priceFormat: { type: 'price', precision, minMove } });
+    _renderPriceOverlay();
+  };
+  const setLivePrice = (price, up) => {
+    _liveValue = price;
+    _liveUp = !!up;
+    _renderPriceOverlay();
+  };
+
+  /* ---- Overlay renderer state ---- */
+  let _overlayEl = null;
+  let _pricePrecision = 5;
+  let _liveValue = null;
+  let _liveUp = true;
+
+  /* يحسب مجموعة أسعار مرئية حالياً ثم يوزعها رأسياً كـ <span> شفافة. */
+  const _renderPriceOverlay = () => {
+    if (!_overlayEl || !_series || !_chart) return;
+    const h = _container ? _container.clientHeight : 0;
+    if (!h) return;
+
+    // نقرأ نطاق الأسعار المرئي من خلال coordinate↔price لأقصى/أدنى وحدتي تيكست.
+    const priceTop    = _series.coordinateToPrice(2);
+    const priceBottom = _series.coordinateToPrice(h - 2);
+    if (priceTop == null || priceBottom == null) return;
+    const pMax = Math.max(priceTop, priceBottom);
+    const pMin = Math.min(priceTop, priceBottom);
+    const range = pMax - pMin;
+    if (!isFinite(range) || range <= 0) return;
+
+    // عدد التسميات حسب الارتفاع (واحدة كل ~60px).
+    const desired = Math.max(4, Math.min(12, Math.round(h / 60)));
+    // نختار step مقروءاً (1/2/5 × 10^n) قريب من range/desired.
+    const raw = range / desired;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const norm = raw / mag;
+    let step;
+    if (norm < 1.5) step = 1 * mag;
+    else if (norm < 3.5) step = 2 * mag;
+    else if (norm < 7.5) step = 5 * mag;
+    else step = 10 * mag;
+
+    const first = Math.ceil(pMin / step) * step;
+    const frag = document.createDocumentFragment();
+    const prec = _pricePrecision;
+    for (let p = first; p <= pMax; p += step) {
+      const y = _series.priceToCoordinate(p);
+      if (y == null || y < 0 || y > h) continue;
+      const el = document.createElement('span');
+      el.className = 'pl';
+      el.style.top = y + 'px';
+      el.textContent = Number(p).toFixed(prec);
+      frag.appendChild(el);
+    }
+
+    // السعر اللحظي (live) — أبيض وأقوى، يُرسم فوق الباقي.
+    if (_liveValue != null) {
+      const y = _series.priceToCoordinate(_liveValue);
+      if (y != null && y >= 0 && y <= h) {
+        const el = document.createElement('span');
+        el.className = 'pl live';
+        el.style.top = y + 'px';
+        el.style.color = _liveUp ? '#21c965' : '#ff4f4f';
+        el.textContent = Number(_liveValue).toFixed(prec);
+        frag.appendChild(el);
+      }
+    }
+
+    _overlayEl.textContent = '';
+    _overlayEl.appendChild(frag);
+  };
+
+  return { create, setData, update, fitContent, scrollToRealTime, getChart, getSeries, setPricePrecision, setLivePrice, centerLastCandle: _centerLastCandle };
+})();
+
+
+/* ===============================================================
+ *  6. TRADE_MANAGER  (UNCHANGED)
+ * =============================================================== */
+const TRADE_MANAGER = (() => {
+  let _positions = [], _idSeq = 1, _listEl = null;
+  const attach = (listEl) => { _listEl = listEl; };
+  const open = (side, price) => {
+    if (!price || price <= 0) return;
+    const priceLine = CHART_MANAGER.getSeries().createPriceLine({
+      price,
+      color: side === 'BUY' ? '#21c965' : '#ff4f4f',
+      lineWidth: 2, lineStyle: 2, axisLabelVisible: true,
+      title: `${side} #${_idSeq}`,
+    });
+    _positions.push({ id: _idSeq++, side, entry: price, priceLine, openedAt: Date.now() });
+    render();
+  };
+  const close = (id) => {
+    const idx = _positions.findIndex(p => p.id === id);
+    if (idx < 0) return;
+    try { CHART_MANAGER.getSeries().removePriceLine(_positions[idx].priceLine); } catch(e){}
+    _positions.splice(idx, 1);
+    render();
+  };
+  const closeAll = () => {
+    for (const p of _positions) {
+      try { CHART_MANAGER.getSeries().removePriceLine(p.priceLine); } catch(e){}
+    }
+    _positions = [];
+    render();
+  };
+  const updateLivePnL = (currentPrice) => {
+    if (!_listEl || _positions.length === 0) return;
+    for (const p of _positions) {
+      const diff = p.side === 'BUY' ? (currentPrice - p.entry) : (p.entry - currentPrice);
+      const el = _listEl.querySelector(`[data-pid="${p.id}"] .pnl`);
+      if (el) {
+        const pips = (diff * 10000).toFixed(1);
+        el.textContent = (diff >= 0 ? '+' : '') + pips + ' pips';
+      }
+    }
+  };
+  const render = () => {
+    if (!_listEl) return;
+    _listEl.innerHTML = '';
+    for (const p of _positions) {
+      const row = document.createElement('div');
+      row.dataset.pid = p.id;
+      row.innerHTML = `<span>${p.side}</span><span>@${p.entry.toFixed(5)}</span><span class="pnl">+0.0 pips</span>`;
+      _listEl.appendChild(row);
+    }
+  };
+  return { attach, open, close, closeAll, updateLivePnL };
+})();
+
+
+/* ===============================================================
+ *  7. APP  (UNCHANGED LOGIC, only re-wired UI selectors)
+ * =============================================================== */
+const APP = (() => {
+  const state = { currentTF:'5m', aggregated:[], liveEnabled:true, symbol:'' };
+  const els = {};
+
+  const cacheEls = () => {
+    els.loadingOver  = document.getElementById('loadingOverlay');
+    els.loadingText  = document.getElementById('loadingText');
+    els.symbolLabel  = document.getElementById('symbolLabel');
+    els.livePrice    = document.getElementById('livePrice');
+    els.tfButtons    = document.getElementById('tfButtons');
+    els.btnReload    = document.getElementById('btnReload');
+    els.btnFit       = document.getElementById('btnFit');
+    els.btnLive      = document.getElementById('btnLive');
+    els.btnBuy       = document.getElementById('btnBuy');
+    els.btnSell      = document.getElementById('btnSell');
+    els.btnCloseAll  = document.getElementById('btnCloseAll');
+    els.positions    = document.getElementById('positionsList');
+    els.statusText   = document.getElementById('statusText');
+    els.statsText    = document.getElementById('statsText');
+    els.ptmH         = document.getElementById('ptmH');
+  };
+
+  const showLoading = (msg) => {
+    els.loadingOver.classList.remove('hidden');
+    els.loadingText.textContent = msg || 'جاري التحميل...';
+  };
+  const hideLoading = () => els.loadingOver.classList.add('hidden');
+
+  /* ===============================================================
+   *  AUTO-LOADER: يحمّل EUR.USD.csv تلقائياً من نفس الدومين
+   *  --------------------------------------------------------------
+   *  - لا يعتمد على أي تدخل من المستخدم.
+   *  - يستخدم fetch() مع cache-busting بسيط (query-string بالطابع الزمني)
+   *    حتى يقرأ Vercel/GitHub Pages أحدث نسخة من الملف عند كل فتح.
+   *  - في حالة الفشل يعرض رسالة واضحة في Console + على الشاشة.
+   * =============================================================== */
+  const AUTO_CSV_FILENAME = 'EUR.USD.csv';
+  const autoLoadCsv = async () => {
+    const url = AUTO_CSV_FILENAME + '?v=' + Date.now();
+    try {
+      showLoading('جاري تحميل ' + AUTO_CSV_FILENAME + ' ...');
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error('HTTP ' + res.status + ' ' + res.statusText +
+                        ' — لم يتم العثور على الملف ' + AUTO_CSV_FILENAME +
+                        ' في نفس المجلد.');
+      }
+      const text = await res.text();
+      if (!text || !text.trim()) {
+        throw new Error('الملف ' + AUTO_CSV_FILENAME + ' فارغ.');
+      }
+      let candles;
+      try {
+        candles = CSV_PARSER.parse(text);
+      } catch (parseErr) {
+        throw new Error('فشل تحليل CSV: ' + parseErr.message);
+      }
+      // نُغذّي DATA_LOADER بالنتيجة عبر مسار loadFromUrl (نفس منطق الشارت)
+      // لكن بما أننا حمّلنا النص هنا، ننادي parse مباشرة ونمرر الرمز.
+      // نستخدم loadFromUrl الأصلي إذا أمكن كي لا نغير المنطق:
+      const { candles: c2, symbol } = await DATA_LOADER.loadFromUrl(url);
+      state.symbol = symbol || 'EURUSD';
+      els.symbolLabel.textContent = state.symbol;
+      rebuild();
+      hideLoading();
+      console.info('[AUTO-CSV] تم تحميل ' + AUTO_CSV_FILENAME +
+                   ' بنجاح — عدد الشموع: ' + (c2 ? c2.length : 0));
+    } catch (err) {
+      console.error('[AUTO-CSV ERROR] فشل تحميل ' + AUTO_CSV_FILENAME + ':', err);
+      setStatus('فشل تحميل ' + AUTO_CSV_FILENAME + ' — راجع Console');
+      els.loadingText.textContent =
+        '❌ فشل تحميل ' + AUTO_CSV_FILENAME + '\n' + err.message;
+    }
+  };
+
+  const setStatus = (msg) => { els.statusText.textContent = msg; };
+  const setStats  = () => {
+    els.statsText.textContent =
+      `Candles: ${state.aggregated.length} | ${state.currentTF}`;
+  };
+
+  const updatePriceLabel = (price, up) => {
+    els.livePrice.textContent = price.toFixed(5);
+    els.livePrice.style.color = up ? '#21c965' : '#ff4f4f';
+    // تحديث طبقة الأسعار العائمة فوق الشارت
+    if (CHART_MANAGER.setLivePrice) CHART_MANAGER.setLivePrice(price, up);
+  };
+
+  const rebuild = () => {
+    const m1 = DATA_LOADER.getM1();
+    if (!m1.length) return;
+    const samplePrice = m1[m1.length - 1].close;
+    let precision = 5, minMove = 0.00001;
+    if (samplePrice > 100)   { precision = 3; minMove = 0.001; }
+    if (samplePrice > 1000)  { precision = 2; minMove = 0.01; }
+    CHART_MANAGER.setPricePrecision(precision, minMove);
+    state.aggregated = CANDLE_ENGINE.aggregate(m1, state.currentTF);
+    CHART_MANAGER.setData(state.aggregated);
+    FAKE_PRICE_GEN.stop();
+    if (state.liveEnabled && state.aggregated.length) startLive();
+    CHART_MANAGER.fitContent();
+    setStats();
+    setStatus(`${state.symbol} • ${state.aggregated.length}`);
+  };
+
+  const startLive = () => {
+    const last = state.aggregated[state.aggregated.length - 1];
+    if (!last) return;
+    FAKE_PRICE_GEN.start({
+      lastCandle: last,
+      tf: state.currentTF,
+      onTick: (candle) => {
+        state.aggregated[state.aggregated.length - 1] = candle;
+        CHART_MANAGER.update(candle);
+        const prevClose = state.aggregated.length > 1
+          ? state.aggregated[state.aggregated.length - 2].close
+          : candle.open;
+        updatePriceLabel(candle.close, candle.close >= prevClose);
+        // Update floating time label
+        if (els.ptmH) {
+          const d = new Date(candle.time * 1000);
+          els.ptmH.textContent = d.toISOString().substr(11,8);
+        }
+        TRADE_MANAGER.updateLivePnL(candle.close);
+      },
+      onClose: (closed, next) => {
+        state.aggregated[state.aggregated.length - 1] = closed;
+        CHART_MANAGER.update(closed);
+        state.aggregated.push(next);
+        CHART_MANAGER.update(next);
+        /* عند إنشاء شمعة جديدة نُعيد توسيط الشمعة النشطة لتبقى دائماً في منتصف الشاشة. */
+        if (CHART_MANAGER.centerLastCandle) CHART_MANAGER.centerLastCandle();
+        setStats();
+      },
+    });
+  };
+
+  const onTFClick = (e) => {
+    const btn = e.target.closest('.tfb');
+    if (!btn) return;
+    const tf = btn.dataset.tf;
+    if (!tf || tf === state.currentTF) return;
+    document.querySelectorAll('.tfb').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    state.currentTF = tf;
+    rebuild();
+  };
+
+  const init = () => {
+    cacheEls();
+    CHART_MANAGER.create(document.getElementById('chart'));
+    TRADE_MANAGER.attach(els.positions);
+
+    els.tfButtons.addEventListener('click', onTFClick);
+
+    els.btnReload.addEventListener('click', autoLoadCsv);
+    els.btnFit.addEventListener('click', () => CHART_MANAGER.fitContent());
+    els.btnLive.addEventListener('click', () => {
+      state.liveEnabled = !state.liveEnabled;
+      els.btnLive.style.color = state.liveEnabled ? '#21c965' : '#c7d5ef';
+      if (state.liveEnabled) startLive();
+      else FAKE_PRICE_GEN.stop();
+      setStats();
+    });
+
+    els.btnBuy.addEventListener('click', () => {
+      const px = FAKE_PRICE_GEN.getPrice() ||
+                 (state.aggregated.length ? state.aggregated.at(-1).close : 0);
+      if (px) TRADE_MANAGER.open('BUY', px);
+    });
+    els.btnSell.addEventListener('click', () => {
+      const px = FAKE_PRICE_GEN.getPrice() ||
+                 (state.aggregated.length ? state.aggregated.at(-1).close : 0);
+      if (px) TRADE_MANAGER.open('SELL', px);
+    });
+    els.btnCloseAll.addEventListener('click', () => TRADE_MANAGER.closeAll());
+
+    setStatus('في انتظار البيانات');
+
+    // تحميل تلقائي فوري لملف EUR.USD.csv من نفس الدومين — بدون تدخل المستخدم.
+    autoLoadCsv();
+  };
+
+  return { init };
+})();
+
+window.addEventListener('DOMContentLoaded', APP.init);
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
