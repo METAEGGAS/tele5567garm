@@ -36,6 +36,7 @@ class MainContainerActivity : AppCompatActivity() {
 
     private var selectedScreen = 0
     private val orders = mutableListOf<Order>()
+    private var digestInFlight = false
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -82,7 +83,16 @@ class MainContainerActivity : AppCompatActivity() {
         buildStatusScreen()
         buildOrdersScreen()
 
-        switchTo(0)
+        // إذا كان عندنا توكن محفوظ سابقاً — جرّب الاتصال مباشرة
+        val prefs = getSharedPreferences("qtx", MODE_PRIVATE)
+        val savedToken = prefs.getString("token", null)
+        if (!savedToken.isNullOrBlank()) {
+            statusBar.text = "🔄 توكن محفوظ — جاري الاتصال..."
+            switchTo(1)
+            connectQuotex()
+        } else {
+            switchTo(0)
+        }
     }
 
     private fun buildBottomBar(): LinearLayout {
@@ -165,7 +175,7 @@ class MainContainerActivity : AppCompatActivity() {
         }
 
         val tokenInput = EditText(this).apply {
-            hint = "Token..."
+            hint = "Token / SSID..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             textSize = 11f
@@ -175,7 +185,7 @@ class MainContainerActivity : AppCompatActivity() {
         manualBar.addView(tokenInput)
 
         val csrfInput = EditText(this).apply {
-            hint = "CSRF..."
+            hint = "CSRF (اختياري)..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             textSize = 11f
@@ -205,7 +215,7 @@ class MainContainerActivity : AppCompatActivity() {
         loginScreen.addView(manualBar)
 
         val digestBtn = Button(this).apply {
-            text = "🌐 جلب من digest"
+            text = "🌐 جلب Token من الكوكيز"
             textSize = 12f
             setBackgroundColor(Color.parseColor("#238636"))
             setTextColor(Color.WHITE)
@@ -220,6 +230,7 @@ class MainContainerActivity : AppCompatActivity() {
                 databaseEnabled = true
                 loadWithOverviewMode = true
                 useWideViewPort = true
+                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 userAgentString = "Mozilla/5.0 (Linux; Android 13) " +
                     "AppleWebKit/537.36 (KHTML, like Gecko) " +
                     "Chrome/120.0.0.0 Mobile Safari/537.36"
@@ -238,10 +249,22 @@ class MainContainerActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 Log.d(TAG, "Page finished: $url")
+                // اجلب الكوكيز بعد أي صفحة من qxbroker (sign-in أو trade)
                 if (url?.contains("qxbroker.com") == true) {
+                    CookieManager.getInstance().flush()
                     Handler(Looper.getMainLooper()).postDelayed({
                         fetchDigestAndConnect()
                     }, 3000)
+                }
+            }
+
+            override fun onReceivedError(
+                view: WebView?, request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                super.onReceivedError(view, request, error)
+                if (request?.isForMainFrame == true) {
+                    statusBar.text = "⚠️ خطأ تحميل الصفحة"
                 }
             }
         }
@@ -251,17 +274,19 @@ class MainContainerActivity : AppCompatActivity() {
     }
 
     private fun fetchDigestAndConnect() {
+        if (digestInFlight) return
+
         val cm = CookieManager.getInstance()
         val cookies = cm.getCookie("https://qxbroker.com") ?: ""
         val ua = webView.settings.userAgentString ?: ""
 
         if (cookies.isBlank()) {
-            statusBar.text = "⚠️ مفيش كوكيز"
+            statusBar.text = "⚠️ مفيش كوكيز — سجل دخول أولاً"
             return
         }
 
-        Log.d(TAG, "═══ Digest attempt ═══")
-        Log.d(TAG, "Cookies: ${cookies.take(200)}")
+        digestInFlight = true
+        statusBar.text = "🔄 جاري استخراج Token..."
 
         Thread {
             try {
@@ -283,10 +308,10 @@ class MainContainerActivity : AppCompatActivity() {
                 resp.close()
 
                 Log.d(TAG, "Digest HTTP $code")
-                Log.d(TAG, "Body: ${body.take(500)}")
 
                 if (code != 200) {
-                    runOnUiThread { statusBar.text = "⚠️ HTTP $code" }
+                    runOnUiThread { statusBar.text = "⚠️ HTTP $code — سجل دخول من جديد" }
+                    digestInFlight = false
                     return@Thread
                 }
 
@@ -295,9 +320,6 @@ class MainContainerActivity : AppCompatActivity() {
 
                 val token = data.optString("token", "")
                 val csrf = data.optString("csrf", "")
-
-                Log.d(TAG, "token: $token")
-                Log.d(TAG, "csrf: $csrf")
 
                 if (token.isNotBlank()) {
                     saveCreds(token, csrf, cookies)
@@ -309,12 +331,14 @@ class MainContainerActivity : AppCompatActivity() {
                         connectQuotex()
                     }
                 } else {
-                    runOnUiThread { statusBar.text = "❌ مفيش token" }
+                    runOnUiThread { statusBar.text = "❌ مفيش token في الرد" }
                 }
 
             } catch (e: Exception) {
                 Log.e(TAG, "digest err: ${e.message}", e)
                 runOnUiThread { statusBar.text = "❌ ${e.message?.take(50)}" }
+            } finally {
+                digestInFlight = false
             }
         }.start()
     }
@@ -329,7 +353,7 @@ class MainContainerActivity : AppCompatActivity() {
             .putString("ua", ua)
             .putLong("time", System.currentTimeMillis())
             .apply()
-        Log.d(TAG, "💾 Saved token")
+        Log.d(TAG, "💾 Creds saved")
     }
 
     private fun buildTradeScreen() {
@@ -429,10 +453,11 @@ class MainContainerActivity : AppCompatActivity() {
                 val list = QuotexSocket.getInstrumentList()
                     .ifEmpty { QuotexSocket.getDefaultOtcList() }
                 if (position < list.size) {
-                    val price = QuotexSocket.getPrice(list[position].ticker)
-                    if (price != null) {
-                        priceText.text = String.format("%.5f", price)
-                    }
+                    val asset = list[position].ticker
+                    val price = QuotexSocket.getPrice(asset)
+                    priceText.text = if (price != null) String.format("%.5f", price) else "--"
+                    // اشترك في أسعار الزوج المختار فوراً
+                    QuotexSocket.subscribeAsset(asset)
                 }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -526,9 +551,18 @@ class MainContainerActivity : AppCompatActivity() {
                 setPadding(16, 16, 16, 16)
             }
             item.addView(TextView(this).apply {
-                text = "${o.asset} · ${if (o.direction == "call") "شراء" else "بيع"}"
+                text = "${o.asset} · ${if (o.direction == "call") "شراء" else "بيع"} · \$${o.amount}"
                 setTextColor(Color.WHITE)
                 textSize = 15f
+            })
+            item.addView(TextView(this).apply {
+                text = when (o.status) {
+                    "success" -> "✅ نجحت"
+                    "failed" -> "❌ فشلت"
+                    else -> "⏳ جارية"
+                }
+                setTextColor(Color.parseColor("#8B949E"))
+                textSize = 12f
             })
             historyList.addView(item)
         }
@@ -611,9 +645,10 @@ class MainContainerActivity : AppCompatActivity() {
         renderOrdersList()
     }
 
+    @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (selectedScreen != 0) switchTo(0)
-        else if (webView.canGoBack()) webView.goBack()
+        else if (::webView.isInitialized && webView.canGoBack()) webView.goBack()
         else super.onBackPressed()
     }
 
