@@ -12,21 +12,29 @@ object QuotexSocket {
 
     private const val TAG = "QuotexSocket"
     private const val IS_DEMO = 1
+    private const val WS_URL = "wss://ws2.qxbroker.com/socket.io/?EIO=4&transport=websocket"
+    private const val MAX_RECONNECT = 5
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.SECONDS)
         .pingInterval(20, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     private var ws: WebSocket? = null
     private var ssid: String? = null
+    private var lastCookie: String = ""
+    private var lastUa: String = ""
     private val handler = Handler(Looper.getMainLooper())
 
     private val prices = HashMap<String, Double>()
     private val instruments = HashMap<String, Instrument>()
     private var demoBalance: Double = 0.0
     private var liveBalance: Double = 0.0
+
+    private var reconnectAttempts = 0
+    private var manualDisconnect = false
 
     data class Instrument(
         val id: Int,
@@ -45,6 +53,7 @@ object QuotexSocket {
     fun getPrice(asset: String): Double? = prices[asset]
     fun getInstrumentList(): List<Instrument> = instruments.values.toList()
     fun getBalance(): Double = if (IS_DEMO == 1) demoBalance else liveBalance
+    fun isConnected(): Boolean = ws != null
 
     fun getDefaultOtcList(): List<Instrument> {
         val list = mutableListOf<Instrument>()
@@ -68,12 +77,21 @@ object QuotexSocket {
     //  Connect — مع Cookie + UA كاملين
     // ═══════════════════════════════════════════
     fun connect(token: String, cookie: String = "", ua: String = "") {
+        manualDisconnect = false
+        reconnectAttempts = 0
         this.ssid = token
+        this.lastCookie = cookie
+        this.lastUa = ua
+        openSocket(token, cookie, ua)
+    }
 
-        val url = "wss://ws2.qxbroker.com/socket.io/?EIO=4&transport=websocket"
+    private fun openSocket(token: String, cookie: String, ua: String) {
+        // أغلق أي اتصال قديم قبل فتح جديد
+        try { ws?.close(1000, "reconnect") } catch (_: Exception) {}
+        ws = null
 
         val builder = Request.Builder()
-            .url(url)
+            .url(WS_URL)
             .addHeader("Origin", "https://qxbroker.com")
             .addHeader(
                 "User-Agent",
@@ -90,15 +108,13 @@ object QuotexSocket {
         }
 
         val req = builder.build()
-
-        Log.d(TAG, "Connecting...")
-        Log.d(TAG, "Cookie: ${cookie.take(100)}")
-        Log.d(TAG, "UA: ${ua.take(80)}")
+        Log.d(TAG, "Connecting to WS...")
 
         ws = client.newWebSocket(req, object : WebSocketListener() {
 
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d(TAG, "WS opened — code ${response.code}")
+                reconnectAttempts = 0
                 emit("🔌 متصل — handshake")
                 webSocket.send("40")
             }
@@ -109,19 +125,39 @@ object QuotexSocket {
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 val code = response?.code ?: 0
-                val msg = response?.message ?: t.message ?: "unknown"
-                Log.e(TAG, "WS failed: $code / $msg", t)
+                Log.e(TAG, "WS failed: $code / ${t.message}")
+                ws = null
                 emit("❌ فشل ($code): ${t.message?.take(40)}")
+                scheduleReconnect()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WS closed: $code")
+                Log.d(TAG, "WS closed: $code / $reason")
+                ws = null
                 emit("🔌 انقطع ($code)")
+                scheduleReconnect()
             }
         })
     }
 
+    private fun scheduleReconnect() {
+        if (manualDisconnect) return
+        val token = ssid ?: return
+        if (reconnectAttempts >= MAX_RECONNECT) {
+            emit("❌ توقفت إعادة المحاولة — أعد تسجيل الدخول")
+            return
+        }
+        reconnectAttempts++
+        val delayMs = (reconnectAttempts * 3000L).coerceAtMost(15000L)
+        emit("🔄 إعادة اتصال ${reconnectAttempts}/$MAX_RECONNECT بعد ${delayMs / 1000}ث")
+        handler.postDelayed({
+            if (!manualDisconnect) openSocket(token, lastCookie, lastUa)
+        }, delayMs)
+    }
+
     fun disconnect() {
+        manualDisconnect = true
+        handler.removeCallbacksAndMessages(null)
         try { ws?.close(1000, "bye") } catch (_: Exception) {}
         ws = null
     }
@@ -131,20 +167,30 @@ object QuotexSocket {
     }
 
     private fun handleMessage(webSocket: WebSocket, text: String) {
-        Log.d(TAG, "← ${text.take(300)}")
+        Log.d(TAG, "← ${text.take(200)}")
 
         when {
+            // رد handshake الأولي من السيرفر
             text.startsWith("0{") -> {
                 webSocket.send("40")
                 return
             }
-            text == "40" -> {
+            // القناة انفتحت — أرسل المصادقة
+            text == "40" || text.startsWith("40{") -> {
                 emit("✅ القناة مفتوحة — إرسال Token")
                 sendAuthorization(webSocket)
                 return
             }
+            // Ping من السيرفر — رد بـ Pong (إجباري)
             text == "2" -> {
                 webSocket.send("3")
+                return
+            }
+            // إغلاق منطقي من Socket.IO
+            text == "41" -> {
+                ws = null
+                emit("🔌 السيرفر أغلق القناة")
+                scheduleReconnect()
                 return
             }
         }
@@ -171,6 +217,7 @@ object QuotexSocket {
                 "instruments/list", "instruments/update" -> parseInstruments(payload)
                 "quotes/stream", "quotes", "tick" -> parseQuotes(payload)
                 "history/list", "history/list/v2", "history/load" -> parseQuotes(payload)
+                "candles", "candles-generate" -> parseCandles(payload)
                 "orders/open" -> handleOrderOpen(payload)
                 "orders/close" -> handleOrderClose(payload)
                 "orders/error" -> handleOrderError(payload)
@@ -186,13 +233,13 @@ object QuotexSocket {
         }
     }
 
-    private fun sendAuthorization(ws: WebSocket) {
+    private fun sendAuthorization(w: WebSocket) {
         val payload = JSONObject().apply {
             put("session", ssid ?: "")
             put("isDemo", IS_DEMO)
             put("tournamentId", 0)
         }
-        ws.send("""42["authorization",$payload]""")
+        w.send("""42["authorization",$payload]""")
     }
 
     private fun handleAuthStatus(payload: Any?) {
@@ -209,7 +256,7 @@ object QuotexSocket {
             ws?.send("""42["pending/list"]""")
             subscribeDefault()
         } else {
-            emit("❌ فشل المصادقة")
+            emit("❌ فشل المصادقة — التوكن منتهي")
         }
     }
 
@@ -296,6 +343,29 @@ object QuotexSocket {
                 if (!handled) addQuote(payload)
             }
         }
+    }
+
+    // الشموع تحمل السعر في حقول close / price
+    private fun parseCandles(payload: Any?) {
+        try {
+            when (payload) {
+                is JSONArray -> {
+                    for (i in 0 until payload.length()) {
+                        val o = payload.optJSONObject(i) ?: continue
+                        addQuote(o)
+                    }
+                }
+                is JSONObject -> {
+                    val data = payload.optJSONArray("data")
+                    if (data != null) {
+                        for (i in 0 until data.length()) {
+                            val o = data.optJSONObject(i) ?: continue
+                            addQuote(o)
+                        }
+                    } else addQuote(payload)
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     private fun addQuote(obj: JSONObject) {
