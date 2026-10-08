@@ -3,6 +3,8 @@ package com.sys.update2
 import android.annotation.SuppressLint
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -31,6 +33,11 @@ class MainContainerActivity : AppCompatActivity() {
 
     private var selectedScreen = 0
     private val orders = mutableListOf<Order>()
+
+    // SSID watcher
+    private var cookieWatcher: Handler? = null
+    private var cookieRunnable: Runnable? = null
+    private var ssidFound = false
 
     data class Order(
         val id: String,
@@ -75,6 +82,9 @@ class MainContainerActivity : AppCompatActivity() {
         switchTo(0)
     }
 
+    // ═══════════════════════════════════════════
+    //  Bottom Bar
+    // ═══════════════════════════════════════════
     private fun buildBottomBar(): LinearLayout {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -152,7 +162,7 @@ class MainContainerActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        // شريط يدوي لـ SSID (احتياطي)
+        // شريط يدوي لإدخال SSID
         val manualBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor("#161B22"))
@@ -179,6 +189,8 @@ class MainContainerActivity : AppCompatActivity() {
                     saveSSID(v)
                     Toast.makeText(this@MainContainerActivity,
                         "✅ تم استخدام SSID يدوي", Toast.LENGTH_SHORT).show()
+                    switchTo(1)
+                    connectQuotex()
                 }
             }
         }
@@ -189,6 +201,23 @@ class MainContainerActivity : AppCompatActivity() {
         manualBar.addView(manualBtn)
 
         loginScreen.addView(manualBar)
+
+        // زر لطباعة الكوكيز للتشخيص
+        val debugBtn = Button(this).apply {
+            text = "🛠 طباعة الكوكيز (ديبان)"
+            textSize = 11f
+            setBackgroundColor(Color.parseColor("#30363D"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                val cm = CookieManager.getInstance()
+                val cookies = cm.getCookie("https://qxbroker.com")
+                Log.d(TAG, "═══ ALL COOKIES ═══")
+                Log.d(TAG, cookies ?: "null")
+                Toast.makeText(this@MainContainerActivity,
+                    "شيك على Logcat", Toast.LENGTH_SHORT).show()
+            }
+        }
+        loginScreen.addView(debugBtn)
 
         webView = WebView(this).apply {
             settings.apply {
@@ -209,17 +238,19 @@ class MainContainerActivity : AppCompatActivity() {
         val cm = CookieManager.getInstance()
         cm.setAcceptCookie(true)
         cm.setAcceptThirdPartyCookies(webView, true)
+        cm.flush()
 
         webView.addJavascriptInterface(object {
             @JavascriptInterface
             fun onSSID(ssid: String) {
-                Log.d(TAG, "SSID extracted: ${ssid.take(20)}...")
+                Log.d(TAG, "JS SSID: ${ssid.take(20)}...")
                 runOnUiThread {
-                    if (ssid.isNotBlank()) {
+                    if (ssid.isNotBlank() && !ssidFound) {
+                        ssidFound = true
                         saveSSID(ssid)
                         Toast.makeText(
                             this@MainContainerActivity,
-                            "✅ تم استلام الجلسة",
+                            "✅ تم استلام الجلسة من JS",
                             Toast.LENGTH_SHORT
                         ).show()
                         switchTo(1)
@@ -232,8 +263,10 @@ class MainContainerActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                Log.d(TAG, "Page finished: $url")
                 if (url?.contains("qxbroker.com") == true) {
                     injectScript()
+                    startCookieWatcher()
                 }
             }
         }
@@ -247,11 +280,12 @@ class MainContainerActivity : AppCompatActivity() {
         getSharedPreferences("qtx", MODE_PRIVATE)
             .edit()
             .putString("ssid", ssid)
+            .putLong("ssid_time", System.currentTimeMillis())
             .apply()
     }
 
     // ═══════════════════════════════════════════
-    //  Inject JS — يبحث عن SSID من أي مكان
+    //  Inject JS
     // ═══════════════════════════════════════════
     private fun injectScript() {
         val js = """
@@ -259,33 +293,7 @@ class MainContainerActivity : AppCompatActivity() {
               if (window.__qtxHooked) return;
               window.__qtxHooked = true;
 
-              function grab() {
-                try {
-                  var c = document.cookie || '';
-
-                  // نمط 1: ssid
-                  var m1 = c.match(/(?:^|;\s*)ssid=([^;]+)/);
-                  if (m1 && m1[1] && m1[1].length > 20) {
-                    window.AndroidBridge.onSSID(decodeURIComponent(m1[1]));
-                    return true;
-                  }
-
-                  // نمط 2: session
-                  var m2 = c.match(/(?:^|;\s*)session=([^;]+)/);
-                  if (m2 && m2[1] && m2[1].length > 20) {
-                    window.AndroidBridge.onSSID(decodeURIComponent(m2[1]));
-                    return true;
-                  }
-
-                  // نمط 3: token
-                  var m3 = c.match(/(?:^|;\s*)token=([^;]+)/);
-                  if (m3 && m3[1] && m3[1].length > 20) {
-                    window.AndroidBridge.onSSID(decodeURIComponent(m3[1]));
-                    return true;
-                  }
-                } catch (e) {}
-
-                // localStorage
+              function grabLocal() {
                 try {
                   for (var i = 0; i < localStorage.length; i++) {
                     var k = localStorage.key(i);
@@ -303,22 +311,86 @@ class MainContainerActivity : AppCompatActivity() {
                   }
                 } catch (e) {}
 
+                try {
+                  var c = document.cookie || '';
+                  var m = c.match(/(?:^|;\s*)ssid=([^;]+)/);
+                  if (m && m[1] && m[1].length > 20) {
+                    window.AndroidBridge.onSSID(decodeURIComponent(m[1]));
+                    return true;
+                  }
+                } catch (e) {}
                 return false;
               }
 
-              setInterval(grab, 700);
+              setInterval(grabLocal, 800);
               document.addEventListener('submit', function() {
-                setTimeout(grab, 400);
+                setTimeout(grabLocal, 400);
               }, true);
               document.addEventListener('click', function(e) {
-                var t = e.target.closest('button, [type="submit"], [role="button"], a');
-                if (t) setTimeout(grab, 400);
+                var t = e.target.closest('button, [type="submit"], [role="button"]');
+                if (t) setTimeout(grabLocal, 400);
               }, true);
-              grab();
+              grabLocal();
             })();
         """.trimIndent()
 
         webView.evaluateJavascript(js, null)
+    }
+
+    // ═══════════════════════════════════════════
+    //  Cookie Watcher — يقرأ الكوكيز native
+    // ═══════════════════════════════════════════
+    private fun startCookieWatcher() {
+        if (cookieWatcher != null) return
+
+        cookieWatcher = Handler(Looper.getMainLooper())
+        cookieRunnable = object : Runnable {
+            override fun run() {
+                if (ssidFound) return
+
+                try {
+                    val cm = CookieManager.getInstance()
+                    val cookies = cm.getCookie("https://qxbroker.com")
+
+                    if (!cookies.isNullOrBlank()) {
+                        // ابحث عن أي كوكي محتمل
+                        val ssidMatch = Regex("(?:^|;\\s*)ssid=([^;]+)")
+                            .find(cookies)?.groupValues?.get(1)
+                        val sessionMatch = Regex("(?:^|;\\s*)session=([^;]+)")
+                            .find(cookies)?.groupValues?.get(1)
+                        val tokenMatch = Regex("(?:^|;\\s*)token=([^;]+)")
+                            .find(cookies)?.groupValues?.get(1)
+                        val authMatch = Regex("(?:^|;\\s*)auth=([^;]+)")
+                            .find(cookies)?.groupValues?.get(1)
+
+                        val found = ssidMatch ?: sessionMatch
+                            ?: tokenMatch ?: authMatch
+
+                        if (!found.isNullOrBlank() && found.length > 20) {
+                            ssidFound = true
+                            Log.d(TAG, "✅ SSID from cookies: ${found.take(30)}...")
+                            saveSSID(found)
+                            runOnUiThread {
+                                Toast.makeText(
+                                    this@MainContainerActivity,
+                                    "✅ تم استلام الجلسة تلقائياً",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                switchTo(1)
+                                connectQuotex()
+                            }
+                            return
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "cookieWatcher err: ${e.message}")
+                }
+
+                cookieWatcher?.postDelayed(this, 1000)
+            }
+        }
+
+        cookieWatcher?.postDelayed(cookieRunnable!!, 1500)
     }
 
     // ═══════════════════════════════════════════
