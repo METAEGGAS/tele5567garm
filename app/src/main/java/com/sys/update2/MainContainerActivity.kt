@@ -12,6 +12,8 @@ import android.view.ViewGroup
 import android.webkit.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import okhttp3.*
+import java.util.concurrent.TimeUnit
 
 class MainContainerActivity : AppCompatActivity() {
 
@@ -34,10 +36,15 @@ class MainContainerActivity : AppCompatActivity() {
     private var selectedScreen = 0
     private val orders = mutableListOf<Order>()
 
-    // SSID watcher
+    // Watcher
     private var cookieWatcher: Handler? = null
-    private var cookieRunnable: Runnable? = null
     private var ssidFound = false
+
+    // HTTP client
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
 
     data class Order(
         val id: String,
@@ -121,7 +128,6 @@ class MainContainerActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, 12, 0, 12)
             isClickable = true
-            isFocusable = true
             setOnClickListener { switchTo(index) }
         }
 
@@ -162,7 +168,7 @@ class MainContainerActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        // شريط يدوي لإدخال SSID
+        // شريط يدوي
         val manualBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor("#161B22"))
@@ -173,7 +179,7 @@ class MainContainerActivity : AppCompatActivity() {
             hint = "أدخل SSID يدوياً..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
-            textSize = 12f
+            textSize = 11f
             setBackgroundColor(Color.parseColor("#0D1117"))
             setPadding(12, 8, 12, 8)
         }
@@ -186,9 +192,9 @@ class MainContainerActivity : AppCompatActivity() {
             setOnClickListener {
                 val v = ssidInput.text.toString().trim()
                 if (v.isNotBlank()) {
-                    saveSSID(v)
+                    saveSession(v, "manual", "manual")
                     Toast.makeText(this@MainContainerActivity,
-                        "✅ تم استخدام SSID يدوي", Toast.LENGTH_SHORT).show()
+                        "✅ SSID يدوي", Toast.LENGTH_SHORT).show()
                     switchTo(1)
                     connectQuotex()
                 }
@@ -199,23 +205,15 @@ class MainContainerActivity : AppCompatActivity() {
             0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
         ).apply { marginEnd = 8 })
         manualBar.addView(manualBtn)
-
         loginScreen.addView(manualBar)
 
-        // زر لطباعة الكوكيز للتشخيص
+        // زر التشخيص
         val debugBtn = Button(this).apply {
-            text = "🛠 طباعة الكوكيز (ديبان)"
+            text = "🛠 فحص الكوكيز الآن"
             textSize = 11f
             setBackgroundColor(Color.parseColor("#30363D"))
             setTextColor(Color.WHITE)
-            setOnClickListener {
-                val cm = CookieManager.getInstance()
-                val cookies = cm.getCookie("https://qxbroker.com")
-                Log.d(TAG, "═══ ALL COOKIES ═══")
-                Log.d(TAG, cookies ?: "null")
-                Toast.makeText(this@MainContainerActivity,
-                    "شيك على Logcat", Toast.LENGTH_SHORT).show()
-            }
+            setOnClickListener { forceCheckCookies() }
         }
         loginScreen.addView(debugBtn)
 
@@ -240,157 +238,107 @@ class MainContainerActivity : AppCompatActivity() {
         cm.setAcceptThirdPartyCookies(webView, true)
         cm.flush()
 
-        webView.addJavascriptInterface(object {
-            @JavascriptInterface
-            fun onSSID(ssid: String) {
-                Log.d(TAG, "JS SSID: ${ssid.take(20)}...")
-                runOnUiThread {
-                    if (ssid.isNotBlank() && !ssidFound) {
-                        ssidFound = true
-                        saveSSID(ssid)
-                        Toast.makeText(
-                            this@MainContainerActivity,
-                            "✅ تم استلام الجلسة من JS",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        switchTo(1)
-                        connectQuotex()
-                    }
-                }
-            }
-        }, "AndroidBridge")
-
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 Log.d(TAG, "Page finished: $url")
                 if (url?.contains("qxbroker.com") == true) {
-                    injectScript()
+                    // ابدأ مراقبة الكوكيز كل ثانية
                     startCookieWatcher()
                 }
             }
         }
 
         webView.loadUrl("https://qxbroker.com/ar/sign-in")
-
         loginScreen.addView(webView)
     }
 
-    private fun saveSSID(ssid: String) {
+    private fun saveSession(ssid: String, cookie: String, ua: String) {
         getSharedPreferences("qtx", MODE_PRIVATE)
             .edit()
             .putString("ssid", ssid)
-            .putLong("ssid_time", System.currentTimeMillis())
+            .putString("cookie", cookie)
+            .putString("ua", ua)
+            .putLong("time", System.currentTimeMillis())
             .apply()
+        Log.d(TAG, "💾 Saved: ssid=${ssid.take(20)}...")
     }
 
     // ═══════════════════════════════════════════
-    //  Inject JS
-    // ═══════════════════════════════════════════
-    private fun injectScript() {
-        val js = """
-            (function() {
-              if (window.__qtxHooked) return;
-              window.__qtxHooked = true;
-
-              function grabLocal() {
-                try {
-                  for (var i = 0; i < localStorage.length; i++) {
-                    var k = localStorage.key(i);
-                    if (!k) continue;
-                    var lk = k.toLowerCase();
-                    if (lk.indexOf('ssid') > -1 ||
-                        lk.indexOf('session') > -1 ||
-                        lk.indexOf('token') > -1) {
-                      var v = localStorage.getItem(k);
-                      if (v && v.length > 20) {
-                        window.AndroidBridge.onSSID(v);
-                        return true;
-                      }
-                    }
-                  }
-                } catch (e) {}
-
-                try {
-                  var c = document.cookie || '';
-                  var m = c.match(/(?:^|;\s*)ssid=([^;]+)/);
-                  if (m && m[1] && m[1].length > 20) {
-                    window.AndroidBridge.onSSID(decodeURIComponent(m[1]));
-                    return true;
-                  }
-                } catch (e) {}
-                return false;
-              }
-
-              setInterval(grabLocal, 800);
-              document.addEventListener('submit', function() {
-                setTimeout(grabLocal, 400);
-              }, true);
-              document.addEventListener('click', function(e) {
-                var t = e.target.closest('button, [type="submit"], [role="button"]');
-                if (t) setTimeout(grabLocal, 400);
-              }, true);
-              grabLocal();
-            })();
-        """.trimIndent()
-
-        webView.evaluateJavascript(js, null)
-    }
-
-    // ═══════════════════════════════════════════
-    //  Cookie Watcher — يقرأ الكوكيز native
+    //  Cookie Watcher — الحل الأساسي
     // ═══════════════════════════════════════════
     private fun startCookieWatcher() {
         if (cookieWatcher != null) return
-
         cookieWatcher = Handler(Looper.getMainLooper())
-        cookieRunnable = object : Runnable {
+
+        val runnable = object : Runnable {
             override fun run() {
                 if (ssidFound) return
-
-                try {
-                    val cm = CookieManager.getInstance()
-                    val cookies = cm.getCookie("https://qxbroker.com")
-
-                    if (!cookies.isNullOrBlank()) {
-                        // ابحث عن أي كوكي محتمل
-                        val ssidMatch = Regex("(?:^|;\\s*)ssid=([^;]+)")
-                            .find(cookies)?.groupValues?.get(1)
-                        val sessionMatch = Regex("(?:^|;\\s*)session=([^;]+)")
-                            .find(cookies)?.groupValues?.get(1)
-                        val tokenMatch = Regex("(?:^|;\\s*)token=([^;]+)")
-                            .find(cookies)?.groupValues?.get(1)
-                        val authMatch = Regex("(?:^|;\\s*)auth=([^;]+)")
-                            .find(cookies)?.groupValues?.get(1)
-
-                        val found = ssidMatch ?: sessionMatch
-                            ?: tokenMatch ?: authMatch
-
-                        if (!found.isNullOrBlank() && found.length > 20) {
-                            ssidFound = true
-                            Log.d(TAG, "✅ SSID from cookies: ${found.take(30)}...")
-                            saveSSID(found)
-                            runOnUiThread {
-                                Toast.makeText(
-                                    this@MainContainerActivity,
-                                    "✅ تم استلام الجلسة تلقائياً",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                switchTo(1)
-                                connectQuotex()
-                            }
-                            return
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "cookieWatcher err: ${e.message}")
-                }
-
-                cookieWatcher?.postDelayed(this, 1000)
+                checkCookies()
+                cookieWatcher?.postDelayed(this, 1500)
             }
         }
+        cookieWatcher?.post(runnable)
+    }
 
-        cookieWatcher?.postDelayed(cookieRunnable!!, 1500)
+    private fun checkCookies() {
+        try {
+            val cm = CookieManager.getInstance()
+
+            // جرّب 3 دومينات
+            val urls = listOf(
+                "https://qxbroker.com",
+                "https://api.qxbroker.com",
+                "https://ws2.qxbroker.com"
+            )
+
+            for (u in urls) {
+                val cookies = cm.getCookie(u) ?: continue
+                Log.d(TAG, "Cookies[$u]: ${cookies.take(300)}")
+
+                // Regex المؤكد من التحليل: ssid=([^;]+)
+                val m = Regex("ssid=([^;]+)").find(cookies)
+                if (m != null && m.groupValues[1].length > 20) {
+                    val ssid = m.groupValues[1]
+                    Log.d(TAG, "✅ SSID: ${ssid.take(40)}...")
+                    onSSIDFound(ssid, cookies)
+                    return
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "checkCookies: ${e.message}")
+        }
+    }
+
+    private fun forceCheckCookies() {
+        val cm = CookieManager.getInstance()
+        val urls = listOf(
+            "https://qxbroker.com",
+            "https://api.qxbroker.com",
+            "https://ws2.qxbroker.com"
+        )
+        val sb = StringBuilder()
+        for (u in urls) {
+            sb.append("═══ $u ═══\n")
+            sb.append(cm.getCookie(u) ?: "null")
+            sb.append("\n\n")
+        }
+        Log.d(TAG, sb.toString())
+
+        Toast.makeText(this, "تم طباعة الكوكيز", Toast.LENGTH_SHORT).show()
+        statusBar.text = sb.toString().take(200)
+    }
+
+    private fun onSSIDFound(ssid: String, cookieStr: String) {
+        ssidFound = true
+        val ua = webView.settings.userAgentString ?: ""
+        saveSession(ssid, cookieStr, ua)
+        runOnUiThread {
+            Toast.makeText(this, "✅ تم استلام الجلسة", Toast.LENGTH_SHORT).show()
+            statusBar.text = "✅ SSID مستلم"
+            switchTo(1)
+            connectQuotex()
+        }
     }
 
     // ═══════════════════════════════════════════
@@ -506,7 +454,7 @@ class MainContainerActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════════
-    //  Status Screen
+    //  Status + Orders Screens
     // ═══════════════════════════════════════════
     private fun buildStatusScreen() {
         statusScreen = LinearLayout(this).apply {
@@ -540,7 +488,6 @@ class MainContainerActivity : AppCompatActivity() {
                 orders.clear()
                 renderStatus()
                 renderOrdersList()
-                Toast.makeText(this@MainContainerActivity, "تم المسح", Toast.LENGTH_SHORT).show()
             }
         }
         statusScreen.addView(clearBtn, LinearLayout.LayoutParams(
@@ -573,9 +520,6 @@ class MainContainerActivity : AppCompatActivity() {
         statusText.text = sb.toString()
     }
 
-    // ═══════════════════════════════════════════
-    //  Orders Screen
-    // ═══════════════════════════════════════════
     private fun buildOrdersScreen() {
         ordersScreen = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -584,7 +528,7 @@ class MainContainerActivity : AppCompatActivity() {
         }
 
         ordersScreen.addView(TextView(this).apply {
-            text = "📊 سجل الطلبات الكامل"
+            text = "📊 سجل الطلبات"
             textSize = 18f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
@@ -595,9 +539,7 @@ class MainContainerActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        val scroll = ScrollView(this).apply {
-            addView(historyList)
-        }
+        val scroll = ScrollView(this).apply { addView(historyList) }
         ordersScreen.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
         ))
@@ -646,14 +588,6 @@ class MainContainerActivity : AppCompatActivity() {
                 setPadding(0, 6, 0, 0)
             })
 
-            val timeStr = java.text.SimpleDateFormat("HH:mm:ss",
-                java.util.Locale.US).format(java.util.Date(o.time))
-            item.addView(TextView(this).apply {
-                text = timeStr
-                setTextColor(Color.parseColor("#8B949E"))
-                textSize = 11f
-            })
-
             historyList.addView(item)
         }
     }
@@ -673,7 +607,6 @@ class MainContainerActivity : AppCompatActivity() {
         QuotexSocket.onStatus = { msg ->
             runOnUiThread { statusBar.text = msg }
         }
-
         QuotexSocket.onPrice = { asset, price ->
             runOnUiThread {
                 val list = QuotexSocket.getInstrumentList()
@@ -684,41 +617,33 @@ class MainContainerActivity : AppCompatActivity() {
                 }
             }
         }
-
         QuotexSocket.onBalanceUpdate = { bal ->
             runOnUiThread {
                 balanceText.text = "💰 الرصيد: \$${String.format("%.2f", bal)}"
             }
         }
-
         QuotexSocket.onTradeResult = { ok, msg ->
             runOnUiThread {
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 statusBar.text = msg
-
                 if (orders.isNotEmpty()) {
                     val last = orders.last()
                     val idx = orders.indexOf(last)
-                    orders[idx] = last.copy(
-                        status = if (ok) "success" else "failed"
-                    )
+                    orders[idx] = last.copy(status = if (ok) "success" else "failed")
                     renderStatus()
                     renderOrdersList()
                 }
             }
         }
-
-        QuotexSocket.onInstrumentsLoaded = { _ ->
+        QuotexSocket.onInstrumentsLoaded = {
             runOnUiThread { populateAssets() }
         }
-
         QuotexSocket.connect(ssid)
     }
 
     private fun populateAssets() {
         val list = QuotexSocket.getInstrumentList()
             .ifEmpty { QuotexSocket.getDefaultOtcList() }
-
         val labels = list.map { it.ticker }
         assetSpinner.adapter = ArrayAdapter(
             this, android.R.layout.simple_spinner_dropdown_item, labels
@@ -735,39 +660,25 @@ class MainContainerActivity : AppCompatActivity() {
         }
 
         val asset = list[assetSpinner.selectedItemPosition].ticker
-        val duration = 60
-
         val order = Order(
             id = System.currentTimeMillis().toString(),
             asset = asset,
             direction = direction,
             amount = amount,
-            duration = duration,
+            duration = 60,
             time = System.currentTimeMillis(),
             status = "pending"
         )
         orders.add(order)
-
-        QuotexSocket.executeTrade(asset, amount, direction, duration)
-
+        QuotexSocket.executeTrade(asset, amount, direction, 60)
         renderStatus()
         renderOrdersList()
-
-        Toast.makeText(
-            this,
-            "📤 ${if (direction == "call") "شراء" else "بيع"} $asset \$$amount",
-            Toast.LENGTH_SHORT
-        ).show()
     }
 
     override fun onBackPressed() {
-        if (selectedScreen != 0) {
-            switchTo(0)
-        } else if (webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            super.onBackPressed()
-        }
+        if (selectedScreen != 0) switchTo(0)
+        else if (webView.canGoBack()) webView.goBack()
+        else super.onBackPressed()
     }
 
     override fun onDestroy() {
