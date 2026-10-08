@@ -1,11 +1,8 @@
 package com.sys.update2
 
 import android.annotation.SuppressLint
-import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -14,24 +11,17 @@ import android.webkit.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 
-/**
- * MainContainerActivity — الحاوية الرئيسية
- * - شريط سفلي ثابت بـ 4 أيقونات
- * - تبديل بين 4 شاشات: تسجيل / صفقات / حالة / طلبات
- */
 class MainContainerActivity : AppCompatActivity() {
 
     private val TAG = "MainContainer"
     private lateinit var contentArea: FrameLayout
     private lateinit var statusBar: TextView
 
-    // شاشات
     private lateinit var loginScreen: LinearLayout
     private lateinit var tradeScreen: LinearLayout
     private lateinit var ordersScreen: LinearLayout
     private lateinit var statusScreen: LinearLayout
 
-    // Views
     private lateinit var webView: WebView
     private lateinit var statusText: TextView
     private lateinit var balanceText: TextView
@@ -40,7 +30,6 @@ class MainContainerActivity : AppCompatActivity() {
     private lateinit var assetSpinner: Spinner
 
     private var selectedScreen = 0
-
     private val orders = mutableListOf<Order>()
 
     data class Order(
@@ -50,7 +39,7 @@ class MainContainerActivity : AppCompatActivity() {
         val amount: Double,
         val duration: Int,
         val time: Long,
-        val status: String
+        var status: String
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,7 +49,6 @@ class MainContainerActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        // شريط علوي
         statusBar = TextView(this).apply {
             text = "🔌 جاري التحميل..."
             textSize = 12f
@@ -70,32 +58,23 @@ class MainContainerActivity : AppCompatActivity() {
         }
         root.addView(statusBar)
 
-        // منطقة المحتوى
         contentArea = FrameLayout(this)
         root.addView(contentArea, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            0, 1f
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
         ))
 
-        // الشريط السفلي الثابت
         root.addView(buildBottomBar())
 
         setContentView(root)
 
-        // بناء الشاشات
         buildLoginScreen()
         buildTradeScreen()
         buildStatusScreen()
         buildOrdersScreen()
 
-        // ابدأ بتسجيل الدخول
         switchTo(0)
-        connectQuotex()
     }
 
-    // ═══════════════════════════════════════════
-    //  الشريط السفلي الثابت
-    // ═══════════════════════════════════════════
     private fun buildBottomBar(): LinearLayout {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -109,27 +88,23 @@ class MainContainerActivity : AppCompatActivity() {
         bar.addView(bottomItem("📋", "حالة", 2), weight())
         bar.addView(bottomItem("📊", "الطلبات", 3), weight())
 
-        // الخط العلوي — استخدام LinearLayout بدل View
         val topLine = LinearLayout(this).apply {
             setBackgroundColor(Color.parseColor("#30363D"))
         }
 
-        val wrapper = LinearLayout(this).apply {
+        return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(topLine, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 2
             ))
             addView(bar)
         }
-
-        return wrapper
     }
 
     private fun weight() = LinearLayout.LayoutParams(
         0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
     )
 
-    @SuppressLint("SetTextI18n")
     private fun bottomItem(icon: String, label: String, index: Int): LinearLayout {
         val item = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -140,28 +115,25 @@ class MainContainerActivity : AppCompatActivity() {
             setOnClickListener { switchTo(index) }
         }
 
-        val iconView = TextView(this).apply {
+        item.addView(TextView(this).apply {
             text = icon
             textSize = 24f
             gravity = Gravity.CENTER
-        }
-        item.addView(iconView)
+        })
 
-        val labelView = TextView(this).apply {
+        item.addView(TextView(this).apply {
             text = label
             textSize = 11f
             setTextColor(Color.parseColor("#8B949E"))
             gravity = Gravity.CENTER
             setPadding(0, 4, 0, 0)
-        }
-        item.addView(labelView)
+        })
 
         return item
     }
 
     private fun switchTo(index: Int) {
         selectedScreen = index
-
         contentArea.removeAllViews()
         when (index) {
             0 -> contentArea.addView(loginScreen)
@@ -172,13 +144,51 @@ class MainContainerActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════════
-    //  1) شاشة تسجيل الدخول (WebView)
+    //  Login Screen
     // ═══════════════════════════════════════════
     @SuppressLint("SetJavaScriptEnabled")
     private fun buildLoginScreen() {
         loginScreen = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
+
+        // شريط يدوي لـ SSID (احتياطي)
+        val manualBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.parseColor("#161B22"))
+            setPadding(16, 12, 16, 12)
+        }
+
+        val ssidInput = EditText(this).apply {
+            hint = "أدخل SSID يدوياً..."
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.WHITE)
+            textSize = 12f
+            setBackgroundColor(Color.parseColor("#0D1117"))
+            setPadding(12, 8, 12, 8)
+        }
+
+        val manualBtn = Button(this).apply {
+            text = "استخدام"
+            textSize = 12f
+            setBackgroundColor(Color.parseColor("#1F6FEB"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                val v = ssidInput.text.toString().trim()
+                if (v.isNotBlank()) {
+                    saveSSID(v)
+                    Toast.makeText(this@MainContainerActivity,
+                        "✅ تم استخدام SSID يدوي", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        manualBar.addView(ssidInput, LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        ).apply { marginEnd = 8 })
+        manualBar.addView(manualBtn)
+
+        loginScreen.addView(manualBar)
 
         webView = WebView(this).apply {
             settings.apply {
@@ -203,19 +213,15 @@ class MainContainerActivity : AppCompatActivity() {
         webView.addJavascriptInterface(object {
             @JavascriptInterface
             fun onSSID(ssid: String) {
-                Log.d(TAG, "SSID: ${ssid.take(20)}...")
+                Log.d(TAG, "SSID extracted: ${ssid.take(20)}...")
                 runOnUiThread {
                     if (ssid.isNotBlank()) {
-                        getSharedPreferences("qtx", MODE_PRIVATE)
-                            .edit()
-                            .putString("ssid", ssid)
-                            .apply()
+                        saveSSID(ssid)
                         Toast.makeText(
                             this@MainContainerActivity,
                             "✅ تم استلام الجلسة",
                             Toast.LENGTH_SHORT
                         ).show()
-
                         switchTo(1)
                         connectQuotex()
                     }
@@ -237,6 +243,16 @@ class MainContainerActivity : AppCompatActivity() {
         loginScreen.addView(webView)
     }
 
+    private fun saveSSID(ssid: String) {
+        getSharedPreferences("qtx", MODE_PRIVATE)
+            .edit()
+            .putString("ssid", ssid)
+            .apply()
+    }
+
+    // ═══════════════════════════════════════════
+    //  Inject JS — يبحث عن SSID من أي مكان
+    // ═══════════════════════════════════════════
     private fun injectScript() {
         val js = """
             (function() {
@@ -246,21 +262,56 @@ class MainContainerActivity : AppCompatActivity() {
               function grab() {
                 try {
                   var c = document.cookie || '';
-                  var m = c.match(/(?:^|;\s*)ssid=([^;]+)/);
-                  if (m && m[1]) {
-                    window.AndroidBridge.onSSID(decodeURIComponent(m[1]));
+
+                  // نمط 1: ssid
+                  var m1 = c.match(/(?:^|;\s*)ssid=([^;]+)/);
+                  if (m1 && m1[1] && m1[1].length > 20) {
+                    window.AndroidBridge.onSSID(decodeURIComponent(m1[1]));
+                    return true;
+                  }
+
+                  // نمط 2: session
+                  var m2 = c.match(/(?:^|;\s*)session=([^;]+)/);
+                  if (m2 && m2[1] && m2[1].length > 20) {
+                    window.AndroidBridge.onSSID(decodeURIComponent(m2[1]));
+                    return true;
+                  }
+
+                  // نمط 3: token
+                  var m3 = c.match(/(?:^|;\s*)token=([^;]+)/);
+                  if (m3 && m3[1] && m3[1].length > 20) {
+                    window.AndroidBridge.onSSID(decodeURIComponent(m3[1]));
                     return true;
                   }
                 } catch (e) {}
+
+                // localStorage
+                try {
+                  for (var i = 0; i < localStorage.length; i++) {
+                    var k = localStorage.key(i);
+                    if (!k) continue;
+                    var lk = k.toLowerCase();
+                    if (lk.indexOf('ssid') > -1 ||
+                        lk.indexOf('session') > -1 ||
+                        lk.indexOf('token') > -1) {
+                      var v = localStorage.getItem(k);
+                      if (v && v.length > 20) {
+                        window.AndroidBridge.onSSID(v);
+                        return true;
+                      }
+                    }
+                  }
+                } catch (e) {}
+
                 return false;
               }
 
-              setInterval(grab, 800);
+              setInterval(grab, 700);
               document.addEventListener('submit', function() {
                 setTimeout(grab, 400);
               }, true);
               document.addEventListener('click', function(e) {
-                var t = e.target.closest('button, [type="submit"], [role="button"]');
+                var t = e.target.closest('button, [type="submit"], [role="button"], a');
                 if (t) setTimeout(grab, 400);
               }, true);
               grab();
@@ -271,7 +322,7 @@ class MainContainerActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════════
-    //  2) شاشة تنفيذ الصفقات
+    //  Trade Screen
     // ═══════════════════════════════════════════
     private fun buildTradeScreen() {
         tradeScreen = LinearLayout(this).apply {
@@ -365,10 +416,7 @@ class MainContainerActivity : AppCompatActivity() {
 
         assetSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(
-                parent: AdapterView<*>?,
-                view: View?,
-                position: Int,
-                id: Long
+                parent: AdapterView<*>?, view: View?, position: Int, id: Long
             ) {
                 val list = QuotexSocket.getInstrumentList()
                     .ifEmpty { QuotexSocket.getDefaultOtcList() }
@@ -379,7 +427,6 @@ class MainContainerActivity : AppCompatActivity() {
                     }
                 }
             }
-
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
@@ -387,7 +434,7 @@ class MainContainerActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════════
-    //  3) شاشة حالة الطلبات
+    //  Status Screen
     // ═══════════════════════════════════════════
     private fun buildStatusScreen() {
         statusScreen = LinearLayout(this).apply {
@@ -406,9 +453,10 @@ class MainContainerActivity : AppCompatActivity() {
 
         statusText = TextView(this).apply {
             text = "لا توجد طلبات بعد"
-            textSize = 14f
+            textSize = 13f
             setTextColor(Color.parseColor("#8B949E"))
             gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.MONOSPACE
         }
         statusScreen.addView(statusText)
 
@@ -454,7 +502,7 @@ class MainContainerActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════════
-    //  4) شاشة الطلبات (مفصلة)
+    //  Orders Screen
     // ═══════════════════════════════════════════
     private fun buildOrdersScreen() {
         ordersScreen = LinearLayout(this).apply {
@@ -539,7 +587,7 @@ class MainContainerActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════════
-    //  Quotex Connection
+    //  Connect Quotex
     // ═══════════════════════════════════════════
     private fun connectQuotex() {
         val ssid = getSharedPreferences("qtx", MODE_PRIVATE)
@@ -559,10 +607,8 @@ class MainContainerActivity : AppCompatActivity() {
                 val list = QuotexSocket.getInstrumentList()
                     .ifEmpty { QuotexSocket.getDefaultOtcList() }
                 val pos = assetSpinner.selectedItemPosition
-                if (pos in list.indices) {
-                    if (list[pos].ticker == asset) {
-                        priceText.text = String.format("%.5f", price)
-                    }
+                if (pos in list.indices && list[pos].ticker == asset) {
+                    priceText.text = String.format("%.5f", price)
                 }
             }
         }
@@ -578,7 +624,6 @@ class MainContainerActivity : AppCompatActivity() {
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                 statusBar.text = msg
 
-                // حدّث الطلب الأخير
                 if (orders.isNotEmpty()) {
                     val last = orders.last()
                     val idx = orders.indexOf(last)
@@ -604,15 +649,10 @@ class MainContainerActivity : AppCompatActivity() {
 
         val labels = list.map { it.ticker }
         assetSpinner.adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_dropdown_item,
-            labels
+            this, android.R.layout.simple_spinner_dropdown_item, labels
         )
     }
 
-    // ═══════════════════════════════════════════
-    //  Execute Trade
-    // ═══════════════════════════════════════════
     private fun executeTrade(direction: String, amount: Double) {
         val list = QuotexSocket.getInstrumentList()
             .ifEmpty { QuotexSocket.getDefaultOtcList() }
