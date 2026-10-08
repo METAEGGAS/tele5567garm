@@ -36,8 +36,6 @@ class MainContainerActivity : AppCompatActivity() {
 
     private var selectedScreen = 0
     private val orders = mutableListOf<Order>()
-
-    private var digestWatcher: Handler? = null
     private var ssidFound = false
 
     private val http = OkHttpClient.Builder()
@@ -167,7 +165,6 @@ class MainContainerActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        // شريط يدوي — Token + CSRF
         val manualBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#161B22"))
@@ -203,7 +200,7 @@ class MainContainerActivity : AppCompatActivity() {
                 val t = tokenInput.text.toString().trim()
                 val c = csrfInput.text.toString().trim()
                 if (t.isNotBlank()) {
-                    saveCreds(t, c, "manual")
+                    saveCreds(t, c, "")
                     Toast.makeText(this@MainContainerActivity,
                         "✅ تم الحفظ", Toast.LENGTH_SHORT).show()
                     switchTo(1)
@@ -214,7 +211,6 @@ class MainContainerActivity : AppCompatActivity() {
         manualBar.addView(manualBtn)
         loginScreen.addView(manualBar)
 
-        // زر طلب digest يدوياً
         val digestBtn = Button(this).apply {
             text = "🌐 جلب من digest"
             textSize = 12f
@@ -249,8 +245,6 @@ class MainContainerActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 Log.d(TAG, "Page finished: $url")
-
-                // بعد أي صفحة على qxbroker — جرّب digest
                 if (url?.contains("qxbroker.com") == true) {
                     Handler(Looper.getMainLooper()).postDelayed({
                         fetchDigestAndConnect()
@@ -265,25 +259,26 @@ class MainContainerActivity : AppCompatActivity() {
 
     // ═══════════════════════════════════════════
     //  Digest → Token + CSRF
+    //  ⚠️ قراءة الكوكيز على UI thread
     // ═══════════════════════════════════════════
     private fun fetchDigestAndConnect() {
+        // اقرأ الكوكيز و UA على UI thread
+        val cm = CookieManager.getInstance()
+        val cookies = cm.getCookie("https://qxbroker.com") ?: ""
+        val ua = webView.settings.userAgentString ?: ""
+
+        if (cookies.isBlank()) {
+            statusBar.text = "⚠️ مفيش كوكيز — سجل دخول أولاً"
+            Log.d(TAG, "No cookies yet")
+            return
+        }
+
+        Log.d(TAG, "═══ Digest attempt ═══")
+        Log.d(TAG, "Cookies: ${cookies.take(200)}")
+        Log.d(TAG, "UA: ${ua.take(100)}")
+
         Thread {
             try {
-                val cm = CookieManager.getInstance()
-                val cookies = cm.getCookie("https://qxbroker.com") ?: ""
-                val ua = webView.settings.userAgentString ?: ""
-
-                Log.d(TAG, "═══ Digest attempt ═══")
-                Log.d(TAG, "Cookies: ${cookies.take(200)}")
-                Log.d(TAG, "UA: ${ua.take(100)}")
-
-                if (cookies.isBlank()) {
-                    runOnUiThread {
-                        statusBar.text = "⚠️ مفيش كوكيز — سجل دخول أولاً"
-                    }
-                    return@Thread
-                }
-
                 val req = Request.Builder()
                     .url("https://qxbroker.com/api/v1/cabinets/digest")
                     .header("Cookie", cookies)
@@ -316,14 +311,10 @@ class MainContainerActivity : AppCompatActivity() {
 
                 val token = data.optString("token", "")
                 val csrf = data.optString("csrf", "")
-                val email = data.optString("email", "")
-                val id = data.optInt("id", 0)
 
                 Log.d(TAG, "═══════ EXTRACTED ═══════")
                 Log.d(TAG, "token: $token")
                 Log.d(TAG, "csrf: $csrf")
-                Log.d(TAG, "email: $email")
-                Log.d(TAG, "id: $id")
                 Log.d(TAG, "═════════════════════════")
 
                 if (token.isNotBlank()) {
@@ -354,12 +345,13 @@ class MainContainerActivity : AppCompatActivity() {
     }
 
     private fun saveCreds(token: String, csrf: String, cookie: String) {
+        val ua = try { webView.settings.userAgentString ?: "" } catch (_: Exception) { "" }
         getSharedPreferences("qtx", MODE_PRIVATE)
             .edit()
             .putString("token", token)
             .putString("csrf", csrf)
             .putString("cookie", cookie)
-            .putString("ua", webView.settings.userAgentString ?: "")
+            .putString("ua", ua)
             .putLong("time", System.currentTimeMillis())
             .apply()
         Log.d(TAG, "💾 Saved token: ${token.take(20)}...")
@@ -503,6 +495,21 @@ class MainContainerActivity : AppCompatActivity() {
             typeface = android.graphics.Typeface.MONOSPACE
         }
         statusScreen.addView(statusText)
+
+        val clearBtn = Button(this).apply {
+            text = "🗑 مسح السجل"
+            setBackgroundColor(Color.parseColor("#30363D"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                orders.clear()
+                renderStatus()
+                renderOrdersList()
+            }
+        }
+        statusScreen.addView(clearBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = 30 })
     }
 
     private fun renderStatus() {
@@ -596,7 +603,6 @@ class MainContainerActivity : AppCompatActivity() {
     private fun connectQuotex() {
         val prefs = getSharedPreferences("qtx", MODE_PRIVATE)
         val token = prefs.getString("token", null)
-        val csrf = prefs.getString("csrf", null)
 
         if (token.isNullOrBlank()) {
             statusBar.text = "🔐 سجل دخول أولاً"
