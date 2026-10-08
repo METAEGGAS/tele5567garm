@@ -8,17 +8,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-/**
- * QuotexSocket — مبني على بروتوكول QTXSY المؤكد:
- * - authorization → authorizationStatus
- * - instruments/list → instruments/update
- * - quotes/stream + history/list/v2 (الأسعار)
- * - orders/open → orders/open (نجاح) أو orders/error (فشل)
- * - orders/close
- * - orders/opened/list, orders/closed/list
- * - pending/list
- * - demoBalance, liveBalance
- */
 object QuotexSocket {
 
     private const val TAG = "QuotexSocket"
@@ -34,7 +23,6 @@ object QuotexSocket {
     private var ssid: String? = null
     private val handler = Handler(Looper.getMainLooper())
 
-    // الحالة
     private val prices = HashMap<String, Double>()
     private val instruments = HashMap<String, Instrument>()
     private var demoBalance: Double = 0.0
@@ -48,16 +36,12 @@ object QuotexSocket {
         val payout: Int = 0
     )
 
-    // Callbacks
     var onStatus: ((String) -> Unit)? = null
     var onPrice: ((String, Double) -> Unit)? = null
     var onInstrumentsLoaded: ((List<Instrument>) -> Unit)? = null
     var onTradeResult: ((Boolean, String) -> Unit)? = null
     var onBalanceUpdate: ((Double) -> Unit)? = null
 
-    // ═══════════════════════════════════════════
-    //  Public
-    // ═══════════════════════════════════════════
     fun getPrice(asset: String): Double? = prices[asset]
     fun getInstrumentList(): List<Instrument> = instruments.values.toList()
     fun getBalance(): Double = if (IS_DEMO == 1) demoBalance else liveBalance
@@ -65,35 +49,21 @@ object QuotexSocket {
     fun getDefaultOtcList(): List<Instrument> {
         val list = mutableListOf<Instrument>()
         var id = 1000
-
-        val forex = listOf(
+        val all = listOf(
             "EURUSD_otc", "GBPUSD_otc", "USDJPY_otc", "AUDUSD_otc",
             "USDCAD_otc", "USDCHF_otc", "NZDUSD_otc", "EURGBP_otc",
             "EURJPY_otc", "EURCHF_otc", "GBPJPY_otc", "GBPCHF_otc",
-            "AUDJPY_otc", "CADJPY_otc", "CHFJPY_otc", "NZDJPY_otc"
-        )
-        val crypto = listOf(
+            "AUDJPY_otc", "CADJPY_otc", "CHFJPY_otc", "NZDJPY_otc",
             "BTCUSD_otc", "ETHUSD_otc", "SOLUSD_otc", "XRPUSD_otc",
-            "DOGEUSD_otc", "LTCUSD_otc", "BNBUSD_otc", "ADAUSD_otc"
-        )
-        val comm = listOf(
+            "DOGEUSD_otc", "LTCUSD_otc", "BNBUSD_otc", "ADAUSD_otc",
             "XAUUSD_otc", "XAGUSD_otc", "UKBrent_otc", "USCrude_otc"
         )
-
-        for (t in forex + crypto + comm) {
-            list.add(Instrument(
-                id = id++,
-                ticker = t,
-                name = t.replace("_", " ").uppercase(),
-                isOtc = true
-            ))
+        for (t in all) {
+            list.add(Instrument(id++, t, t.replace("_", " ").uppercase(), true))
         }
         return list
     }
 
-    // ═══════════════════════════════════════════
-    //  Connect
-    // ═══════════════════════════════════════════
     fun connect(ssid: String) {
         this.ssid = ssid
 
@@ -112,7 +82,7 @@ object QuotexSocket {
 
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d(TAG, "WS opened")
-                emit("🔌 متصل — إرسال handshake")
+                emit("🔌 متصل — handshake")
                 webSocket.send("40")
             }
 
@@ -126,7 +96,7 @@ object QuotexSocket {
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WS closed: $code / $reason")
+                Log.d(TAG, "WS closed: $code")
                 emit("🔌 انقطع ($code)")
             }
         })
@@ -141,34 +111,26 @@ object QuotexSocket {
         handler.post { onStatus?.invoke(s) }
     }
 
-    // ═══════════════════════════════════════════
-    //  Handle messages
-    // ═══════════════════════════════════════════
     private fun handleMessage(webSocket: WebSocket, text: String) {
         Log.d(TAG, "← ${text.take(300)}")
 
-        // Engine.IO handshake
         when {
             text.startsWith("0{") -> {
                 webSocket.send("40")
                 return
             }
-
             text == "40" -> {
                 emit("✅ القناة مفتوحة — إرسال SSID")
                 sendAuthorization(webSocket)
                 return
             }
-
             text == "2" -> {
                 webSocket.send("3")
                 return
             }
         }
 
-        // Socket.IO events (تبدأ بـ 42)
         if (!text.startsWith("42")) {
-            // بحث يدوي للرصيد خارج events
             if (text.contains("demoBalance", true) ||
                 text.contains("liveBalance", true)) {
                 parseBalance(text)
@@ -189,32 +151,22 @@ object QuotexSocket {
                 "authorizationStatus" -> handleAuthStatus(payload)
                 "instruments/list", "instruments/update" -> parseInstruments(payload)
                 "quotes/stream", "quotes", "tick" -> parseQuotes(payload)
-                "history/list", "history/list/v2", "history/load" -> parseHistory(payload)
+                "history/list", "history/list/v2", "history/load" -> parseQuotes(payload)
                 "orders/open" -> handleOrderOpen(payload)
                 "orders/close" -> handleOrderClose(payload)
                 "orders/error" -> handleOrderError(payload)
-                "orders/opened/list" -> handleOpenedList(payload)
-                "orders/closed/list" -> handleClosedList(payload)
-                "pending/list" -> handlePendingList(payload)
-                else -> {
-                    // fallback
-                    if (jsonStr.contains("balance", true)) parseBalance(jsonStr)
-                }
+                else -> if (jsonStr.contains("balance", true)) parseBalance(jsonStr)
             }
         } catch (e: Exception) {
             Log.e(TAG, "parse err: ${e.message}")
         }
 
-        // بحث يدوي للرصيد
         if (jsonStr.contains("demoBalance", true) ||
             jsonStr.contains("liveBalance", true)) {
             parseBalance(jsonStr)
         }
     }
 
-    // ═══════════════════════════════════════════
-    //  Auth
-    // ═══════════════════════════════════════════
     private fun sendAuthorization(ws: WebSocket) {
         val payload = JSONObject().apply {
             put("session", ssid ?: "")
@@ -242,9 +194,6 @@ object QuotexSocket {
         }
     }
 
-    // ═══════════════════════════════════════════
-    //  Instruments
-    // ═══════════════════════════════════════════
     private fun parseInstruments(payload: Any?) {
         try {
             val list = mutableListOf<Instrument>()
@@ -291,24 +240,19 @@ object QuotexSocket {
         if (ticker.isBlank()) return
 
         val name = obj.optString("name", ticker)
-        val payout = obj.optInt("payout",
-            obj.optInt("payout_percent", 0))
+        val payout = obj.optInt("payout", obj.optInt("payout_percent", 0))
         val isOtc = ticker.contains("_otc", true)
 
-        val inst = Instrument(
+        instruments[ticker] = Instrument(
             id = if (id > 0) id else ticker.hashCode(),
             ticker = ticker,
             name = name,
             isOtc = isOtc,
             payout = payout
         )
-        instruments[ticker] = inst
-        out.add(inst)
+        out.add(instruments[ticker]!!)
     }
 
-    // ═══════════════════════════════════════════
-    //  Quotes / Prices
-    // ═══════════════════════════════════════════
     private fun parseQuotes(payload: Any?) {
         when (payload) {
             is JSONArray -> for (i in 0 until payload.length()) {
@@ -316,7 +260,6 @@ object QuotexSocket {
                 addQuote(o)
             }
             is JSONObject -> {
-                // ممكن تكون {"EURUSD_otc": 1.2345} خريطة
                 val keys = payload.keys()
                 var handled = false
                 while (keys.hasNext()) {
@@ -350,24 +293,14 @@ object QuotexSocket {
         }
     }
 
-    private fun parseHistory(payload: Any?) {
-        parseQuotes(payload)
-    }
-
-    // ═══════════════════════════════════════════
-    //  Subscribe
-    // ═══════════════════════════════════════════
     private val defaultAssets = listOf(
         "EURUSD_otc", "GBPUSD_otc", "USDJPY_otc",
-        "BTCUSD_otc", "ETHUSD_otc",
-        "XAUUSD_otc"
+        "BTCUSD_otc", "ETHUSD_otc", "XAUUSD_otc"
     )
 
     private fun subscribeDefault() {
         defaultAssets.forEachIndexed { i, asset ->
-            handler.postDelayed({
-                subscribeAsset(asset)
-            }, (i * 300).toLong())
+            handler.postDelayed({ subscribeAsset(asset) }, (i * 300).toLong())
         }
     }
 
@@ -383,9 +316,6 @@ object QuotexSocket {
         } catch (_: Exception) {}
     }
 
-    // ═══════════════════════════════════════════
-    //  Orders
-    // ═══════════════════════════════════════════
     fun executeTrade(
         asset: String,
         amount: Double,
@@ -394,10 +324,6 @@ object QuotexSocket {
     ) {
         val w = ws ?: run {
             handler.post { onTradeResult?.invoke(false, "❌ لا يوجد اتصال") }
-            return
-        }
-        if (IS_DEMO != 1) {
-            handler.post { onTradeResult?.invoke(false, "❌ Live mode disabled") }
             return
         }
 
@@ -422,11 +348,8 @@ object QuotexSocket {
     private fun handleOrderOpen(payload: Any?) {
         try {
             val obj = payload as? JSONObject ?: return
-            val dealId = obj.optString("deal_idt",
-                obj.optString("dealId", ""))
-            handler.post {
-                onTradeResult?.invoke(true, "✅ صفقة مفتوحة ($dealId)")
-            }
+            val dealId = obj.optString("deal_idt", obj.optString("dealId", ""))
+            handler.post { onTradeResult?.invoke(true, "✅ صفقة مفتوحة ($dealId)") }
             if (obj.has("demoBalance")) parseBalance(obj.toString())
         } catch (_: Exception) {}
     }
@@ -448,20 +371,10 @@ object QuotexSocket {
 
     private fun handleOrderError(payload: Any?) {
         handler.post {
-            onTradeResult?.invoke(
-                false,
-                "❌ فشلت الصفقة: ${payload.toString().take(80)}"
-            )
+            onTradeResult?.invoke(false, "❌ فشلت: ${payload.toString().take(80)}")
         }
     }
 
-    private fun handleOpenedList(payload: Any?) {}
-    private fun handleClosedList(payload: Any?) {}
-    private fun handlePendingList(payload: Any?) {}
-
-    // ═══════════════════════════════════════════
-    //  Balance
-    // ═══════════════════════════════════════════
     private fun parseBalance(text: String) {
         try {
             val start = text.indexOf("{")
