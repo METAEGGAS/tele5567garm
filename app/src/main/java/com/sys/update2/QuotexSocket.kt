@@ -64,24 +64,41 @@ object QuotexSocket {
         return list
     }
 
-    fun connect(ssid: String) {
-        this.ssid = ssid
+    // ═══════════════════════════════════════════
+    //  Connect — مع Cookie + UA كاملين
+    // ═══════════════════════════════════════════
+    fun connect(token: String, cookie: String = "", ua: String = "") {
+        this.ssid = token
 
         val url = "wss://ws2.qxbroker.com/socket.io/?EIO=4&transport=websocket"
-        val req = Request.Builder()
+
+        val builder = Request.Builder()
             .url(url)
             .addHeader("Origin", "https://qxbroker.com")
             .addHeader(
                 "User-Agent",
-                "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                if (ua.isNotBlank()) ua else
+                    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
             )
-            .build()
+            .addHeader("Accept-Language", "ar,en-US;q=0.9,en;q=0.8")
+            .addHeader("Pragma", "no-cache")
+            .addHeader("Cache-Control", "no-cache")
+
+        if (cookie.isNotBlank()) {
+            builder.addHeader("Cookie", cookie)
+        }
+
+        val req = builder.build()
+
+        Log.d(TAG, "Connecting...")
+        Log.d(TAG, "Cookie: ${cookie.take(100)}")
+        Log.d(TAG, "UA: ${ua.take(80)}")
 
         ws = client.newWebSocket(req, object : WebSocketListener() {
 
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d(TAG, "WS opened")
+                Log.d(TAG, "WS opened — code ${response.code}")
                 emit("🔌 متصل — handshake")
                 webSocket.send("40")
             }
@@ -91,8 +108,10 @@ object QuotexSocket {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "WS failed: ${t.message}", t)
-                emit("❌ فشل: ${t.message}")
+                val code = response?.code ?: 0
+                val msg = response?.message ?: t.message ?: "unknown"
+                Log.e(TAG, "WS failed: $code / $msg", t)
+                emit("❌ فشل ($code): ${t.message?.take(40)}")
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -120,7 +139,7 @@ object QuotexSocket {
                 return
             }
             text == "40" -> {
-                emit("✅ القناة مفتوحة — إرسال SSID")
+                emit("✅ القناة مفتوحة — إرسال Token")
                 sendAuthorization(webSocket)
                 return
             }
@@ -185,12 +204,12 @@ object QuotexSocket {
         }
 
         if (status) {
-            emit("🎉 تم الدخول — جاري جلب الأدوات")
+            emit("🎉 تم الدخول — جلب الأدوات")
             ws?.send("""42["instruments/list"]""")
             ws?.send("""42["pending/list"]""")
             subscribeDefault()
         } else {
-            emit("❌ فشل المصادقة — التوكن منتهي")
+            emit("❌ فشل المصادقة")
         }
     }
 
