@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.*
 import android.widget.*
@@ -16,7 +17,7 @@ import androidx.appcompat.app.AppCompatActivity
 /**
  * MainContainerActivity — الحاوية الرئيسية
  * - شريط سفلي ثابت بـ 4 أيقونات
- * - تبديل بين 4 شاشات
+ * - تبديل بين 4 شاشات: تسجيل / صفقات / حالة / طلبات
  */
 class MainContainerActivity : AppCompatActivity() {
 
@@ -30,7 +31,7 @@ class MainContainerActivity : AppCompatActivity() {
     private lateinit var ordersScreen: LinearLayout
     private lateinit var statusScreen: LinearLayout
 
-    // Views في كل شاشة
+    // Views
     private lateinit var webView: WebView
     private lateinit var statusText: TextView
     private lateinit var balanceText: TextView
@@ -40,7 +41,6 @@ class MainContainerActivity : AppCompatActivity() {
 
     private var selectedScreen = 0
 
-    // سجل الطلبات
     private val orders = mutableListOf<Order>()
 
     data class Order(
@@ -50,7 +50,7 @@ class MainContainerActivity : AppCompatActivity() {
         val amount: Double,
         val duration: Int,
         val time: Long,
-        val status: String  // "pending", "success", "failed"
+        val status: String
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,35 +60,35 @@ class MainContainerActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        // ─── شريط علوي بسيط ───
+        // شريط علوي
         statusBar = TextView(this).apply {
             text = "🔌 جاري التحميل..."
             textSize = 12f
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#0D1117"))
-            setPadding(20, 40, 20, 12)
+            setPadding(20, 60, 20, 12)
         }
         root.addView(statusBar)
 
-        // ─── منطقة المحتوى ───
+        // منطقة المحتوى
         contentArea = FrameLayout(this)
         root.addView(contentArea, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             0, 1f
         ))
 
-        // ─── الشريط السفلي الثابت ───
+        // الشريط السفلي الثابت
         root.addView(buildBottomBar())
 
         setContentView(root)
 
-        // ─── بناء الشاشات ───
+        // بناء الشاشات
         buildLoginScreen()
         buildTradeScreen()
-        buildOrdersScreen()
         buildStatusScreen()
+        buildOrdersScreen()
 
-        // ─── اعرض تسجيل الدخول أولاً ───
+        // ابدأ بتسجيل الدخول
         switchTo(0)
         connectQuotex()
     }
@@ -109,8 +109,8 @@ class MainContainerActivity : AppCompatActivity() {
         bar.addView(bottomItem("📋", "حالة", 2), weight())
         bar.addView(bottomItem("📊", "الطلبات", 3), weight())
 
-        // خط علوي
-        val topLine = View(this).apply {
+        // الخط العلوي — استخدام LinearLayout بدل View
+        val topLine = LinearLayout(this).apply {
             setBackgroundColor(Color.parseColor("#30363D"))
         }
 
@@ -150,6 +150,7 @@ class MainContainerActivity : AppCompatActivity() {
         val labelView = TextView(this).apply {
             text = label
             textSize = 11f
+            setTextColor(Color.parseColor("#8B949E"))
             gravity = Gravity.CENTER
             setPadding(0, 4, 0, 0)
         }
@@ -168,14 +169,6 @@ class MainContainerActivity : AppCompatActivity() {
             2 -> contentArea.addView(statusScreen)
             3 -> contentArea.addView(ordersScreen)
         }
-
-        // حدّث مظهر الأيقونات
-        updateBottomBar()
-    }
-
-    private fun updateBottomBar() {
-        // (اختياري) — تسليط الأيقونة النشطة
-        // ممكن نضيف تأثير بصري هنا
     }
 
     // ═══════════════════════════════════════════
@@ -223,9 +216,7 @@ class MainContainerActivity : AppCompatActivity() {
                             Toast.LENGTH_SHORT
                         ).show()
 
-                        // انتقل لشاشة الصفقات تلقائياً
                         switchTo(1)
-                        // ابدأ الاتصال
                         connectQuotex()
                     }
                 }
@@ -289,7 +280,6 @@ class MainContainerActivity : AppCompatActivity() {
             setPadding(24, 24, 24, 24)
         }
 
-        // الرصيد
         balanceText = TextView(this).apply {
             text = "💰 الرصيد: --"
             textSize = 16f
@@ -299,7 +289,6 @@ class MainContainerActivity : AppCompatActivity() {
         }
         tradeScreen.addView(balanceText)
 
-        // اختيار الزوج
         tradeScreen.addView(TextView(this).apply {
             text = "الزوج:"
             setTextColor(Color.WHITE)
@@ -312,7 +301,6 @@ class MainContainerActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = 16 })
 
-        // السعر الحالي
         priceText = TextView(this).apply {
             text = "--"
             textSize = 32f
@@ -322,7 +310,6 @@ class MainContainerActivity : AppCompatActivity() {
         }
         tradeScreen.addView(priceText)
 
-        // المبلغ
         tradeScreen.addView(TextView(this).apply {
             text = "المبلغ (\$):"
             setTextColor(Color.WHITE)
@@ -340,7 +327,6 @@ class MainContainerActivity : AppCompatActivity() {
         }
         tradeScreen.addView(amountInput)
 
-        // الأزرار
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             weightSum = 2f
@@ -377,9 +363,13 @@ class MainContainerActivity : AppCompatActivity() {
 
         tradeScreen.addView(row)
 
-        // Spinner listener
         assetSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
                 val list = QuotexSocket.getInstrumentList()
                     .ifEmpty { QuotexSocket.getDefaultOtcList() }
                 if (position < list.size) {
@@ -389,6 +379,7 @@ class MainContainerActivity : AppCompatActivity() {
                     }
                 }
             }
+
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
@@ -421,7 +412,6 @@ class MainContainerActivity : AppCompatActivity() {
         }
         statusScreen.addView(statusText)
 
-        // زر مسح السجل
         val clearBtn = Button(this).apply {
             text = "🗑 مسح السجل"
             setBackgroundColor(Color.parseColor("#30363D"))
@@ -429,6 +419,7 @@ class MainContainerActivity : AppCompatActivity() {
             setOnClickListener {
                 orders.clear()
                 renderStatus()
+                renderOrdersList()
                 Toast.makeText(this@MainContainerActivity, "تم المسح", Toast.LENGTH_SHORT).show()
             }
         }
@@ -445,7 +436,7 @@ class MainContainerActivity : AppCompatActivity() {
         }
 
         val sb = StringBuilder()
-        orders.take(20).forEach { o ->
+        orders.takeLast(20).reversed().forEach { o ->
             val icon = when (o.status) {
                 "success" -> "✅"
                 "failed" -> "❌"
@@ -457,7 +448,7 @@ class MainContainerActivity : AppCompatActivity() {
             sb.append("${if (o.direction == "call") "شراء" else "بيع"}  ")
             sb.append("\$${o.amount}  ")
             sb.append("${o.duration}s  ")
-            sb.append("[$timeStr]\n")
+            sb.append("[$timeStr]\n\n")
         }
         statusText.text = sb.toString()
     }
@@ -553,6 +544,7 @@ class MainContainerActivity : AppCompatActivity() {
     private fun connectQuotex() {
         val ssid = getSharedPreferences("qtx", MODE_PRIVATE)
             .getString("ssid", null)
+
         if (ssid.isNullOrBlank()) {
             statusBar.text = "🔐 سجل دخول أولاً"
             return
@@ -561,23 +553,26 @@ class MainContainerActivity : AppCompatActivity() {
         QuotexSocket.onStatus = { msg ->
             runOnUiThread { statusBar.text = msg }
         }
+
         QuotexSocket.onPrice = { asset, price ->
             runOnUiThread {
                 val list = QuotexSocket.getInstrumentList()
                     .ifEmpty { QuotexSocket.getDefaultOtcList() }
-                if (assetSpinner.selectedItemPosition < list.size) {
-                    val current = list[assetSpinner.selectedItemPosition].ticker
-                    if (asset == current) {
+                val pos = assetSpinner.selectedItemPosition
+                if (pos in list.indices) {
+                    if (list[pos].ticker == asset) {
                         priceText.text = String.format("%.5f", price)
                     }
                 }
             }
         }
+
         QuotexSocket.onBalanceUpdate = { bal ->
             runOnUiThread {
                 balanceText.text = "💰 الرصيد: \$${String.format("%.2f", bal)}"
             }
         }
+
         QuotexSocket.onTradeResult = { ok, msg ->
             runOnUiThread {
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
@@ -595,6 +590,7 @@ class MainContainerActivity : AppCompatActivity() {
                 }
             }
         }
+
         QuotexSocket.onInstrumentsLoaded = { _ ->
             runOnUiThread { populateAssets() }
         }
@@ -605,9 +601,12 @@ class MainContainerActivity : AppCompatActivity() {
     private fun populateAssets() {
         val list = QuotexSocket.getInstrumentList()
             .ifEmpty { QuotexSocket.getDefaultOtcList() }
+
         val labels = list.map { it.ticker }
         assetSpinner.adapter = ArrayAdapter(
-            this, android.R.layout.simple_spinner_dropdown_item, labels
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            labels
         )
     }
 
@@ -617,6 +616,7 @@ class MainContainerActivity : AppCompatActivity() {
     private fun executeTrade(direction: String, amount: Double) {
         val list = QuotexSocket.getInstrumentList()
             .ifEmpty { QuotexSocket.getDefaultOtcList() }
+
         if (assetSpinner.selectedItemPosition >= list.size) {
             Toast.makeText(this, "اختر زوجاً", Toast.LENGTH_SHORT).show()
             return
@@ -641,7 +641,8 @@ class MainContainerActivity : AppCompatActivity() {
         renderStatus()
         renderOrdersList()
 
-        Toast.makeText(this,
+        Toast.makeText(
+            this,
             "📤 ${if (direction == "call") "شراء" else "بيع"} $asset \$$amount",
             Toast.LENGTH_SHORT
         ).show()
