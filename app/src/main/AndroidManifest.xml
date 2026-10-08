@@ -12,7 +12,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.NoActionBar">
 
-        <!-- MainContainerActivity — نقطة البداية -->
+        <!-- الشاشة الرئيسية -->
         <activity
             android:name=".MainContainerActivity"
             android:exported="true"
@@ -23,20 +23,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- DashboardActivity — قديمة، محتفظ بيها للتوافق -->
-        <activity
-            android:name=".DashboardActivity"
-            android:exported="false"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
-
-        <!-- QuotexWebViewActivity — قديمة، محتفظ بيها للتوافق -->
-        <activity
-            android:name=".QuotexWebViewActivity"
-            android:exported="false"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
 
     </application>
 
