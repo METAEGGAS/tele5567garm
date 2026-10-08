@@ -17,6 +17,9 @@ class QuotexWebViewActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // امسح SSID القديم
+        getSharedPreferences("qtx", MODE_PRIVATE).edit().clear().apply()
+
         webView = WebView(this)
         setContentView(webView)
 
@@ -26,27 +29,24 @@ class QuotexWebViewActivity : AppCompatActivity() {
             databaseEnabled = true
             loadWithOverviewMode = true
             useWideViewPort = true
-            builtInZoomControls = false
-            displayZoomControls = false
             userAgentString = "Mozilla/5.0 (Linux; Android 13) " +
                 "AppleWebKit/537.36 (KHTML, like Gecko) " +
                 "Chrome/120.0.0.0 Mobile Safari/537.36"
         }
 
-        val cookieManager = CookieManager.getInstance()
-        cookieManager.setAcceptCookie(true)
-        cookieManager.setAcceptThirdPartyCookies(webView, true)
+        val cm = CookieManager.getInstance()
+        cm.setAcceptCookie(true)
+        cm.setAcceptThirdPartyCookies(webView, true)
 
         webView.addJavascriptInterface(object {
             @JavascriptInterface
             fun onSSID(ssid: String) {
-                Log.d(TAG, "SSID received: ${ssid.take(20)}...")
+                Log.d(TAG, "SSID: ${ssid.take(20)}...")
                 runOnUiThread {
                     if (ssid.isNotBlank()) {
                         getSharedPreferences("qtx", MODE_PRIVATE)
                             .edit()
                             .putString("ssid", ssid)
-                            .putLong("ssid_time", System.currentTimeMillis())
                             .apply()
 
                         Toast.makeText(
@@ -55,9 +55,10 @@ class QuotexWebViewActivity : AppCompatActivity() {
                             Toast.LENGTH_SHORT
                         ).show()
 
-                        startActivity(
-                            Intent(this@QuotexWebViewActivity, PricesActivity::class.java)
-                        )
+                        startActivity(Intent(
+                            this@QuotexWebViewActivity,
+                            DashboardActivity::class.java
+                        ))
                         finish()
                     }
                 }
@@ -67,7 +68,6 @@ class QuotexWebViewActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                Log.d(TAG, "Page loaded: $url")
                 if (url?.contains("qxbroker.com") == true) {
                     injectScript()
                 }
@@ -82,6 +82,7 @@ class QuotexWebViewActivity : AppCompatActivity() {
             (function() {
               if (window.__qtxHooked) return;
               window.__qtxHooked = true;
+
               function grab() {
                 try {
                   var c = document.cookie || '';
@@ -93,14 +94,18 @@ class QuotexWebViewActivity : AppCompatActivity() {
                 } catch (e) {}
                 return false;
               }
+
               setInterval(grab, 800);
+
               document.addEventListener('submit', function() {
                 setTimeout(grab, 400);
               }, true);
+
               document.addEventListener('click', function(e) {
                 var t = e.target.closest('button, [type="submit"], [role="button"]');
                 if (t) setTimeout(grab, 400);
               }, true);
+
               grab();
             })();
         """.trimIndent()
