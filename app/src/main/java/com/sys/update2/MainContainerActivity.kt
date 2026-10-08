@@ -13,6 +13,7 @@ import android.webkit.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import okhttp3.*
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 class MainContainerActivity : AppCompatActivity() {
@@ -36,11 +37,9 @@ class MainContainerActivity : AppCompatActivity() {
     private var selectedScreen = 0
     private val orders = mutableListOf<Order>()
 
-    // Watcher
-    private var cookieWatcher: Handler? = null
+    private var digestWatcher: Handler? = null
     private var ssidFound = false
 
-    // HTTP client
     private val http = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -168,21 +167,32 @@ class MainContainerActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        // شريط يدوي
+        // شريط يدوي — Token + CSRF
         val manualBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#161B22"))
             setPadding(16, 12, 16, 12)
         }
 
-        val ssidInput = EditText(this).apply {
-            hint = "أدخل SSID يدوياً..."
+        val tokenInput = EditText(this).apply {
+            hint = "Token..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             textSize = 11f
             setBackgroundColor(Color.parseColor("#0D1117"))
             setPadding(12, 8, 12, 8)
         }
+        manualBar.addView(tokenInput)
+
+        val csrfInput = EditText(this).apply {
+            hint = "CSRF..."
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            setBackgroundColor(Color.parseColor("#0D1117"))
+            setPadding(12, 8, 12, 8)
+        }
+        manualBar.addView(csrfInput)
 
         val manualBtn = Button(this).apply {
             text = "استخدام"
@@ -190,32 +200,29 @@ class MainContainerActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#1F6FEB"))
             setTextColor(Color.WHITE)
             setOnClickListener {
-                val v = ssidInput.text.toString().trim()
-                if (v.isNotBlank()) {
-                    saveSession(v, "manual", "manual")
+                val t = tokenInput.text.toString().trim()
+                val c = csrfInput.text.toString().trim()
+                if (t.isNotBlank()) {
+                    saveCreds(t, c, "manual")
                     Toast.makeText(this@MainContainerActivity,
-                        "✅ SSID يدوي", Toast.LENGTH_SHORT).show()
+                        "✅ تم الحفظ", Toast.LENGTH_SHORT).show()
                     switchTo(1)
                     connectQuotex()
                 }
             }
         }
-
-        manualBar.addView(ssidInput, LinearLayout.LayoutParams(
-            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-        ).apply { marginEnd = 8 })
         manualBar.addView(manualBtn)
         loginScreen.addView(manualBar)
 
-        // زر التشخيص
-        val debugBtn = Button(this).apply {
-            text = "🛠 فحص الكوكيز الآن"
-            textSize = 11f
-            setBackgroundColor(Color.parseColor("#30363D"))
+        // زر طلب digest يدوياً
+        val digestBtn = Button(this).apply {
+            text = "🌐 جلب من digest"
+            textSize = 12f
+            setBackgroundColor(Color.parseColor("#238636"))
             setTextColor(Color.WHITE)
-            setOnClickListener { forceCheckCookies() }
+            setOnClickListener { fetchDigestAndConnect() }
         }
-        loginScreen.addView(debugBtn)
+        loginScreen.addView(digestBtn)
 
         webView = WebView(this).apply {
             settings.apply {
@@ -242,9 +249,12 @@ class MainContainerActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 Log.d(TAG, "Page finished: $url")
+
+                // بعد أي صفحة على qxbroker — جرّب digest
                 if (url?.contains("qxbroker.com") == true) {
-                    // ابدأ مراقبة الكوكيز كل ثانية
-                    startCookieWatcher()
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        fetchDigestAndConnect()
+                    }, 3000)
                 }
             }
         }
@@ -253,92 +263,106 @@ class MainContainerActivity : AppCompatActivity() {
         loginScreen.addView(webView)
     }
 
-    private fun saveSession(ssid: String, cookie: String, ua: String) {
-        getSharedPreferences("qtx", MODE_PRIVATE)
-            .edit()
-            .putString("ssid", ssid)
-            .putString("cookie", cookie)
-            .putString("ua", ua)
-            .putLong("time", System.currentTimeMillis())
-            .apply()
-        Log.d(TAG, "💾 Saved: ssid=${ssid.take(20)}...")
-    }
-
     // ═══════════════════════════════════════════
-    //  Cookie Watcher — الحل الأساسي
+    //  Digest → Token + CSRF
     // ═══════════════════════════════════════════
-    private fun startCookieWatcher() {
-        if (cookieWatcher != null) return
-        cookieWatcher = Handler(Looper.getMainLooper())
+    private fun fetchDigestAndConnect() {
+        Thread {
+            try {
+                val cm = CookieManager.getInstance()
+                val cookies = cm.getCookie("https://qxbroker.com") ?: ""
+                val ua = webView.settings.userAgentString ?: ""
 
-        val runnable = object : Runnable {
-            override fun run() {
-                if (ssidFound) return
-                checkCookies()
-                cookieWatcher?.postDelayed(this, 1500)
-            }
-        }
-        cookieWatcher?.post(runnable)
-    }
+                Log.d(TAG, "═══ Digest attempt ═══")
+                Log.d(TAG, "Cookies: ${cookies.take(200)}")
+                Log.d(TAG, "UA: ${ua.take(100)}")
 
-    private fun checkCookies() {
-        try {
-            val cm = CookieManager.getInstance()
+                if (cookies.isBlank()) {
+                    runOnUiThread {
+                        statusBar.text = "⚠️ مفيش كوكيز — سجل دخول أولاً"
+                    }
+                    return@Thread
+                }
 
-            // جرّب 3 دومينات
-            val urls = listOf(
-                "https://qxbroker.com",
-                "https://api.qxbroker.com",
-                "https://ws2.qxbroker.com"
-            )
+                val req = Request.Builder()
+                    .url("https://qxbroker.com/api/v1/cabinets/digest")
+                    .header("Cookie", cookies)
+                    .header("User-Agent", ua)
+                    .header("Accept", "application/json, text/plain, */*")
+                    .header("Accept-Language", "ar,en-US;q=0.9,en;q=0.8")
+                    .header("Referer", "https://qxbroker.com/ar/trade")
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .header("Origin", "https://qxbroker.com")
+                    .get()
+                    .build()
 
-            for (u in urls) {
-                val cookies = cm.getCookie(u) ?: continue
-                Log.d(TAG, "Cookies[$u]: ${cookies.take(300)}")
+                val resp = http.newCall(req).execute()
+                val code = resp.code
+                val body = resp.body?.string() ?: ""
+                resp.close()
 
-                // Regex المؤكد من التحليل: ssid=([^;]+)
-                val m = Regex("ssid=([^;]+)").find(cookies)
-                if (m != null && m.groupValues[1].length > 20) {
-                    val ssid = m.groupValues[1]
-                    Log.d(TAG, "✅ SSID: ${ssid.take(40)}...")
-                    onSSIDFound(ssid, cookies)
-                    return
+                Log.d(TAG, "Digest HTTP $code")
+                Log.d(TAG, "Body: ${body.take(500)}")
+
+                if (code != 200) {
+                    runOnUiThread {
+                        statusBar.text = "⚠️ Digest HTTP $code"
+                    }
+                    return@Thread
+                }
+
+                val json = JSONObject(body)
+                val data = json.optJSONObject("data") ?: json
+
+                val token = data.optString("token", "")
+                val csrf = data.optString("csrf", "")
+                val email = data.optString("email", "")
+                val id = data.optInt("id", 0)
+
+                Log.d(TAG, "═══════ EXTRACTED ═══════")
+                Log.d(TAG, "token: $token")
+                Log.d(TAG, "csrf: $csrf")
+                Log.d(TAG, "email: $email")
+                Log.d(TAG, "id: $id")
+                Log.d(TAG, "═════════════════════════")
+
+                if (token.isNotBlank()) {
+                    saveCreds(token, csrf, cookies)
+                    runOnUiThread {
+                        Toast.makeText(
+                            this@MainContainerActivity,
+                            "✅ تم استخراج Token",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        statusBar.text = "✅ Token: ${token.take(20)}..."
+                        switchTo(1)
+                        connectQuotex()
+                    }
+                } else {
+                    runOnUiThread {
+                        statusBar.text = "❌ مفيش token في digest"
+                    }
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "digest err: ${e.message}", e)
+                runOnUiThread {
+                    statusBar.text = "❌ digest: ${e.message?.take(50)}"
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "checkCookies: ${e.message}")
-        }
+        }.start()
     }
 
-    private fun forceCheckCookies() {
-        val cm = CookieManager.getInstance()
-        val urls = listOf(
-            "https://qxbroker.com",
-            "https://api.qxbroker.com",
-            "https://ws2.qxbroker.com"
-        )
-        val sb = StringBuilder()
-        for (u in urls) {
-            sb.append("═══ $u ═══\n")
-            sb.append(cm.getCookie(u) ?: "null")
-            sb.append("\n\n")
-        }
-        Log.d(TAG, sb.toString())
-
-        Toast.makeText(this, "تم طباعة الكوكيز", Toast.LENGTH_SHORT).show()
-        statusBar.text = sb.toString().take(200)
-    }
-
-    private fun onSSIDFound(ssid: String, cookieStr: String) {
-        ssidFound = true
-        val ua = webView.settings.userAgentString ?: ""
-        saveSession(ssid, cookieStr, ua)
-        runOnUiThread {
-            Toast.makeText(this, "✅ تم استلام الجلسة", Toast.LENGTH_SHORT).show()
-            statusBar.text = "✅ SSID مستلم"
-            switchTo(1)
-            connectQuotex()
-        }
+    private fun saveCreds(token: String, csrf: String, cookie: String) {
+        getSharedPreferences("qtx", MODE_PRIVATE)
+            .edit()
+            .putString("token", token)
+            .putString("csrf", csrf)
+            .putString("cookie", cookie)
+            .putString("ua", webView.settings.userAgentString ?: "")
+            .putLong("time", System.currentTimeMillis())
+            .apply()
+        Log.d(TAG, "💾 Saved token: ${token.take(20)}...")
     }
 
     // ═══════════════════════════════════════════
@@ -454,7 +478,7 @@ class MainContainerActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════════
-    //  Status + Orders Screens
+    //  Status Screen
     // ═══════════════════════════════════════════
     private fun buildStatusScreen() {
         statusScreen = LinearLayout(this).apply {
@@ -479,21 +503,6 @@ class MainContainerActivity : AppCompatActivity() {
             typeface = android.graphics.Typeface.MONOSPACE
         }
         statusScreen.addView(statusText)
-
-        val clearBtn = Button(this).apply {
-            text = "🗑 مسح السجل"
-            setBackgroundColor(Color.parseColor("#30363D"))
-            setTextColor(Color.WHITE)
-            setOnClickListener {
-                orders.clear()
-                renderStatus()
-                renderOrdersList()
-            }
-        }
-        statusScreen.addView(clearBtn, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = 30 })
     }
 
     private fun renderStatus() {
@@ -501,7 +510,6 @@ class MainContainerActivity : AppCompatActivity() {
             statusText.text = "لا توجد طلبات بعد"
             return
         }
-
         val sb = StringBuilder()
         orders.takeLast(20).reversed().forEach { o ->
             val icon = when (o.status) {
@@ -511,15 +519,16 @@ class MainContainerActivity : AppCompatActivity() {
             }
             val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
                 .format(java.util.Date(o.time))
-            sb.append("$icon ${o.asset}  ")
-            sb.append("${if (o.direction == "call") "شراء" else "بيع"}  ")
-            sb.append("\$${o.amount}  ")
-            sb.append("${o.duration}s  ")
-            sb.append("[$timeStr]\n\n")
+            sb.append("$icon ${o.asset} ")
+            sb.append("${if (o.direction == "call") "شراء" else "بيع"} ")
+            sb.append("\$${o.amount} ${o.duration}s [$timeStr]\n\n")
         }
         statusText.text = sb.toString()
     }
 
+    // ═══════════════════════════════════════════
+    //  Orders Screen
+    // ═══════════════════════════════════════════
     private fun buildOrdersScreen() {
         ordersScreen = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -547,7 +556,6 @@ class MainContainerActivity : AppCompatActivity() {
 
     private fun renderOrdersList() {
         historyList.removeAllViews()
-
         if (orders.isEmpty()) {
             historyList.addView(TextView(this).apply {
                 text = "لا توجد طلبات"
@@ -557,37 +565,27 @@ class MainContainerActivity : AppCompatActivity() {
             })
             return
         }
-
         orders.reversed().forEach { o ->
             val item = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setBackgroundColor(Color.parseColor("#161B22"))
                 setPadding(16, 16, 16, 16)
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = 8 }
             }
-
-            val iconColor = when (o.status) {
+            val color = when (o.status) {
                 "success" -> "#2ECC71"
                 "failed" -> "#E74C3C"
                 else -> "#F0B27A"
             }
-
             item.addView(TextView(this).apply {
-                text = "${o.asset}  ·  ${if (o.direction == "call") "🟢 شراء" else "🔴 بيع"}"
+                text = "${o.asset} · ${if (o.direction == "call") "🟢 شراء" else "🔴 بيع"}"
                 setTextColor(Color.WHITE)
                 textSize = 15f
             })
-
             item.addView(TextView(this).apply {
-                text = "\$${o.amount}   ·   ${o.duration}s   ·   ${o.status.uppercase()}"
-                setTextColor(Color.parseColor(iconColor))
+                text = "\$${o.amount} · ${o.status.uppercase()}"
+                setTextColor(Color.parseColor(color))
                 textSize = 13f
-                setPadding(0, 6, 0, 0)
             })
-
             historyList.addView(item)
         }
     }
@@ -596,10 +594,11 @@ class MainContainerActivity : AppCompatActivity() {
     //  Connect Quotex
     // ═══════════════════════════════════════════
     private fun connectQuotex() {
-        val ssid = getSharedPreferences("qtx", MODE_PRIVATE)
-            .getString("ssid", null)
+        val prefs = getSharedPreferences("qtx", MODE_PRIVATE)
+        val token = prefs.getString("token", null)
+        val csrf = prefs.getString("csrf", null)
 
-        if (ssid.isNullOrBlank()) {
+        if (token.isNullOrBlank()) {
             statusBar.text = "🔐 سجل دخول أولاً"
             return
         }
@@ -638,7 +637,7 @@ class MainContainerActivity : AppCompatActivity() {
         QuotexSocket.onInstrumentsLoaded = {
             runOnUiThread { populateAssets() }
         }
-        QuotexSocket.connect(ssid)
+        QuotexSocket.connect(token)
     }
 
     private fun populateAssets() {
@@ -654,10 +653,7 @@ class MainContainerActivity : AppCompatActivity() {
         val list = QuotexSocket.getInstrumentList()
             .ifEmpty { QuotexSocket.getDefaultOtcList() }
 
-        if (assetSpinner.selectedItemPosition >= list.size) {
-            Toast.makeText(this, "اختر زوجاً", Toast.LENGTH_SHORT).show()
-            return
-        }
+        if (assetSpinner.selectedItemPosition >= list.size) return
 
         val asset = list[assetSpinner.selectedItemPosition].ticker
         val order = Order(
