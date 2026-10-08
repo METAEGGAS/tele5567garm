@@ -1,14 +1,25 @@
 package com.sys.update2
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import okhttp3.*
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+/**
+ * QuotexSocket — يتعامل مع Socket.IO لـ Quotex
+ * - المصادقة (authorization)
+ * - استقبال الأسعار (candles/quotes)
+ * - تنفيذ صفقات (buy/sell) — Demo فقط
+ */
 object QuotexSocket {
 
     private const val TAG = "QuotexSocket"
+
+    // ⚠️ إعداد إجباري: Demo فقط
+    private const val IS_DEMO = 1
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -18,20 +29,24 @@ object QuotexSocket {
 
     private var ws: WebSocket? = null
     private var ssid: String? = null
-    private var onStatus: ((String) -> Unit)? = null
-    private var onPrice: ((String, String) -> Unit)? = null
-    private var onError: ((String) -> Unit)? = null
+    private var handler = Handler(Looper.getMainLooper())
 
-    fun connect(
-        ssid: String,
-        onStatus: (String) -> Unit,
-        onPrice: (String, String) -> Unit,
-        onError: (String) -> Unit
-    ) {
+    // Callbacks
+    var onStatus: ((String) -> Unit)? = null
+    var onPrice: ((String, Double) -> Unit)? = null
+    var onTradeResult: ((Boolean, String) -> Unit)? = null
+    var onBalanceUpdate: ((Double) -> Unit)? = null
+
+    // أحدث الأسعار
+    private val prices = HashMap<String, Double>()
+
+    fun getPrice(asset: String): Double? = prices[asset]
+
+    /**
+     * الاتصال بـ Quotex
+     */
+    fun connect(ssid: String) {
         this.ssid = ssid
-        this.onStatus = onStatus
-        this.onPrice = onPrice
-        this.onError = onError
 
         val url = "wss://ws2.qxbroker.com/socket.io/?EIO=4&transport=websocket"
         val req = Request.Builder()
@@ -48,7 +63,7 @@ object QuotexSocket {
 
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d(TAG, "WS opened")
-                onStatus?.invoke("🔌 متصل — بدء handshake")
+                emit("🔌 متصل — handshake")
                 webSocket.send("40")
             }
 
@@ -58,38 +73,184 @@ object QuotexSocket {
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WS failed: ${t.message}", t)
-                onError?.invoke("فشل: ${t.message}")
+                emit("❌ فشل: ${t.message}")
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "WS closed: $code / $reason")
-                onStatus?.invoke("🔌 انقطع ($code)")
+                emit("🔌 انقطع ($code)")
             }
         })
     }
 
+    fun disconnect() {
+        try { ws?.close(1000, "bye") } catch (_: Exception) {}
+        ws = null
+    }
+
+    private fun emit(s: String) {
+        handler.post { onStatus?.invoke(s) }
+    }
+
+    // ═══════════════════════════════════════════
+    //  معالجة الرسائل
+    // ═══════════════════════════════════════════
     private fun handleMessage(webSocket: WebSocket, text: String) {
-        Log.d(TAG, "← ${text.take(200)}")
+        Log.d(TAG, "← ${text.take(250)}")
 
         when {
             text.startsWith("0{") -> webSocket.send("40")
 
             text == "40" -> {
-                onStatus?.invoke("✅ القناة مفتوحة — إرسال SSID")
-                val auth = """42["authorization",{"session":"${ssid}","isDemo":1,"tournamentId":0}]"""
-                webSocket.send(auth)
+                emit("✅ القناة مفتوحة — إرسال التوكن")
+                sendAuthorization(webSocket)
             }
 
-            text == "2" -> webSocket.send("3")
+            text == "2" -> webSocket.send("3")   // ping → pong
 
+            // نتيجة مصادقة
+            text.contains("authorization") -> {
+                emit("🎉 تم الدخول — جاري جلب الرصيد")
+                subscribeAllAssets(webSocket)
+            }
+
+            // الرصيد
+            text.contains("\"balance\"") -> parseBalance(text)
+
+            // رسالة خطأ
             text.startsWith("44") || text.contains("error", true) -> {
-                onError?.invoke("السيرفر: ${text.take(120)}")
+                emit("⚠️ السيرفر: ${text.take(120)}")
             }
 
-            text.contains("candles") || text.contains("quotes") -> parsePrices(text)
+            // بيانات الأسعار
+            text.contains("candles") || text.contains("quotes")
+                || text.contains("instruments") -> parsePrices(text)
+
+            // نتيجة الصفقة
+            text.contains("trade") && (text.contains("success") || text.contains("error")) -> {
+                parseTradeResult(text)
+            }
         }
     }
 
+    // ═══════════════════════════════════════════
+    //  Auth
+    // ═══════════════════════════════════════════
+    private fun sendAuthorization(ws: WebSocket) {
+        val auth = JSONObject().apply {
+            put("session", ssid ?: "")
+            put("isDemo", IS_DEMO)
+            put("tournamentId", 0)
+        }
+        ws.send("42[\"authorization\",$auth]")
+    }
+
+    // ═══════════════════════════════════════════
+    //  اشتراك
+    // ═══════════════════════════════════════════
+    private val defaultAssets = listOf(
+        "EURUSD", "GBPUSD", "USDJPY", "AUDUSD",
+        "BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD"
+    )
+
+    fun subscribeAsset(asset: String, period: Int = 60) {
+        val ws = ws ?: return
+        val payload = JSONObject().apply {
+            put("asset", asset)
+            put("period", period)
+        }
+        ws.send("42[\"subscribe_candles\",$payload]")
+        emit("📊 اشتراك في $asset")
+    }
+
+    private fun subscribeAllAssets(ws: WebSocket) {
+        defaultAssets.forEachIndexed { i, asset ->
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    val payload = JSONObject().apply {
+                        put("asset", asset)
+                        put("period", 60)
+                    }
+                    ws.send("42[\"subscribe_candles\",$payload]")
+                } catch (_: Exception) {}
+            }, (i * 300).toLong())
+        }
+        emit("📊 جاري الاشتراك في ${defaultAssets.size} عملة")
+    }
+
+    // ═══════════════════════════════════════════
+    //  تنفيذ صفقة (Demo)
+    // ═══════════════════════════════════════════
+    /**
+     * @param asset اسم العملة (مثلاً "BTCUSD")
+     * @param amount المبلغ ($1 - $10000)
+     * @param direction "call" (شراء) أو "put" (بيع)
+     * @param durationSec مدة الصفقة بالثواني (60 = دقيقة)
+     */
+    fun executeTrade(
+        asset: String,
+        amount: Double,
+        direction: String,  // "call" أو "put"
+        durationSec: Int
+    ) {
+        val ws = ws ?: run {
+            handler.post { onTradeResult?.invoke(false, "❌ لا يوجد اتصال") }
+            return
+        }
+
+        if (IS_DEMO != 1) {
+            handler.post { onTradeResult?.invoke(false, "❌ Live mode disabled") }
+            return
+        }
+
+        try {
+            // 1) حدد الـ asset ID — يحتاج يكون معروف
+            val assetId = assetIdFor(asset)
+
+            val payload = JSONObject().apply {
+                put("asset", asset)
+                put("amount", amount)
+                put("direction", direction)
+                put("duration", durationSec)
+                put("isDemo", IS_DEMO)
+                put("optionType", 100)    // 100 = binary
+            }
+
+            // رسالة place_order (Socket.IO event)
+            val event = JSONObject().apply {
+                put("name", "place_order")
+                put("msg", payload)
+            }
+            ws.send("42[\"place_order\",$payload]")
+
+            emit("📤 تم إرسال: $direction $asset \$$amount ${durationSec}s")
+            handler.post { onTradeResult?.invoke(true, "✅ تم إرسال الصفقة") }
+        } catch (e: Exception) {
+            Log.e(TAG, "trade err: ${e.message}")
+            handler.post { onTradeResult?.invoke(false, "❌ ${e.message}") }
+        }
+    }
+
+    /**
+     * يستخدم asset ID من خريطة داخلية.
+     * Quotex بتستخدم أرقام مش أسماء.
+     */
+    private fun assetIdFor(asset: String): Int {
+        return when (asset) {
+            "EURUSD" -> 1
+            "GBPUSD" -> 2
+            "USDJPY" -> 3
+            "BTCUSD" -> 86
+            "ETHUSD" -> 87
+            "SOLUSD" -> 88
+            "XRPUSD" -> 89
+            else -> 0
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    //  Parsing
+    // ═══════════════════════════════════════════
     private fun parsePrices(text: String) {
         try {
             val idx = text.indexOf("[")
@@ -100,27 +261,41 @@ object QuotexSocket {
             when (val data = arr.opt(1)) {
                 is JSONArray -> for (i in 0 until data.length()) {
                     val c = data.optJSONObject(i) ?: continue
-                    val symbol = c.optString("asset", "")
+                    val asset = c.optString("asset", "")
                     val close = c.optDouble("close", Double.NaN)
-                    if (symbol.isNotEmpty() && !close.isNaN()) {
-                        onPrice?.invoke(symbol, String.format("%.5f", close))
+                    if (asset.isNotEmpty() && !close.isNaN()) {
+                        prices[asset] = close
+                        handler.post { onPrice?.invoke(asset, close) }
                     }
                 }
                 is JSONObject -> {
-                    val symbol = data.optString("asset", "")
+                    val asset = data.optString("asset", "")
                     val close = data.optDouble("close", Double.NaN)
-                    if (symbol.isNotEmpty() && !close.isNaN()) {
-                        onPrice?.invoke(symbol, String.format("%.5f", close))
+                    if (asset.isNotEmpty() && !close.isNaN()) {
+                        prices[asset] = close
+                        handler.post { onPrice?.invoke(asset, close) }
                     }
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "parse err: ${e.message}")
+            Log.e(TAG, "parsePrices: ${e.message}")
         }
     }
 
-    fun disconnect() {
-        try { ws?.close(1000, "bye") } catch (_: Exception) {}
-        ws = null
+    private fun parseBalance(text: String) {
+        try {
+            val obj = JSONObject(text.substring(text.indexOf("{")))
+            val bal = obj.optDouble("balance", Double.NaN)
+            if (!bal.isNaN()) {
+                handler.post { onBalanceUpdate?.invoke(bal) }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun parseTradeResult(text: String) {
+        val success = text.contains("success", true)
+        handler.post {
+            onTradeResult?.invoke(success, if (success) "✅ تم تنفيذ الصفقة" else "❌ فشلت الصفقة")
+        }
     }
 }
