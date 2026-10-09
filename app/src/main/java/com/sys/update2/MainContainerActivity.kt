@@ -241,8 +241,6 @@ class MainContainerActivity : AppCompatActivity() {
         val cookies = cm.getCookie("https://qxbroker.com") ?: ""
         val ua = webView.settings.userAgentString ?: ""
 
-        Log.d(TAG, "Cookies: ${cookies.take(200)}")
-
         if (cookies.isBlank()) {
             statusBar.text = "⚠️ مفيش كوكيز"
             return
@@ -498,7 +496,7 @@ class MainContainerActivity : AppCompatActivity() {
         }
         QuotexSocket.onPrice = { asset, price ->
             runOnUiThread {
-                val list = QuotexSocket.getInstrumentList()
+                val list = QuotexSocket.getDefaultOtcList()
                 val pos = assetSpinner.selectedItemPosition
                 if (pos in list.indices && list[pos].ticker == asset) {
                     priceText.text = String.format("%.5f", price)
@@ -524,7 +522,6 @@ class MainContainerActivity : AppCompatActivity() {
             }
         }
 
-        // ⭐ الاتصال عبر WebView (مش مباشر)
         QuotexSocket.attach(webView, token, cookie)
     }
 
