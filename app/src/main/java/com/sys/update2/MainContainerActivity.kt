@@ -36,7 +36,6 @@ class MainContainerActivity : AppCompatActivity() {
 
     private var selectedScreen = 0
     private val orders = mutableListOf<Order>()
-    private var digestInFlight = false
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -83,16 +82,7 @@ class MainContainerActivity : AppCompatActivity() {
         buildStatusScreen()
         buildOrdersScreen()
 
-        // إذا كان عندنا توكن محفوظ سابقاً — جرّب الاتصال مباشرة
-        val prefs = getSharedPreferences("qtx", MODE_PRIVATE)
-        val savedToken = prefs.getString("token", null)
-        if (!savedToken.isNullOrBlank()) {
-            statusBar.text = "🔄 توكن محفوظ — جاري الاتصال..."
-            switchTo(1)
-            connectQuotex()
-        } else {
-            switchTo(0)
-        }
+        switchTo(0)
     }
 
     private fun buildBottomBar(): LinearLayout {
@@ -102,7 +92,6 @@ class MainContainerActivity : AppCompatActivity() {
             setPadding(0, 8, 0, 24)
             weightSum = 4f
         }
-
         bar.addView(bottomItem("🔐", "تسجيل", 0), weight())
         bar.addView(bottomItem("💹", "صفقات", 1), weight())
         bar.addView(bottomItem("📋", "حالة", 2), weight())
@@ -111,7 +100,6 @@ class MainContainerActivity : AppCompatActivity() {
         val topLine = LinearLayout(this).apply {
             setBackgroundColor(Color.parseColor("#30363D"))
         }
-
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(topLine, LinearLayout.LayoutParams(
@@ -133,13 +121,11 @@ class MainContainerActivity : AppCompatActivity() {
             isClickable = true
             setOnClickListener { switchTo(index) }
         }
-
         item.addView(TextView(this).apply {
             text = icon
             textSize = 24f
             gravity = Gravity.CENTER
         })
-
         item.addView(TextView(this).apply {
             text = label
             textSize = 11f
@@ -147,7 +133,6 @@ class MainContainerActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, 4, 0, 0)
         })
-
         return item
     }
 
@@ -175,7 +160,7 @@ class MainContainerActivity : AppCompatActivity() {
         }
 
         val tokenInput = EditText(this).apply {
-            hint = "Token / SSID..."
+            hint = "Token..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             textSize = 11f
@@ -184,16 +169,6 @@ class MainContainerActivity : AppCompatActivity() {
         }
         manualBar.addView(tokenInput)
 
-        val csrfInput = EditText(this).apply {
-            hint = "CSRF (اختياري)..."
-            setHintTextColor(Color.GRAY)
-            setTextColor(Color.WHITE)
-            textSize = 11f
-            setBackgroundColor(Color.parseColor("#0D1117"))
-            setPadding(12, 8, 12, 8)
-        }
-        manualBar.addView(csrfInput)
-
         val manualBtn = Button(this).apply {
             text = "استخدام"
             textSize = 12f
@@ -201,9 +176,9 @@ class MainContainerActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
             setOnClickListener {
                 val t = tokenInput.text.toString().trim()
-                val c = csrfInput.text.toString().trim()
                 if (t.isNotBlank()) {
-                    saveCreds(t, c, "")
+                    getSharedPreferences("qtx", MODE_PRIVATE).edit()
+                        .putString("token", t).apply()
                     Toast.makeText(this@MainContainerActivity,
                         "✅ تم الحفظ", Toast.LENGTH_SHORT).show()
                     switchTo(1)
@@ -215,7 +190,7 @@ class MainContainerActivity : AppCompatActivity() {
         loginScreen.addView(manualBar)
 
         val digestBtn = Button(this).apply {
-            text = "🌐 جلب Token من الكوكيز"
+            text = "🌐 جلب من digest"
             textSize = 12f
             setBackgroundColor(Color.parseColor("#238636"))
             setTextColor(Color.WHITE)
@@ -230,7 +205,6 @@ class MainContainerActivity : AppCompatActivity() {
                 databaseEnabled = true
                 loadWithOverviewMode = true
                 useWideViewPort = true
-                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 userAgentString = "Mozilla/5.0 (Linux; Android 13) " +
                     "AppleWebKit/537.36 (KHTML, like Gecko) " +
                     "Chrome/120.0.0.0 Mobile Safari/537.36"
@@ -248,23 +222,11 @@ class MainContainerActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                Log.d(TAG, "Page finished: $url")
-                // اجلب الكوكيز بعد أي صفحة من qxbroker (sign-in أو trade)
+                Log.d(TAG, "Page: $url")
                 if (url?.contains("qxbroker.com") == true) {
-                    CookieManager.getInstance().flush()
                     Handler(Looper.getMainLooper()).postDelayed({
                         fetchDigestAndConnect()
                     }, 3000)
-                }
-            }
-
-            override fun onReceivedError(
-                view: WebView?, request: WebResourceRequest?,
-                error: WebResourceError?
-            ) {
-                super.onReceivedError(view, request, error)
-                if (request?.isForMainFrame == true) {
-                    statusBar.text = "⚠️ خطأ تحميل الصفحة"
                 }
             }
         }
@@ -274,19 +236,17 @@ class MainContainerActivity : AppCompatActivity() {
     }
 
     private fun fetchDigestAndConnect() {
-        if (digestInFlight) return
-
         val cm = CookieManager.getInstance()
+        cm.flush()
         val cookies = cm.getCookie("https://qxbroker.com") ?: ""
         val ua = webView.settings.userAgentString ?: ""
 
+        Log.d(TAG, "Cookies: ${cookies.take(200)}")
+
         if (cookies.isBlank()) {
-            statusBar.text = "⚠️ مفيش كوكيز — سجل دخول أولاً"
+            statusBar.text = "⚠️ مفيش كوكيز"
             return
         }
-
-        digestInFlight = true
-        statusBar.text = "🔄 جاري استخراج Token..."
 
         Thread {
             try {
@@ -295,9 +255,7 @@ class MainContainerActivity : AppCompatActivity() {
                     .header("Cookie", cookies)
                     .header("User-Agent", ua)
                     .header("Accept", "application/json, text/plain, */*")
-                    .header("Accept-Language", "ar,en-US;q=0.9,en;q=0.8")
                     .header("Referer", "https://qxbroker.com/ar/trade")
-                    .header("X-Requested-With", "XMLHttpRequest")
                     .header("Origin", "https://qxbroker.com")
                     .get()
                     .build()
@@ -310,50 +268,38 @@ class MainContainerActivity : AppCompatActivity() {
                 Log.d(TAG, "Digest HTTP $code")
 
                 if (code != 200) {
-                    runOnUiThread { statusBar.text = "⚠️ HTTP $code — سجل دخول من جديد" }
-                    digestInFlight = false
+                    runOnUiThread { statusBar.text = "⚠️ HTTP $code" }
                     return@Thread
                 }
 
                 val json = JSONObject(body)
                 val data = json.optJSONObject("data") ?: json
-
                 val token = data.optString("token", "")
                 val csrf = data.optString("csrf", "")
 
                 if (token.isNotBlank()) {
-                    saveCreds(token, csrf, cookies)
+                    getSharedPreferences("qtx", MODE_PRIVATE).edit()
+                        .putString("token", token)
+                        .putString("csrf", csrf)
+                        .putString("cookie", cookies)
+                        .putString("ua", ua)
+                        .apply()
+
                     runOnUiThread {
-                        Toast.makeText(this@MainContainerActivity,
-                            "✅ تم استخراج Token", Toast.LENGTH_SHORT).show()
-                        statusBar.text = "✅ Token OK"
+                        Toast.makeText(this, "✅ Token OK", Toast.LENGTH_SHORT).show()
+                        statusBar.text = "✅ Token: ${token.take(20)}..."
                         switchTo(1)
                         connectQuotex()
                     }
                 } else {
-                    runOnUiThread { statusBar.text = "❌ مفيش token في الرد" }
+                    runOnUiThread { statusBar.text = "❌ مفيش token" }
                 }
 
             } catch (e: Exception) {
                 Log.e(TAG, "digest err: ${e.message}", e)
-                runOnUiThread { statusBar.text = "❌ ${e.message?.take(50)}" }
-            } finally {
-                digestInFlight = false
+                runOnUiThread { statusBar.text = "❌ ${e.message?.take(40)}" }
             }
         }.start()
-    }
-
-    private fun saveCreds(token: String, csrf: String, cookie: String) {
-        val ua = try { webView.settings.userAgentString ?: "" } catch (_: Exception) { "" }
-        getSharedPreferences("qtx", MODE_PRIVATE)
-            .edit()
-            .putString("token", token)
-            .putString("csrf", csrf)
-            .putString("cookie", cookie)
-            .putString("ua", ua)
-            .putLong("time", System.currentTimeMillis())
-            .apply()
-        Log.d(TAG, "💾 Creds saved")
     }
 
     private fun buildTradeScreen() {
@@ -446,23 +392,6 @@ class MainContainerActivity : AppCompatActivity() {
 
         tradeScreen.addView(row)
 
-        assetSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(
-                parent: AdapterView<*>?, view: View?, position: Int, id: Long
-            ) {
-                val list = QuotexSocket.getInstrumentList()
-                    .ifEmpty { QuotexSocket.getDefaultOtcList() }
-                if (position < list.size) {
-                    val asset = list[position].ticker
-                    val price = QuotexSocket.getPrice(asset)
-                    priceText.text = if (price != null) String.format("%.5f", price) else "--"
-                    // اشترك في أسعار الزوج المختار فوراً
-                    QuotexSocket.subscribeAsset(asset)
-                }
-            }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
-
         populateAssets()
     }
 
@@ -472,7 +401,6 @@ class MainContainerActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#0D1117"))
             setPadding(24, 24, 24, 24)
         }
-
         statusScreen.addView(TextView(this).apply {
             text = "📋 حالة الطلبات"
             textSize = 20f
@@ -480,7 +408,6 @@ class MainContainerActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, 20, 0, 20)
         })
-
         statusText = TextView(this).apply {
             text = "لا توجد طلبات بعد"
             textSize = 13f
@@ -514,7 +441,6 @@ class MainContainerActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#0D1117"))
             setPadding(16, 16, 16, 16)
         }
-
         ordersScreen.addView(TextView(this).apply {
             text = "📊 سجل الطلبات"
             textSize = 18f
@@ -522,11 +448,9 @@ class MainContainerActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, 20, 0, 20)
         })
-
         historyList = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
-
         val scroll = ScrollView(this).apply { addView(historyList) }
         ordersScreen.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
@@ -551,18 +475,9 @@ class MainContainerActivity : AppCompatActivity() {
                 setPadding(16, 16, 16, 16)
             }
             item.addView(TextView(this).apply {
-                text = "${o.asset} · ${if (o.direction == "call") "شراء" else "بيع"} · \$${o.amount}"
+                text = "${o.asset} · ${if (o.direction == "call") "شراء" else "بيع"}"
                 setTextColor(Color.WHITE)
                 textSize = 15f
-            })
-            item.addView(TextView(this).apply {
-                text = when (o.status) {
-                    "success" -> "✅ نجحت"
-                    "failed" -> "❌ فشلت"
-                    else -> "⏳ جارية"
-                }
-                setTextColor(Color.parseColor("#8B949E"))
-                textSize = 12f
             })
             historyList.addView(item)
         }
@@ -572,7 +487,6 @@ class MainContainerActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("qtx", MODE_PRIVATE)
         val token = prefs.getString("token", null)
         val cookie = prefs.getString("cookie", "") ?: ""
-        val ua = prefs.getString("ua", "") ?: ""
 
         if (token.isNullOrBlank()) {
             statusBar.text = "🔐 سجل دخول أولاً"
@@ -585,7 +499,6 @@ class MainContainerActivity : AppCompatActivity() {
         QuotexSocket.onPrice = { asset, price ->
             runOnUiThread {
                 val list = QuotexSocket.getInstrumentList()
-                    .ifEmpty { QuotexSocket.getDefaultOtcList() }
                 val pos = assetSpinner.selectedItemPosition
                 if (pos in list.indices && list[pos].ticker == asset) {
                     priceText.text = String.format("%.5f", price)
@@ -610,15 +523,13 @@ class MainContainerActivity : AppCompatActivity() {
                 }
             }
         }
-        QuotexSocket.onInstrumentsLoaded = {
-            runOnUiThread { populateAssets() }
-        }
-        QuotexSocket.connect(token, cookie, ua)
+
+        // ⭐ الاتصال عبر WebView (مش مباشر)
+        QuotexSocket.attach(webView, token, cookie)
     }
 
     private fun populateAssets() {
-        val list = QuotexSocket.getInstrumentList()
-            .ifEmpty { QuotexSocket.getDefaultOtcList() }
+        val list = QuotexSocket.getDefaultOtcList()
         val labels = list.map { it.ticker }
         assetSpinner.adapter = ArrayAdapter(
             this, android.R.layout.simple_spinner_dropdown_item, labels
@@ -626,8 +537,7 @@ class MainContainerActivity : AppCompatActivity() {
     }
 
     private fun executeTrade(direction: String, amount: Double) {
-        val list = QuotexSocket.getInstrumentList()
-            .ifEmpty { QuotexSocket.getDefaultOtcList() }
+        val list = QuotexSocket.getDefaultOtcList()
         if (assetSpinner.selectedItemPosition >= list.size) return
         val asset = list[assetSpinner.selectedItemPosition].ticker
         val order = Order(
@@ -645,10 +555,9 @@ class MainContainerActivity : AppCompatActivity() {
         renderOrdersList()
     }
 
-    @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (selectedScreen != 0) switchTo(0)
-        else if (::webView.isInitialized && webView.canGoBack()) webView.goBack()
+        else if (webView.canGoBack()) webView.goBack()
         else super.onBackPressed()
     }
 
