@@ -1,0 +1,78 @@
+
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1">
+      <stop stop-color="#152440"/>
+      <stop offset="1" stop-color="#030611"/>
+    </linearGradient>
+    <linearGradient id="white" x2="1" y2="1">
+      <stop stop-color="#fff"/>
+      <stop offset="1" stop-color="#bdcbea"/>
+    </linearGradient>
+    <linearGradient id="green" x2="0" y2="1">
+      <stop stop-color="#20ffc2"/>
+      <stop offset="1" stop-color="#00b98a"/>
+    </linearGradient>
+    <linearGradient id="red" x2="0" y2="1">
+      <stop stop-color="#ff426b"/>
+      <stop offset="1" stop-color="#e90040"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="90" fill="url(#bg)"/>
+
+  <!-- إطار يتجمع تلقائياً -->
+  <path d="M256 82 L389 159 Q400 166 400 181 V326 Q400 341 387 349 L269 418 Q256 426 243 418 L125 349 Q112 341 112 326 V181 Q112 166 125 159 Z"
+    fill="none" stroke="url(#white)" stroke-width="17"
+    stroke-linejoin="round" stroke-linecap="round"
+    stroke-dasharray="1000" stroke-dashoffset="1000"
+    pathLength="1000" filter="url(#glow)">
+    <animate attributeName="stroke-dashoffset"
+      from="1000" to="0" dur="1s" begin="0s" fill="freeze"/>
+  </path>
+
+  <!-- شموع التداول -->
+  <g opacity="0" filter="url(#glow)">
+    <animate attributeName="opacity"
+      values="0;1" dur=".4s" begin=".65s" fill="freeze"/>
+    <g fill="url(#green)">
+      <rect x="153" y="221" width="8" height="120" rx="4"/>
+      <rect x="141" y="241" width="32" height="94" rx="5"/>
+      <rect x="351" y="221" width="8" height="120" rx="4"/>
+      <rect x="339" y="241" width="32" height="94" rx="5"/>
+    </g>
+    <g fill="url(#red)">
+      <rect x="197" y="179" width="8" height="159" rx="4"/>
+      <rect x="185" y="207" width="32" height="117" rx="5"/>
+      <rect x="307" y="179" width="8" height="159" rx="4"/>
+      <rect x="295" y="207" width="32" height="117" rx="5"/>
+    </g>
+    <animateTransform attributeName="transform" type="translate"
+      values="-24 0;0 0" dur=".7s" begin=".65s" fill="freeze"/>
+  </g>
+
+  <!-- الرمز المركزي يظهر أخيراً -->
+  <path d="M256 139 L276 158 V351 L256 369 L236 351 V158 Z"
+    fill="url(#white)" opacity="0" filter="url(#glow)">
+    <animate attributeName="opacity"
+      values="0;1" dur=".45s" begin="1.15s" fill="freeze"/>
+    <animateTransform attributeName="transform" type="translate"
+      values="0 28;0 0" dur=".6s" begin="1.15s" fill="freeze"/>
+  </path>
+
+  <!-- لمعة نهائية -->
+  <rect width="512" height="512" rx="90" fill="#fff" opacity="0">
+    <animate attributeName="opacity"
+      values="0;0.1;0" dur="1s" begin="1.7s" fill="freeze"/>
+  </rect>
+
+  <rect x="1" y="1" width="510" height="510" rx="89"
+    fill="none" stroke="#263e6c" stroke-width="2"/>
+</svg>
