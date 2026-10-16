@@ -60,6 +60,9 @@ const val AVATAR_URL =
 const val AVATAR_FRAME_URL =
     "https://i.ibb.co/5xvxC8Kw/file-00000000d4f882439f813f969679659f.png"
 
+const val CHART_BG_URL =
+    "https://i.ibb.co/zWHWPv92/file-0000000090c48211944cf52560e3482a.png"
+
 const val GIFT_ICON_URL =
     "https://cdn-icons-png.flaticon.com/128/18546/18546266.png"
 
@@ -75,9 +78,10 @@ object C {
     val Purple = Color(0xFF9C7BFF)
     val Cyan = Color(0xFF58D9F5)
 
-    // الحفاظ على دلالة الشراء والبيع
-    val Green = Color(0xFF2ECC91)
-    val Red = Color(0xFFF06489)
+    // أخضر وأحمر ساطعان نضاميان —
+    // تستخدمهما الشموع وشريط التقدم وأزرار الشراء والبيع معًا.
+    val Green = Color(0xFF00E676)
+    val Red = Color(0xFFFF2D55)
 
     val Blue = Cyan
     val Yellow = Color(0xFFFFD34D)
@@ -96,7 +100,6 @@ object C {
 
 private const val MINUTE_MS = 60_000L
 
-// كل هامش يمثل 15% من ارتفاع منطقة الشموع.
 private const val CANDLE_SAFE_MARGIN = 0.15
 
 // حدود التكبير والتصغير اليدوي.
@@ -108,8 +111,6 @@ private const val MIN_PRICE_SPAN = 0.00001
 // موضع الشمعة النشطة الثابت: 80% من عرض الرسم
 // أي 20% مساحة مستقبلية أمامها دائمًا.
 private const val LIVE_CANDLE_FRACTION = 0.80
-
-private val ChartRightAxisWidth = 64.dp
 
 // ============================================================
 // البيانات
@@ -225,13 +226,8 @@ private fun remainingSeconds(openTime: Long, now: Long): Int {
 // ============================================================
 // نافذة الشارت
 //
-// X: لا يُخزَّن مركز الزمن إطلاقًا، بل يُحسب دائمًا من قاعدة
-//    الشمعة النشطة عند 80% من عرض الرسم.
+// X: مركز الزمن مشتق دائمًا من قاعدة الـ80%.
 // Y: مركز سعر ونطاق سعر فقط.
-//
-// عند التكبير: مركز السعر ثابت والنطاق يتغير بنسبة الشموع،
-// فتبقى الشبكة ثابتة في مكانها وتتوسع الشموع سعريًا وزمنيًا
-// حول نفس المكان.
 // ============================================================
 
 private data class ChartViewport(
@@ -246,7 +242,6 @@ private data class ChartViewport(
         get() = centerPrice + priceSpan / 2.0
 }
 
-// مركز الزمن مشتق دائمًا من آخر شمعة وقاعدة الـ80%.
 private fun centerBarFor(
     visibleBars: Double,
     lastBar: Double
@@ -271,10 +266,8 @@ private fun initialViewport(
 }
 
 /**
- * يحافظ على جميع الشموع الظاهرة داخل 15%..85% عموديًا.
- *
- * لا يمس الزمن أو مركز السعر إلا عند الحاجة،
- * فلا يهتز المقياس مع كل تحديث صغير.
+ * يحافظ على جميع الشموع الظاهرة داخل 15%..85% عموديًا
+ * دون أي اهتزاز تلقائي للمقياس.
  */
 private fun fitViewportToCandles(
     viewport: ChartViewport,
@@ -299,7 +292,6 @@ private fun fitViewportToCandles(
 
     val span = viewport.priceSpan.coerceAtLeast(MIN_PRICE_SPAN)
 
-    // نصف مساحة الأمان المتاحة حول مركز السعر.
     val safeHalfFraction = 0.5 - CANDLE_SAFE_MARGIN
 
     val allowedLow =
@@ -312,8 +304,6 @@ private fun fitViewportToCandles(
         return viewport.copy(priceSpan = span)
     }
 
-    // مجال المراكز الذي يسمح باستيعاب جميع الشموع
-    // دون تغيير حجم النطاق الحالي.
     val minimumCenter = highest - span * safeHalfFraction
     val maximumCenter = lowest + span * safeHalfFraction
 
@@ -327,7 +317,6 @@ private fun fitViewportToCandles(
         )
     }
 
-    // إذا لم تكفِ المساحة، نوسع النطاق مع احتياط صغير.
     val expandedSpan = maxOf(
         span,
         (highest - lowest) /
@@ -406,8 +395,6 @@ fun TradingHomeScreen() {
                 .background(C.Divider)
         )
 
-        // الشارت يملأ كل المساحة المتاحة حتى أقرب نقطة للأسفل،
-        // ولوحة التداول تليه مباشرة بدون أي فراغ زائد.
         LiveCandlestickChart(
             modifier = Modifier
                 .weight(1f)
@@ -673,11 +660,6 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
 
     val density = LocalDensity.current
 
-    val rightAxisPx = with(density) {
-        ChartRightAxisWidth.toPx()
-    }
-
-    // خط المحاور أصغر قليلًا: أسعار الحواف.
     val axisTextPx = with(density) {
         9.sp.toPx()
     }
@@ -686,9 +668,11 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
         10.sp.toPx()
     }
 
+    // أرقام الأسعار على الحافة اليمنى: أبيض نقي،
+    // بلا خلفية ولا ظل — والشارت ظاهر أسفلها مباشرة.
     val axisPaint = remember(axisTextPx) {
         NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply {
-            color = C.TextSecondary.toArgb()
+            color = Color.White.toArgb()
             textSize = axisTextPx
             textAlign = NativePaint.Align.RIGHT
             typeface = Typeface.DEFAULT
@@ -725,18 +709,24 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
         candles
     )
 
-    // حفظ التوسيع التلقائي العمودي فقط،
-    // دون تقليص تلقائي مع كل تحديث.
     SideEffect {
         if (viewport != fittedViewport) {
             viewport = fittedViewport
         }
     }
 
-    // التكبير حول مكان ثابت:
-    // الشموع والنطاق السعري يتوسعان بنفس النسبة معًا،
-    // ومركز السعر لا يتحرك، فالشبكة تبقى في موضعها
-    // ولا يبدو الشارت ككل أنه ينتقل أو يتكبر حول اللمسة.
+    // ============================================================
+    // التكبير والتصغير:
+    //
+    // الشارت ثابت والجريد ثابت. نقطة الارتكاز هي الشمعة النشطة
+    // نفسها (خط السعر الحالي) — موضعها على الشاشة لا يتحرك أبدًا.
+    //
+    // الشموع وحدها تتكبر وتتصغر في مكانها:
+    //  - أفقيًا: حول موضعها الثابت عند 80% من العرض.
+    //  - عموديًا: حول خط السعر الحالي الذي يبقى في نفس البكسل.
+    //
+    // لا يوجد pan ولا دوران ولا تحريك للشارت إطلاقًا.
+    // ============================================================
     fun applyZoom(factor: Double) {
         if (!factor.isFinite() || factor <= 0.0) {
             return
@@ -748,11 +738,25 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
 
         val ratio = newBars / viewport.visibleBars
 
+        val newSpan = (
+            viewport.priceSpan * ratio
+        ).coerceAtLeast(MIN_PRICE_SPAN)
+
+        // نسبة موضع السعر الحالي داخل النافذة قبل التكبير.
+        val currentPrice = candles.last().close.toDouble()
+
+        val priceFraction =
+            (viewport.maxPrice - currentPrice) / viewport.priceSpan
+
+        // إعادة حساب المركز بحيث يبقى السعر الحالي
+        // في نفس البكسل بالضبط بعد تغيير النطاق.
+        val newCenterPrice =
+            currentPrice + (0.5 - priceFraction) * newSpan
+
         viewport = viewport.copy(
             visibleBars = newBars,
-            priceSpan = (
-                viewport.priceSpan * ratio
-            ).coerceAtLeast(MIN_PRICE_SPAN)
+            centerPrice = newCenterPrice,
+            priceSpan = newSpan
         )
     }
 
@@ -773,10 +777,8 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
             val currentMinute =
                 now / MINUTE_MS * MINUTE_MS
 
-            // إضافة كل الدقائق الناقصة عند عودة التطبيق.
             // مركز الزمن مشتق من قاعدة الـ80%،
-            // فيتقدم تلقائيًا مع كل شمعة جديدة
-            // دون أي تحريك يدوي أو استجابة للسحب.
+            // فيتقدم تلقائيًا مع كل شمعة جديدة.
             while (candles.last().time < currentMinute) {
                 val previous = candles.last()
 
@@ -818,7 +820,6 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
         }
     }
 
-    // LTR محلي لهذا المكون.
     CompositionLocalProvider(
         LocalLayoutDirection provides LayoutDirection.Ltr
     ) {
@@ -826,8 +827,29 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
             modifier = modifier
                 .background(C.BG)
         ) {
-            // خلفية موحدة بلون المنصة الأساسي
-            // بدون صورة ولا تدرج لضمان لون واحد في كل الشاشة.
+            // خلفية الشارت الكاملة.
+            AsyncImage(
+                model = CHART_BG_URL,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize()
+            )
+
+            // تعتيم خفيف موحد فوق الخلفية حتى تبقى
+            // الشموع والجريد واضحة.
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                C.BG.copy(alpha = 0.80f),
+                                Color(0xFF231C3E).copy(alpha = 0.78f),
+                                C.BG.copy(alpha = 0.84f)
+                            )
+                        )
+                    )
+            )
 
             Canvas(
                 modifier = Modifier
@@ -853,15 +875,13 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                         }
                     }
             ) {
-                // لا يوجد أي بادينج يمين أو يسار:
-                // منطقة الشموع تبدأ من حافة الشاشة اليسرى.
+                // منطقة الرسم تغطي كامل العرض بلا أي بادينج —
+                // الشموع والجريد يمتدان حتى حافة الشاشة اليمنى
+                // ويمران أسفل أرقام الأسعار مباشرة.
                 val plotLeft = 0f
-                val plotRight = size.width - rightAxisPx
+                val plotRight = size.width
 
                 val plotWidth = plotRight - plotLeft
-
-                // لا يوجد شريط وقت سفلي:
-                // الرسم يمتد لكامل ارتفاع الكانفاس.
                 val plotHeight = size.height
 
                 if (plotWidth <= 1f || plotHeight <= 1f) {
@@ -899,15 +919,8 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                         (paint.ascent() + paint.descent()) / 2f
                 }
 
-                val safeTop =
-                    plotHeight * CANDLE_SAFE_MARGIN.toFloat()
-
-                val safeBottom =
-                    plotHeight *
-                        (1.0 - CANDLE_SAFE_MARGIN).toFloat()
-
                 // =================================================
-                // شبكة السعر
+                // شبكة السعر — تمتد لكامل العرض
                 // =================================================
 
                 val targetPriceRows = (
@@ -923,13 +936,13 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                 val firstPrice =
                     ceil(view.minPrice / priceStep).toLong()
 
-                val lastPrice =
+                val lastPriceTick =
                     floor(view.maxPrice / priceStep).toLong()
 
                 val native = drawContext.canvas.nativeCanvas
 
-                if (lastPrice >= firstPrice) {
-                    for (tick in firstPrice..lastPrice) {
+                if (lastPriceTick >= firstPrice) {
+                    for (tick in firstPrice..lastPriceTick) {
                         val price = tick.toDouble() * priceStep
                         val y = yForPrice(price)
 
@@ -940,6 +953,9 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                             strokeWidth = 1.dp.toPx()
                         )
 
+                        // الرقم وحده على الحافة اليمنى:
+                        // أبيض، بلا خلفية ولا ظل ولا صندوق،
+                        // وخط الشبكة والشموع ظاهرة أسفله مباشرة.
                         if (
                             y >= axisTextPx &&
                             y <= plotHeight - axisTextPx / 2f
@@ -956,7 +972,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
 
                 // =================================================
                 // شبكة الزمن — داخل الشارت نفسه
-                // بدون شريط سفلي، بدون خلفية، بدون ظل أو صندوق.
+                // بدون شريط سفلي ولا خلفية ولا ظل.
                 // =================================================
 
                 val targetTimeColumns = (
@@ -998,8 +1014,6 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                         val halfText =
                             timePaint.measureText(label) / 2f
 
-                        // نص الوقت مرسوم داخل منطقة الشموع
-                        // عند أسفل الحافة مباشرة، بلا خلفية.
                         if (
                             x - halfText >= plotLeft &&
                             x + halfText <= plotRight
@@ -1017,16 +1031,8 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                     }
                 }
 
-                // فصل عمود الأسعار عن منطقة الشموع.
-                drawLine(
-                    C.Divider.copy(alpha = 0.65f),
-                    Offset(plotRight, 0f),
-                    Offset(plotRight, plotHeight),
-                    1.dp.toPx()
-                )
-
                 // =================================================
-                // رسم الشموع
+                // رسم الشموع — بكامل العرض
                 // =================================================
 
                 val candleSpacing =
@@ -1086,7 +1092,6 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                             val bodyHeight = bodyBottom - bodyTop
 
                             if (bodyHeight < 1.dp.toPx()) {
-                                // شمعة دوجي: خط في موضعها الحقيقي.
                                 drawLine(
                                     color = color,
                                     start = Offset(
@@ -1117,10 +1122,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                 }
 
                 // =================================================
-                // خط السعر الحالي
-                //
-                // الشمعة النشطة ثابتة دائمًا عند 80% من العرض
-                // عبر centerBar المشتق من قاعدة الـ80%.
+                // خط السعر الحالي — الشمعة النشطة ثابتة عند 80%
                 // =================================================
 
                 val currentPrice =
@@ -1155,30 +1157,19 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
 
                     tagPaint.textSize = tagTextPx
 
-                    val availableTextWidth =
-                        rightAxisPx - 12.dp.toPx()
+                    val tagWidth =
+                        tagPaint.measureText(tagLabel) +
+                            14.dp.toPx()
 
-                    val measuredWidth =
-                        tagPaint.measureText(tagLabel)
-
-                    if (measuredWidth > availableTextWidth) {
-                        tagPaint.textSize =
-                            tagTextPx *
-                                availableTextWidth / measuredWidth
-                    }
-
-                    val tagHeight = 22.dp.toPx()
+                    val tagHeight = 20.dp.toPx()
 
                     drawRoundRect(
                         color = C.PriceTag,
                         topLeft = Offset(
-                            plotRight + 2.dp.toPx(),
+                            size.width - tagWidth - 3.dp.toPx(),
                             currentY - tagHeight / 2f
                         ),
-                        size = Size(
-                            rightAxisPx - 6.dp.toPx(),
-                            tagHeight
-                        ),
+                        size = Size(tagWidth, tagHeight),
                         cornerRadius = CornerRadius(
                             4.dp.toPx()
                         )
@@ -1186,16 +1177,15 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
 
                     native.drawText(
                         tagLabel,
-                        plotRight + rightAxisPx / 2f -
-                            1.dp.toPx(),
+                        size.width - 3.dp.toPx() - tagWidth / 2f,
                         centeredBaseline(currentY, tagPaint),
                         tagPaint
                     )
 
                     native.drawText(
                         "M1",
-                        plotRight - 6.dp.toPx(),
-                        currentY - 9.dp.toPx(),
+                        size.width - 6.dp.toPx(),
+                        currentY - 11.dp.toPx(),
                         detailPaint
                     )
 
@@ -1206,8 +1196,8 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                             secondsLeft / 60,
                             secondsLeft % 60
                         ),
-                        plotRight - 6.dp.toPx(),
-                        currentY + 19.dp.toPx(),
+                        size.width - 6.dp.toPx(),
+                        currentY + 21.dp.toPx(),
                         detailPaint
                     )
                 }
@@ -1268,7 +1258,7 @@ fun TradePanel() {
 }
 
 // ============================================================
-// نسبة الشراء والبيع
+// نسبة الشراء والبيع — بنفس الألوان الساطعة
 // ============================================================
 
 @Composable
@@ -1427,7 +1417,7 @@ private fun TradeInput(
 }
 
 // ============================================================
-// أزرار الشراء والبيع
+// أزرار الشراء والبيع — أخضر وأحمر ساطعان
 // ============================================================
 
 @Composable
@@ -1491,9 +1481,11 @@ private fun TradeButton(
 }
 
 // ============================================================
-// الشريط السفلي — أيقونات بحجم واحد وترتيب معكوس
-// المزيد في أقصى اليمين ثم أول الاجتماعي ثم Pro mode
-// ثم الرؤى ثم التداولات في أقصى اليسار.
+// الشريط السفلي
+//
+// كل الأيقونات 24dp بنفس الحجم بالضبط،
+// وعند الضغط على أي أيقونة يظهر لها نفس مربع Pro mode.
+// الترتيب: المزيد يمينًا ... التداولات يسارًا.
 // ============================================================
 
 @Composable
@@ -1512,8 +1504,6 @@ fun BottomNavBar() {
                 .background(C.Divider)
         )
 
-        // اتجاه ثابت لضمان أن المزيد يبقى في أقصى اليمين
-        // مهما كانت اتجاهية النظام.
         CompositionLocalProvider(
             LocalLayoutDirection provides LayoutDirection.Ltr
         ) {
@@ -1544,8 +1534,7 @@ fun BottomNavBar() {
                 BottomItem(
                     "Pro mode",
                     selected == 2,
-                    { selected = 2 },
-                    highlight = true
+                    { selected = 2 }
                 ) {
                     ProIcon(Modifier.size(24.dp), it)
                 }
@@ -1575,23 +1564,16 @@ fun BottomItem(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
-    highlight: Boolean = false,
     icon: @Composable (Color) -> Unit
 ) {
-    val iconColor = when {
-        highlight && selected -> C.Cyan
-        selected -> C.Purple
-        else -> C.TextSecondary
-    }
+    val iconColor =
+        if (selected) C.Cyan else C.TextSecondary
 
-    val labelColor = when {
-        highlight && selected -> C.TextPrimary
-        selected -> C.Cyan
-        else -> C.TextSecondary
-    }
+    val labelColor =
+        if (selected) C.Cyan else C.TextSecondary
 
-    // كل الأيقونات بنفس الحجم تمامًا،
-    // والتمييز يكون بالألوان فقط.
+    // نفس المربع لكل الأيقونات عند التحديد —
+    // مثل مربع Pro mode تمامًا.
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -1604,7 +1586,7 @@ fun BottomItem(
                 .size(34.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(
-                    if (highlight && selected) {
+                    if (selected) {
                         C.SurfaceRaised
                     } else {
                         Color.Transparent
@@ -1612,7 +1594,7 @@ fun BottomItem(
                 )
                 .border(
                     1.dp,
-                    if (highlight && selected) {
+                    if (selected) {
                         C.Cyan
                     } else {
                         Color.Transparent
