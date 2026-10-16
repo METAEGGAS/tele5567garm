@@ -78,8 +78,6 @@ object C {
     val Purple = Color(0xFF9C7BFF)
     val Cyan = Color(0xFF58D9F5)
 
-    // أخضر وأحمر ساطعان نضاميان —
-    // تستخدمهما الشموع وشريط التقدم وأزرار الشراء والبيع معًا.
     val Green = Color(0xFF00E676)
     val Red = Color(0xFFFF2D55)
 
@@ -102,15 +100,22 @@ private const val MINUTE_MS = 60_000L
 
 private const val CANDLE_SAFE_MARGIN = 0.15
 
-// حدود التكبير والتصغير اليدوي.
+// حدود التكبير والتصغير اليدوي — نفس الفيديو بالظبط:
+// أقصى تقريب ~10 شموع، أقصى إبعاد ~120 شمعة.
 private const val MIN_VISIBLE_BARS = 10.0
 private const val MAX_VISIBLE_BARS = 120.0
 
 private const val MIN_PRICE_SPAN = 0.00001
 
-// موضع الشمعة النشطة الثابت: 80% من عرض الرسم
-// أي 20% مساحة مستقبلية أمامها دائمًا.
+// موضع الشمعة النشطة في وضع المتابعة اللايف: 80% من عرض الرسم.
 private const val LIVE_CANDLE_FRACTION = 0.80
+
+// سرعة نعومة الـ auto-fit الرأسي (كل ما تزيد تبقى أسرع).
+private const val PRICE_SMOOTHING = 0.18
+
+// لو المركز رجع قريب من وضع اللايف بهالمسافة (بالشموع)
+// يرجع يلازق الحافة اليمين تلقائيًا.
+private const val FOLLOW_SNAP_BARS = 0.75
 
 // ============================================================
 // البيانات
@@ -226,12 +231,17 @@ private fun remainingSeconds(openTime: Long, now: Long): Int {
 // ============================================================
 // نافذة الشارت
 //
-// X: مركز الزمن مشتق دائمًا من قاعدة الـ80%.
-// Y: مركز سعر ونطاق سعر فقط.
+// X: centerBar = مركز الزمن الظاهر (بالشموع، كسرية)
+//    + visibleBars = عدد الشموع الظاهرة.
+//    الزوم بيحصل حوالين نقطة اللمس (centroid) زي الفيديو.
+//
+// Y: centerPrice + priceSpan فقط، وبتتظبط تلقائيًا (auto-fit)
+//    على أعلى/أقل سعر ظاهر بحركة ناعمة بدون اهتزاز.
 // ============================================================
 
 private data class ChartViewport(
     val visibleBars: Double,
+    val centerBar: Double,
     val centerPrice: Double,
     val priceSpan: Double
 ) {
@@ -244,20 +254,27 @@ private data class ChartViewport(
 
 private fun centerBarFor(
     visibleBars: Double,
-    lastBar: Double
+    liveBar: Double
 ): Double {
-    return lastBar -
+    return liveBar -
         (LIVE_CANDLE_FRACTION - 0.5) * visibleBars
 }
 
 private fun initialViewport(
-    candles: List<Candle>
+    candles: List<Candle>,
+    now: Long
 ): ChartViewport {
     val lowest = candles.minOf { it.low.toDouble() }
     val highest = candles.maxOf { it.high.toDouble() }
 
+    val bars = 60.0
+
     return ChartViewport(
-        visibleBars = 60.0,
+        visibleBars = bars,
+        centerBar = centerBarFor(
+            bars,
+            now.toDouble() / MINUTE_MS.toDouble()
+        ),
         centerPrice = (lowest + highest) / 2.0,
         priceSpan = (
             (highest - lowest) / 0.70 * 1.04
@@ -266,68 +283,39 @@ private fun initialViewport(
 }
 
 /**
- * يحافظ على جميع الشموع الظاهرة داخل 15%..85% عموديًا
- * دون أي اهتزاز تلقائي للمقياس.
+ * الهدف الرأسي (centerPrice + priceSpan) اللي بيوصّل كل الشموع
+ * الظاهرة جوه 15%..85% عموديًا. بيتحسب كل فريم، والنعومة
+// بتتعمل في حلقة الـ withFrameNanos.
  */
-private fun fitViewportToCandles(
+private fun verticalTarget(
     viewport: ChartViewport,
     candles: List<Candle>
-): ChartViewport {
-    if (candles.isEmpty()) return viewport
-
-    val lastBar = candles.last().barPosition()
-    val centerBar = centerBarFor(viewport.visibleBars, lastBar)
+): Pair<Double, Double> {
+    if (candles.isEmpty()) {
+        return viewport.centerPrice to viewport.priceSpan
+    }
 
     val halfBars = viewport.visibleBars / 2.0
 
     val visible = candles.filter {
-        abs(it.barPosition() - centerBar) <=
+        abs(it.barPosition() - viewport.centerBar) <=
             halfBars + 0.6
     }
 
-    if (visible.isEmpty()) return viewport
+    if (visible.isEmpty()) {
+        return viewport.centerPrice to viewport.priceSpan
+    }
 
     val lowest = visible.minOf { it.low.toDouble() }
     val highest = visible.maxOf { it.high.toDouble() }
 
-    val span = viewport.priceSpan.coerceAtLeast(MIN_PRICE_SPAN)
-
-    val safeHalfFraction = 0.5 - CANDLE_SAFE_MARGIN
-
-    val allowedLow =
-        viewport.centerPrice - span * safeHalfFraction
-
-    val allowedHigh =
-        viewport.centerPrice + span * safeHalfFraction
-
-    if (lowest >= allowedLow && highest <= allowedHigh) {
-        return viewport.copy(priceSpan = span)
-    }
-
-    val minimumCenter = highest - span * safeHalfFraction
-    val maximumCenter = lowest + span * safeHalfFraction
-
-    if (minimumCenter <= maximumCenter) {
-        return viewport.copy(
-            centerPrice = viewport.centerPrice.coerceIn(
-                minimumCenter,
-                maximumCenter
-            ),
-            priceSpan = span
-        )
-    }
-
-    val expandedSpan = maxOf(
-        span,
+    val span = maxOf(
         (highest - lowest) /
             (1.0 - 2.0 * CANDLE_SAFE_MARGIN) * 1.04,
         MIN_PRICE_SPAN
     )
 
-    return viewport.copy(
-        centerPrice = (highest + lowest) / 2.0,
-        priceSpan = expandedSpan
-    )
+    return (highest + lowest) / 2.0 to span
 }
 
 // ============================================================
@@ -637,9 +625,14 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
         }
     }
 
+    val now0 = remember { System.currentTimeMillis() }
+
     var viewport by remember {
-        mutableStateOf(initialViewport(candles))
+        mutableStateOf(initialViewport(candles, now0))
     }
+
+    // هل الشارت ملازم الحافة اليمين (اللايف) ولا المستخدم بعيد؟
+    var followLive by remember { mutableStateOf(true) }
 
     var chartSize by remember {
         mutableStateOf(IntSize.Zero)
@@ -649,7 +642,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
         mutableStateOf(
             remainingSeconds(
                 candles.last().time,
-                System.currentTimeMillis()
+                now0
             )
         )
     }
@@ -668,8 +661,6 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
         10.sp.toPx()
     }
 
-    // أرقام الأسعار على الحافة اليمنى: أبيض نقي،
-    // بلا خلفية ولا ظل — والشارت ظاهر أسفلها مباشرة.
     val axisPaint = remember(axisTextPx) {
         NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply {
             color = Color.White.toArgb()
@@ -704,71 +695,163 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
         }
     }
 
-    val fittedViewport = fitViewportToCandles(
-        viewport,
-        candles
-    )
+    // ============================================================
+    // الزوم والـ Pan — نفس أسلوب الفيديو بالظبط:
+    //
+    // 1) الزوم أفقي (محور الزمن) حوالين نقطة الارتكاز = مكان
+    //    الصوابع (centroid). الشمعة اللي تحت الصوابع بتفضل
+    //    ثابتة على الشاشة والباقي يتمدد/يتقلص حواليها.
+    //
+    // 2) المحور الرأسي auto-fit تلقائي بنعومة على أعلى وأقل
+    //    سعر ظاهر — زي Pocket Option.
+    //
+    // 3) الـ Pan شغال مع الزوم في نفس الوقت (zoom-and-drag).
+    //
+    // 4) الحدود: 10 شموع أقل حاجة / 120 شمعة أكتر حاجة.
+    //
+    // 5) لو رجعت قرب الحافة اليمين بيرجع يلازق اللايف لوحده.
+    // ============================================================
 
-    SideEffect {
-        if (viewport != fittedViewport) {
-            viewport = fittedViewport
+    fun liveBar(now: Long): Double =
+        now.toDouble() / MINUTE_MS.toDouble()
+
+    fun clampCenterBar(center: Double, bars: Double): Double {
+        if (candles.isEmpty()) return center
+
+        val half = bars / 2.0
+        val firstBar = candles.first().barPosition()
+        val right = liveBar(System.currentTimeMillis())
+
+        // أقصى سحب شمال: 4 شموع ورا أول شمعة.
+        val minCenter = firstBar - 4.0 + half
+
+        // أقصى سحب يمين: مساحة مستقبلية 30% من النافذة.
+        val maxCenter = right + bars * 0.30 - half
+
+        return if (minCenter <= maxCenter) {
+            center.coerceIn(minCenter, maxCenter)
+        } else {
+            (minCenter + maxCenter) / 2.0
         }
     }
 
-    // ============================================================
-    // التكبير والتصغير:
-    //
-    // الشارت ثابت والجريد ثابت. نقطة الارتكاز هي الشمعة النشطة
-    // نفسها (خط السعر الحالي) — موضعها على الشاشة لا يتحرك أبدًا.
-    //
-    // الشموع وحدها تتكبر وتتصغر في مكانها:
-    //  - أفقيًا: حول موضعها الثابت عند 80% من العرض.
-    //  - عموديًا: حول خط السعر الحالي الذي يبقى في نفس البكسل.
-    //
-    // لا يوجد pan ولا دوران ولا تحريك للشارت إطلاقًا.
-    // ============================================================
-    fun applyZoom(factor: Double) {
-        if (!factor.isFinite() || factor <= 0.0) {
+    fun updateFollow() {
+        followLive = abs(
+            viewport.centerBar - centerBarFor(
+                viewport.visibleBars,
+                liveBar(System.currentTimeMillis())
+            )
+        ) < FOLLOW_SNAP_BARS
+    }
+
+    fun applyZoom(factor: Double, anchorX: Float) {
+        val plotWidth = chartSize.width.toFloat()
+
+        if (
+            plotWidth <= 1f ||
+            !factor.isFinite() ||
+            factor <= 0.0
+        ) {
             return
         }
 
-        val newBars = (
-            viewport.visibleBars / factor
-        ).coerceIn(MIN_VISIBLE_BARS, MAX_VISIBLE_BARS)
+        val oldBars = viewport.visibleBars
 
-        val ratio = newBars / viewport.visibleBars
+        val newBars = (oldBars / factor).coerceIn(
+            MIN_VISIBLE_BARS,
+            MAX_VISIBLE_BARS
+        )
 
-        val newSpan = (
-            viewport.priceSpan * ratio
-        ).coerceAtLeast(MIN_PRICE_SPAN)
+        if (newBars == oldBars) return
 
-        // نسبة موضع السعر الحالي داخل النافذة قبل التكبير.
-        val currentPrice = candles.last().close.toDouble()
+        // موضع نقطة الارتكاز كنسبة من عرض الرسم حوالين المركز.
+        val anchorFraction =
+            (anchorX / plotWidth).toDouble() - 0.5
 
-        val priceFraction =
-            (viewport.maxPrice - currentPrice) / viewport.priceSpan
+        // الشمعة اللي تحت الصوابع قبل الزوم.
+        val anchorBar =
+            viewport.centerBar + anchorFraction * oldBars
 
-        // إعادة حساب المركز بحيث يبقى السعر الحالي
-        // في نفس البكسل بالضبط بعد تغيير النطاق.
-        val newCenterPrice =
-            currentPrice + (0.5 - priceFraction) * newSpan
+        // نفس الشمعة لازم تفضل تحت الصوابع بعد الزوم.
+        val newCenter = clampCenterBar(
+            anchorBar - anchorFraction * newBars,
+            newBars
+        )
 
         viewport = viewport.copy(
             visibleBars = newBars,
-            centerPrice = newCenterPrice,
-            priceSpan = newSpan
+            centerBar = newCenter
         )
+
+        updateFollow()
     }
 
-    val currentZoom by rememberUpdatedState<
-        (Double) -> Unit
-    >(
-        newValue = { factor ->
-            applyZoom(factor)
+    fun applyPan(pan: Offset) {
+        val plotWidth = chartSize.width.toFloat()
+
+        if (plotWidth <= 1f || pan.x == 0f) return
+
+        val deltaBars =
+            -(pan.x / plotWidth).toDouble() *
+                viewport.visibleBars
+
+        val newCenter = clampCenterBar(
+            viewport.centerBar + deltaBars,
+            viewport.visibleBars
+        )
+
+        if (newCenter == viewport.centerBar) return
+
+        viewport = viewport.copy(centerBar = newCenter)
+
+        updateFollow()
+    }
+
+    val currentGestures by rememberUpdatedState(
+        object {
+            fun zoom(factor: Double, anchorX: Float) =
+                applyZoom(factor, anchorX)
+
+            fun pan(pan: Offset) = applyPan(pan)
         }
     )
 
-    // تحديث تجريبي للأسعار.
+    // ============================================================
+    // نعومة المحور الرأسي — 60fps:
+    // كل فريم بنقرب centerPrice/priceSpan من الهدف المحسوب
+    // على الشموع الظاهرة، فالسعر بيتظبط بنفسه بسلاسة
+    // أثناء الزوم والسحب بدون أي قفزات.
+    // ============================================================
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameNanos { }
+
+            val (targetCenter, targetSpan) =
+                verticalTarget(viewport, candles)
+
+            val newCenter =
+                viewport.centerPrice +
+                    (targetCenter - viewport.centerPrice) *
+                    PRICE_SMOOTHING
+
+            val newSpan =
+                viewport.priceSpan +
+                    (targetSpan - viewport.priceSpan) *
+                    PRICE_SMOOTHING
+
+            if (
+                abs(newCenter - viewport.centerPrice) > 1e-10 ||
+                abs(newSpan - viewport.priceSpan) > 1e-10
+            ) {
+                viewport = viewport.copy(
+                    centerPrice = newCenter,
+                    priceSpan = newSpan.coerceAtLeast(MIN_PRICE_SPAN)
+                )
+            }
+        }
+    }
+
+    // تحديث الأسعار اللايف.
     LaunchedEffect(Unit) {
         while (true) {
             delay(260L)
@@ -777,8 +860,6 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
             val currentMinute =
                 now / MINUTE_MS * MINUTE_MS
 
-            // مركز الزمن مشتق من قاعدة الـ80%،
-            // فيتقدم تلقائيًا مع كل شمعة جديدة.
             while (candles.last().time < currentMinute) {
                 val previous = candles.last()
 
@@ -811,6 +892,20 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                 low = minOf(current.low, nextClose)
             )
 
+            // لو لازقين اللايف، المركز ينساح بنعومة مع الوقت
+            // والشمعة النشطة تفضل عند 80% من العرض.
+            if (followLive) {
+                viewport = viewport.copy(
+                    centerBar = clampCenterBar(
+                        centerBarFor(
+                            viewport.visibleBars,
+                            liveBar(now)
+                        ),
+                        viewport.visibleBars
+                    )
+                )
+            }
+
             secondsLeft = remainingSeconds(
                 candles.last().time,
                 now
@@ -827,7 +922,6 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
             modifier = modifier
                 .background(C.BG)
         ) {
-            // خلفية الشارت الكاملة.
             AsyncImage(
                 model = CHART_BG_URL,
                 contentDescription = null,
@@ -835,8 +929,6 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                 modifier = Modifier.matchParentSize()
             )
 
-            // تعتيم خفيف موحد فوق الخلفية حتى تبقى
-            // الشموع والجريد واضحة.
             Box(
                 Modifier
                     .matchParentSize()
@@ -859,25 +951,28 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                     }
                     .pointerInput(Unit) {
                         detectTransformGestures {
-                            _,
-                            _,
+                            centroid,
+                            pan,
                             zoom,
                             _ ->
 
-                            // تجاهل pan والدوران ونقطة اللمس عمدًا.
+                            // Pan أولًا (zoom-and-drag مع بعض).
+                            currentGestures.pan(pan)
+
+                            // زوم حوالين نقطة اللمس بالظبط.
                             if (
                                 zoom.isFinite() &&
                                 zoom > 0f &&
                                 abs(zoom - 1f) > 0.0001f
                             ) {
-                                currentZoom(zoom.toDouble())
+                                currentGestures.zoom(
+                                    zoom.toDouble(),
+                                    centroid.x
+                                )
                             }
                         }
                     }
             ) {
-                // منطقة الرسم تغطي كامل العرض بلا أي بادينج —
-                // الشموع والجريد يمتدان حتى حافة الشاشة اليمنى
-                // ويمران أسفل أرقام الأسعار مباشرة.
                 val plotLeft = 0f
                 val plotRight = size.width
 
@@ -888,18 +983,12 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                     return@Canvas
                 }
 
-                val view = fittedViewport
-
-                val lastBar = candles.last().barPosition()
-                val centerBar = centerBarFor(
-                    view.visibleBars,
-                    lastBar
-                )
+                val view = viewport
 
                 fun xForBar(bar: Double): Float {
                     return plotLeft + (
                         (
-                            bar - centerBar
+                            bar - view.centerBar
                         ) / view.visibleBars + 0.5
                     ).toFloat() * plotWidth
                 }
@@ -920,7 +1009,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                 }
 
                 // =================================================
-                // شبكة السعر — تمتد لكامل العرض
+                // شبكة السعر
                 // =================================================
 
                 val targetPriceRows = (
@@ -953,9 +1042,6 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                             strokeWidth = 1.dp.toPx()
                         )
 
-                        // الرقم وحده على الحافة اليمنى:
-                        // أبيض، بلا خلفية ولا ظل ولا صندوق،
-                        // وخط الشبكة والشموع ظاهرة أسفله مباشرة.
                         if (
                             y >= axisTextPx &&
                             y <= plotHeight - axisTextPx / 2f
@@ -971,8 +1057,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                 }
 
                 // =================================================
-                // شبكة الزمن — داخل الشارت نفسه
-                // بدون شريط سفلي ولا خلفية ولا ظل.
+                // شبكة الزمن
                 // =================================================
 
                 val targetTimeColumns = (
@@ -984,10 +1069,10 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                 )
 
                 val firstBar =
-                    centerBar - view.visibleBars / 2.0
+                    view.centerBar - view.visibleBars / 2.0
 
                 val lastBarLimit =
-                    centerBar + view.visibleBars / 2.0
+                    view.centerBar + view.visibleBars / 2.0
 
                 val firstTimeTick =
                     ceil(firstBar / timeStep.toDouble()).toLong()
@@ -1032,7 +1117,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                 }
 
                 // =================================================
-                // رسم الشموع — بكامل العرض
+                // رسم الشموع
                 // =================================================
 
                 val candleSpacing =
@@ -1122,7 +1207,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
                 }
 
                 // =================================================
-                // خط السعر الحالي — الشمعة النشطة ثابتة عند 80%
+                // خط السعر الحالي
                 // =================================================
 
                 val currentPrice =
@@ -1231,7 +1316,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
 }
 
 // ============================================================
-// لوحة التداول — هوامش وفراغات أقل
+// لوحة التداول
 // ============================================================
 
 @Composable
@@ -1258,7 +1343,7 @@ fun TradePanel() {
 }
 
 // ============================================================
-// نسبة الشراء والبيع — بنفس الألوان الساطعة
+// نسبة الشراء والبيع
 // ============================================================
 
 @Composable
@@ -1417,7 +1502,7 @@ private fun TradeInput(
 }
 
 // ============================================================
-// أزرار الشراء والبيع — أخضر وأحمر ساطعان
+// أزرار الشراء والبيع
 // ============================================================
 
 @Composable
@@ -1482,10 +1567,6 @@ private fun TradeButton(
 
 // ============================================================
 // الشريط السفلي
-//
-// كل الأيقونات 24dp بنفس الحجم بالضبط،
-// وعند الضغط على أي أيقونة يظهر لها نفس مربع Pro mode.
-// الترتيب: المزيد يمينًا ... التداولات يسارًا.
 // ============================================================
 
 @Composable
@@ -1572,8 +1653,6 @@ fun BottomItem(
     val labelColor =
         if (selected) C.Cyan else C.TextSecondary
 
-    // نفس المربع لكل الأيقونات عند التحديد —
-    // مثل مربع Pro mode تمامًا.
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
