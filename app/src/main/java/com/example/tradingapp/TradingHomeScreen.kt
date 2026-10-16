@@ -5,29 +5,34 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,88 +42,387 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.log10
+import kotlin.math.pow
 import kotlin.random.Random
 import android.graphics.Paint as NativePaint
 
 // ============================================================
-// روابط الصور
+// الصور
 // ============================================================
-const val AVATAR_URL = "https://i.ibb.co/Z68jNfbd/IMG-20250906-195228-439.jpg"
-const val AVATAR_FRAME_URL = "https://i.ibb.co/5xvxC8Kw/file-00000000d4f882439f813f969679659f.png"
-const val CHART_BG_URL = "https://i.ibb.co/zWHWPv92/file-0000000090c48211944cf52560e3482a.png"
-const val GIFT_ICON_URL = "https://cdn-icons-png.flaticon.com/128/18546/18546266.png"
+
+const val AVATAR_URL =
+    "https://i.ibb.co/Z68jNfbd/IMG-20250906-195228-439.jpg"
+
+const val AVATAR_FRAME_URL =
+    "https://i.ibb.co/5xvxC8Kw/file-00000000d4f882439f813f969679659f.png"
+
+const val CHART_BG_URL =
+    "https://i.ibb.co/zWHWPv92/file-0000000090c48211944cf52560e3482a.png"
+
+const val GIFT_ICON_URL =
+    "https://cdn-icons-png.flaticon.com/128/18546/18546266.png"
 
 // ============================================================
-// الألوان
+// ثيم بنفسجي / سماوي
 // ============================================================
+
 object C {
-    val BG = Color(0xFF0F1621)
-    val Surface = Color(0xFF1A2332)
-    val Green = Color(0xFF2ECC71)
-    val Red = Color(0xFFE74C3C)
-    val Blue = Color(0xFF3498DB)
-    val Yellow = Color(0xFFF1C40F)
-    val TextPrimary = Color(0xFFFFFFFF)
-    val TextSecondary = Color(0xFF8899AA)
-    val Divider = Color(0xFF2A3441)
-    val Grid = Color(0xFF22303F)
-    val PriceTag = Color(0xFF84A7C9)
+    val BG = Color(0xFF141126)
+    val Surface = Color(0xFF24203D)
+    val SurfaceRaised = Color(0xFF30284F)
+
+    val Purple = Color(0xFF9C7BFF)
+    val Cyan = Color(0xFF58D9F5)
+
+    // الحفاظ على دلالة الشراء والبيع
+    val Green = Color(0xFF2ECC91)
+    val Red = Color(0xFFF06489)
+
+    val Blue = Cyan
+    val Yellow = Color(0xFFFFD34D)
+
+    val TextPrimary = Color(0xFFF5F2FF)
+    val TextSecondary = Color(0xFFA9A5C6)
+
+    val Divider = Color(0xFF3D355A)
+    val Grid = Color(0xFF67558D)
+    val PriceTag = Cyan
 }
 
 // ============================================================
-// نموذج الشمعة + بيانات البداية (نفس مسار الصورة)
+// إعدادات الرسم
 // ============================================================
-data class Candle(val open: Float, val high: Float, val low: Float, val close: Float)
 
-fun seedCandles(): List<Candle> {
+private const val MINUTE_MS = 60_000L
+
+// كل هامش يمثل 15% من ارتفاع منطقة الشموع، دون محور الوقت.
+private const val CANDLE_SAFE_MARGIN = 0.15
+
+private const val MIN_VISIBLE_BARS = 8.0
+private const val MAX_VISIBLE_BARS = 140.0
+
+private const val MIN_PRICE_SPAN = 0.00001
+
+private val ChartLeftInset = 8.dp
+private val ChartRightAxisWidth = 72.dp
+private val ChartTimeAxisHeight = 30.dp
+
+// ============================================================
+// البيانات
+// ============================================================
+
+data class Candle(
+    val open: Float,
+    val high: Float,
+    val low: Float,
+    val close: Float,
+    val time: Long = 0L
+)
+
+private fun Candle.barPosition(): Double =
+    time.toDouble() / MINUTE_MS.toDouble()
+
+fun seedCandles(
+    lastOpenTime: Long =
+        System.currentTimeMillis() / MINUTE_MS * MINUTE_MS
+): List<Candle> {
     val anchors = listOf(
-        0 to 1.8772f, 5 to 1.8748f, 9 to 1.8742f, 13 to 1.8708f,
-        17 to 1.8685f, 21 to 1.8662f, 25 to 1.8644f, 28 to 1.86344f,
-        32 to 1.8660f, 36 to 1.8686f, 40 to 1.8678f, 44 to 1.8672f,
-        48 to 1.8686f, 52 to 1.86978f
+        0 to 1.8772f,
+        5 to 1.8748f,
+        9 to 1.8742f,
+        13 to 1.8708f,
+        17 to 1.8685f,
+        21 to 1.8662f,
+        25 to 1.8644f,
+        28 to 1.86344f,
+        32 to 1.8660f,
+        36 to 1.8686f,
+        40 to 1.8678f,
+        44 to 1.8672f,
+        48 to 1.8686f,
+        52 to 1.86978f
     )
-    fun priceAt(i: Int): Float {
-        var a = anchors.first(); var b = anchors.last()
-        for (k in 0 until anchors.size - 1) {
-            if (i >= anchors[k].first && i <= anchors[k + 1].first) {
-                a = anchors[k]; b = anchors[k + 1]; break
+
+    fun priceAt(index: Int): Float {
+        var a = anchors.first()
+        var b = anchors.last()
+
+        for (k in 0 until anchors.lastIndex) {
+            if (index in anchors[k].first..anchors[k + 1].first) {
+                a = anchors[k]
+                b = anchors[k + 1]
+                break
             }
         }
-        val t = if (b.first == a.first) 0f else (i - a.first).toFloat() / (b.first - a.first)
-        return a.second + (b.second - a.second) * t
+
+        val fraction =
+            if (a.first == b.first) {
+                0f
+            } else {
+                (index - a.first).toFloat() /
+                    (b.first - a.first).toFloat()
+            }
+
+        return a.second + (b.second - a.second) * fraction
     }
-    val rnd = java.util.Random(42)
-    val list = ArrayList<Candle>()
-    var prevClose = 1.8772f
-    for (i in 0..52) {
-        val target = priceAt(i) + (rnd.nextFloat() - 0.5f) * 0.0009f
-        val open = prevClose
-        val close = target
-        list.add(
+
+    val random = java.util.Random(42)
+    val result = ArrayList<Candle>()
+    var previousClose = 1.8772f
+
+    for (index in 0..52) {
+        val close =
+            priceAt(index) +
+                (random.nextFloat() - 0.5f) * 0.0009f
+
+        result.add(
             Candle(
-                open,
-                maxOf(open, close) + rnd.nextFloat() * 0.0008f,
-                minOf(open, close) - rnd.nextFloat() * 0.0008f,
-                close
+                open = previousClose,
+                high = maxOf(previousClose, close) +
+                    random.nextFloat() * 0.0008f,
+                low = minOf(previousClose, close) -
+                    random.nextFloat() * 0.0008f,
+                close = close,
+                time = lastOpenTime -
+                    (52L - index.toLong()) * MINUTE_MS
             )
         )
-        prevClose = close
+
+        previousClose = close
     }
-    return list
+
+    return result
 }
 
 fun clockNow(): String {
-    val f = SimpleDateFormat("HH:mm:ss", Locale.US)
-    f.timeZone = TimeZone.getTimeZone("GMT+3")
-    return f.format(Date())
+    return SimpleDateFormat("HH:mm:ss", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("GMT+3")
+    }.format(Date())
 }
 
-fun fmt(p: Float): String = String.format(Locale.US, "%.5f", p)
+fun fmt(price: Float): String =
+    String.format(Locale.US, "%.5f", price)
+
+private fun priceText(price: Double, decimals: Int): String =
+    String.format(Locale.US, "%.${decimals}f", price)
+
+private fun candleTimeText(time: Long): String {
+    return SimpleDateFormat("HH:mm", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("GMT+3")
+    }.format(Date(time))
+}
+
+private fun remainingSeconds(openTime: Long, now: Long): Int {
+    return ceil(
+        (openTime + MINUTE_MS - now).toDouble() / 1000.0
+    ).toInt().coerceIn(0, 60)
+}
 
 // ============================================================
-// الشاشة الرئيسية — الشارت يملأ كل المساحة بين الشريطين
+// نافذة الشارت
+//
+// X: وقت حقيقي بالمللي ثانية محول إلى وحدات دقيقة.
+// Y: قيمة سعر، وليس إحداثيات بكسل مخزنة.
+//
+// الشموع والشبكة والمحاور تستخدم النافذة نفسها.
 // ============================================================
+
+private data class ChartViewport(
+    val centerBar: Double,
+    val visibleBars: Double,
+    val centerPrice: Double,
+    val priceSpan: Double
+) {
+    val minPrice: Double
+        get() = centerPrice - priceSpan / 2.0
+
+    val maxPrice: Double
+        get() = centerPrice + priceSpan / 2.0
+}
+
+private fun initialViewport(
+    candles: List<Candle>
+): ChartViewport {
+    val lowest = candles.minOf { it.low.toDouble() }
+    val highest = candles.maxOf { it.high.toDouble() }
+
+    return ChartViewport(
+        // ترك مساحة صغيرة بعد آخر شمعة.
+        centerBar = candles.last().barPosition() - 22.0,
+        visibleBars = 60.0,
+        centerPrice = (lowest + highest) / 2.0,
+        priceSpan = (
+            (highest - lowest) / 0.70 * 1.04
+        ).coerceAtLeast(MIN_PRICE_SPAN)
+    )
+}
+
+/**
+ * يحافظ على جميع الشموع الظاهرة داخل 15%..85%.
+ *
+ * لا يصغر نطاق الأسعار تلقائيًا، بل يوسعه عند الحاجة فقط.
+ * بذلك لا يهتز المقياس صعودًا وهبوطًا مع كل تغير صغير.
+ */
+private fun fitViewportToCandles(
+    viewport: ChartViewport,
+    candles: List<Candle>
+): ChartViewport {
+    if (candles.isEmpty()) return viewport
+
+    val halfBars = viewport.visibleBars / 2.0
+
+    val visible = candles.filter {
+        abs(it.barPosition() - viewport.centerBar) <=
+            halfBars + 0.6
+    }
+
+    if (visible.isEmpty()) return viewport
+
+    val lowest = visible.minOf { it.low.toDouble() }
+    val highest = visible.maxOf { it.high.toDouble() }
+
+    val span = viewport.priceSpan.coerceAtLeast(MIN_PRICE_SPAN)
+
+    // نصف مساحة الأمان المتاحة حول مركز السعر.
+    val safeHalfFraction = 0.5 - CANDLE_SAFE_MARGIN
+
+    val allowedLow =
+        viewport.centerPrice - span * safeHalfFraction
+
+    val allowedHigh =
+        viewport.centerPrice + span * safeHalfFraction
+
+    if (lowest >= allowedLow && highest <= allowedHigh) {
+        return viewport.copy(priceSpan = span)
+    }
+
+    // مجال المراكز الذي يسمح باستيعاب جميع الشموع
+    // دون تغيير حجم النطاق الحالي.
+    val minimumCenter = highest - span * safeHalfFraction
+    val maximumCenter = lowest + span * safeHalfFraction
+
+    if (minimumCenter <= maximumCenter) {
+        return viewport.copy(
+            centerPrice = viewport.centerPrice.coerceIn(
+                minimumCenter,
+                maximumCenter
+            ),
+            priceSpan = span
+        )
+    }
+
+    // إذا لم تكفِ المساحة، نوسع النطاق مع احتياط صغير
+    // حتى لا تلامس الذيول حدود الـ15%.
+    val expandedSpan = maxOf(
+        span,
+        (highest - lowest) /
+            (1.0 - 2.0 * CANDLE_SAFE_MARGIN) * 1.04,
+        MIN_PRICE_SPAN
+    )
+
+    return viewport.copy(
+        centerPrice = (highest + lowest) / 2.0,
+        priceSpan = expandedSpan
+    )
+}
+
+/**
+ * تكبير حول نقطة محددة داخل الرسم.
+ *
+ * لا نطبق pan أو rotation.
+ * السعر والوقت الموجودان تحت نقطة اللمس يبقيان
+ * تحتها أثناء التحويل، ما لم يتطلب هامش الأمان إعادة ضبط Y.
+ */
+private fun zoomViewport(
+    viewport: ChartViewport,
+    factor: Double,
+    anchorX: Double,
+    anchorY: Double
+): ChartViewport {
+    if (!factor.isFinite() || factor <= 0.0) {
+        return viewport
+    }
+
+    val newBars = (
+        viewport.visibleBars / factor
+    ).coerceIn(MIN_VISIBLE_BARS, MAX_VISIBLE_BARS)
+
+    val ratio = newBars / viewport.visibleBars
+
+    val newSpan = (
+        viewport.priceSpan * ratio
+    ).coerceAtLeast(MIN_PRICE_SPAN)
+
+    val x = anchorX.coerceIn(0.0, 1.0)
+    val y = anchorY.coerceIn(0.0, 1.0)
+
+    val anchorBar =
+        viewport.centerBar + (x - 0.5) * viewport.visibleBars
+
+    val anchorPrice =
+        viewport.centerPrice + (0.5 - y) * viewport.priceSpan
+
+    return ChartViewport(
+        centerBar = anchorBar - (x - 0.5) * newBars,
+        visibleBars = newBars,
+        centerPrice = anchorPrice - (0.5 - y) * newSpan,
+        priceSpan = newSpan
+    )
+}
+
+// ============================================================
+// خطوات الشبكة
+// ============================================================
+
+private fun nicePriceStep(rawStep: Double): Double {
+    if (!rawStep.isFinite() || rawStep <= 0.0) {
+        return 0.001
+    }
+
+    val magnitude = 10.0.pow(floor(log10(rawStep)))
+    val normalized = rawStep / magnitude
+
+    val nice = when {
+        normalized <= 1.0 -> 1.0
+        normalized <= 2.0 -> 2.0
+        normalized <= 2.5 -> 2.5
+        normalized <= 5.0 -> 5.0
+        else -> 10.0
+    }
+
+    return nice * magnitude
+}
+
+private fun priceDecimals(step: Double): Int {
+    for (decimals in 5..8) {
+        val scaled = step * 10.0.pow(decimals.toDouble())
+
+        if (abs(scaled - kotlin.math.round(scaled)) < 0.000001) {
+            return decimals
+        }
+    }
+
+    return 8
+}
+
+private fun niceTimeStep(rawMinutes: Double): Long {
+    val steps = longArrayOf(
+        1, 2, 5, 10, 15, 20, 30, 60, 120, 240
+    )
+
+    return steps.firstOrNull {
+        it.toDouble() >= rawMinutes
+    } ?: steps.last()
+}
+
+// ============================================================
+// الشاشة الرئيسية
+// ============================================================
+
 @Composable
 fun TradingHomeScreen() {
     Column(
@@ -128,72 +432,37 @@ fun TradingHomeScreen() {
     ) {
         TopBar()
 
-        // الخيط الفاصل الشفاف بين الشريط العلوي والشارت
         Box(
             Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(C.Divider.copy(alpha = 0.5f))
+                .background(C.Divider)
         )
 
-        // ===== منطقة الشارت الكاملة (تمتد للأعلى وللأسفل) =====
-        Box(
+        // الشارت له مساحة مستقلة تمامًا.
+        // لوحة التداول ليست مرسومة فوق الشموع.
+        LiveCandlestickChart(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-        ) {
-            // خلفية الشارت (صورتك) بملء كامل
-            AsyncImage(
-                model = CHART_BG_URL,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.matchParentSize()
-            )
-            // تعتيم خفيف فوق الخلفية للقراءة
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .background(Color(0xFF0F1621).copy(alpha = 0.45f))
-            )
+        )
 
-            // الشارت الحي (فوق الخلفية، تحت كل العناصر)
-            LiveCandlestickChart(Modifier.matchParentSize())
-
-            // مربع اختيار الأزواج عائم داخل منطقة الشارت — على الحافة اليسرى الفعلية
-            PairHeader(
-                Modifier
-                    .align(AbsoluteAlignment.TopLeft)
-                    .padding(top = 8.dp, start = 12.dp)
-            )
-
-            // ===== القائمة السفلية داخل حاوية صلبة معتمة =====
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .background(C.BG)
-            ) {
-                Spacer(Modifier.height(12.dp))
-                SentimentBar()
-                Spacer(Modifier.height(12.dp))
-                TradeInputs()
-                Spacer(Modifier.height(10.dp))
-                TradeButtons()
-                Spacer(Modifier.height(10.dp))
-            }
-        }
+        TradePanel()
 
         BottomNavBar()
     }
 }
 
 // ============================================================
-// الشريط العلوي — بترتيب فيزيائي ثابت (Ltr):
-// المحفظة الصفراء على الحافة اليسرى، ثم الرصيد، ثم الهدية والأفاتار يميناً
+// الشريط العلوي
 // ============================================================
+
 @Composable
 fun TopBar() {
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+    // تثبيت ترتيب هذا الشريط فقط على اليسار الفعلي.
+    CompositionLocalProvider(
+        LocalLayoutDirection provides LayoutDirection.Ltr
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -201,7 +470,6 @@ fun TopBar() {
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // زر المحفظة الأصفر — على الحافة اليسرى (مكان الهدية سابقاً)
             Box(
                 modifier = Modifier
                     .size(48.dp)
@@ -209,12 +477,14 @@ fun TopBar() {
                     .background(C.Yellow),
                 contentAlignment = Alignment.Center
             ) {
-                WalletIcon(Modifier.size(26.dp))
+                WalletIcon(
+                    Modifier.size(26.dp),
+                    color = Color(0xFF312740)
+                )
             }
 
             Spacer(Modifier.width(8.dp))
 
-            // بطاقة الرصيد (مكان زر المحفظة سابقاً)
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
@@ -223,13 +493,32 @@ fun TopBar() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("QT Real", color = C.TextSecondary, fontSize = 10.sp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "QT Real",
+                            color = C.TextSecondary,
+                            fontSize = 10.sp
+                        )
+
                         Spacer(Modifier.width(6.dp))
-                        Text("حلال", color = C.Green, fontSize = 10.sp)
+
+                        Text(
+                            "حلال",
+                            color = C.Green,
+                            fontSize = 10.sp
+                        )
+
                         Spacer(Modifier.width(6.dp))
-                        Text("USD", color = C.TextSecondary, fontSize = 10.sp)
+
+                        Text(
+                            "USD",
+                            color = C.TextSecondary,
+                            fontSize = 10.sp
+                        )
                     }
+
                     Text(
                         "0.39",
                         color = C.TextPrimary,
@@ -237,55 +526,70 @@ fun TopBar() {
                         fontWeight = FontWeight.Bold
                     )
                 }
+
                 Spacer(Modifier.width(10.dp))
                 DownArrow(Modifier.size(10.dp))
             }
 
             Spacer(Modifier.weight(1f))
 
-            // أيقونة الهدية الجديدة (رابطك) مع علامة X
             Box {
                 AsyncImage(
                     model = GIFT_ICON_URL,
-                    contentDescription = null,
+                    contentDescription = "هدية",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.size(36.dp)
                 )
+
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .offset(x = 3.dp, y = (-3).dp)
                         .size(14.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF10182B))
-                        .border(1.dp, Color(0xFF3A4A5F), CircleShape)
+                        .background(C.Surface)
+                        .border(1.dp, C.Divider, CircleShape)
                 ) {
                     Canvas(Modifier.fillMaxSize()) {
-                        val m = size.minDimension * 0.22f
-                        val cx = size.width / 2
-                        val cy = size.height / 2
-                        drawLine(Color.White, Offset(cx - m, cy - m), Offset(cx + m, cy + m), 2.5f, cap = StrokeCap.Round)
-                        drawLine(Color.White, Offset(cx + m, cy - m), Offset(cx - m, cy + m), 2.5f, cap = StrokeCap.Round)
+                        val margin = size.minDimension * 0.22f
+                        val cx = size.width / 2f
+                        val cy = size.height / 2f
+
+                        drawLine(
+                            Color.White,
+                            Offset(cx - margin, cy - margin),
+                            Offset(cx + margin, cy + margin),
+                            1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+
+                        drawLine(
+                            Color.White,
+                            Offset(cx + margin, cy - margin),
+                            Offset(cx - margin, cy + margin),
+                            1.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
                     }
                 }
             }
 
             Spacer(Modifier.width(10.dp))
 
-            // الأفاتار من رابطك + الإطار من رابطك فوقه
             Box(
                 modifier = Modifier.size(52.dp),
                 contentAlignment = Alignment.Center
             ) {
                 AsyncImage(
                     model = AVATAR_URL,
-                    contentDescription = null,
+                    contentDescription = "الصورة الشخصية",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(C.Surface)
                 )
+
                 AsyncImage(
                     model = AVATAR_FRAME_URL,
                     contentDescription = null,
@@ -298,11 +602,14 @@ fun TopBar() {
 }
 
 // ============================================================
-// رأس الزوج — على الحافة اليسرى الفعلية بترتيب ثابت (Ltr)
+// اختيار الزوج
 // ============================================================
+
 @Composable
 fun PairHeader(modifier: Modifier = Modifier) {
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+    CompositionLocalProvider(
+        LocalLayoutDirection provides LayoutDirection.Ltr
+    ) {
         Row(
             modifier = modifier,
             verticalAlignment = Alignment.CenterVertically
@@ -310,27 +617,42 @@ fun PairHeader(modifier: Modifier = Modifier) {
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(22.dp))
-                    .background(C.Surface.copy(alpha = 0.92f))
+                    .background(C.Surface)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // الأعلام المتداخلة
-                Box(Modifier.width(34.dp).height(22.dp)) {
-                    FlagAE(Modifier.size(22.dp).align(Alignment.CenterStart))
+                Box(
+                    Modifier
+                        .width(34.dp)
+                        .height(22.dp)
+                ) {
+                    FlagAE(
+                        Modifier
+                            .size(22.dp)
+                            .align(Alignment.CenterStart)
+                    )
+
                     FlagCN(
                         Modifier
                             .size(22.dp)
                             .align(Alignment.CenterEnd)
-                            .border(1.5.dp, C.Surface, CircleShape)
+                            .border(
+                                1.5.dp,
+                                C.Surface,
+                                CircleShape
+                            )
                     )
                 }
+
                 Spacer(Modifier.width(8.dp))
+
                 Text(
                     "AED/CNY OTC",
                     color = C.TextPrimary,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
                 )
+
                 Spacer(Modifier.width(6.dp))
                 DownArrow(Modifier.size(9.dp))
             }
@@ -341,7 +663,7 @@ fun PairHeader(modifier: Modifier = Modifier) {
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(C.Surface.copy(alpha = 0.92f)),
+                    .background(C.Surface),
                 contentAlignment = Alignment.Center
             ) {
                 DotsIcon(Modifier.size(16.dp))
@@ -351,214 +673,759 @@ fun PairHeader(modifier: Modifier = Modifier) {
 }
 
 // ============================================================
-// الشارت الحي — بكامل العرض، الأسعار الجانبية شفافة فوقه
+// الشارت
 // ============================================================
+
 @Composable
 fun LiveCandlestickChart(modifier: Modifier = Modifier) {
-    val candles = remember { mutableStateListOf<Candle>().also { it.addAll(seedCandles()) } }
-    var secondsLeft by remember { mutableStateOf(25) }
-    var clockText by remember { mutableStateOf(clockNow()) }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(260)
-            val i = candles.lastIndex
-            val c = candles[i]
-            val nc = c.close + (Random.nextFloat() - 0.47f) * 0.0010f
-            candles[i] = c.copy(close = nc, high = maxOf(c.high, nc), low = minOf(c.low, nc))
-        }
-    }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000)
-            clockText = clockNow()
-            if (secondsLeft > 1) {
-                secondsLeft--
-            } else {
-                secondsLeft = 60
-                val last = candles.last()
-                if (candles.size >= 55) candles.removeAt(0)
-                candles.add(Candle(last.close, last.close, last.close, last.close))
-            }
+    val candles = remember {
+        mutableStateListOf<Candle>().apply {
+            addAll(seedCandles())
         }
     }
 
-    val lastClose = candles.last().close
+    var viewport by remember {
+        mutableStateOf(initialViewport(candles))
+    }
+
+    var chartSize by remember {
+        mutableStateOf(IntSize.Zero)
+    }
+
+    var secondsLeft by remember {
+        mutableStateOf(
+            remainingSeconds(
+                candles.last().time,
+                System.currentTimeMillis()
+            )
+        )
+    }
+
+    var clockText by remember {
+        mutableStateOf(clockNow())
+    }
 
     val density = LocalDensity.current
-    val axisPx = with(density) { 10.5.sp.toPx() }
-    val tagPx = with(density) { 11.5.sp.toPx() }
-    // أسعار جانبية شفافة بدون أي خلفية
-    val axisPaint = remember(axisPx) {
+
+    val leftInsetPx = with(density) {
+        ChartLeftInset.toPx()
+    }
+
+    val rightAxisPx = with(density) {
+        ChartRightAxisWidth.toPx()
+    }
+
+    val timeAxisPx = with(density) {
+        ChartTimeAxisHeight.toPx()
+    }
+
+    val axisTextPx = with(density) {
+        10.sp.toPx()
+    }
+
+    val tagTextPx = with(density) {
+        11.sp.toPx()
+    }
+
+    val axisPaint = remember(axisTextPx) {
         NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply {
-            color = C.TextSecondary.copy(alpha = 0.65f).toArgb()
-            textSize = axisPx
+            color = C.TextSecondary.toArgb()
+            textSize = axisTextPx
             textAlign = NativePaint.Align.RIGHT
+            typeface = Typeface.DEFAULT
         }
     }
-    val tagPaint = remember(tagPx) {
+
+    val timePaint = remember(axisTextPx) {
         NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.WHITE
-            textSize = tagPx
+            color = C.TextSecondary.toArgb()
+            textSize = axisTextPx
+            textAlign = NativePaint.Align.CENTER
+        }
+    }
+
+    val tagPaint = remember(tagTextPx) {
+        NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply {
+            color = C.BG.toArgb()
+            textSize = tagTextPx
+            textAlign = NativePaint.Align.CENTER
             typeface = Typeface.DEFAULT_BOLD
-            textAlign = NativePaint.Align.CENTER
         }
     }
-    val smallPaint = remember(axisPx) {
+
+    val detailPaint = remember(axisTextPx) {
         NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply {
-            color = C.TextSecondary.copy(alpha = 0.75f).toArgb()
-            textSize = axisPx
+            color = C.Cyan.toArgb()
+            textSize = axisTextPx
             textAlign = NativePaint.Align.RIGHT
         }
     }
-    val pillPaint = remember(axisPx) {
-        NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply {
-            color = C.TextSecondary.copy(alpha = 0.85f).toArgb()
-            textSize = axisPx
-            textAlign = NativePaint.Align.CENTER
+
+    // نفس النافذة الفعلية للرسم والتكبير.
+    val fittedViewport = fitViewportToCandles(
+        viewport,
+        candles
+    )
+
+    // حفظ التوسيع التلقائي، دون تقليص تلقائي مع كل تحديث.
+    SideEffect {
+        if (viewport != fittedViewport) {
+            viewport = fittedViewport
         }
     }
 
-    Box(modifier) {
-        Canvas(Modifier.fillMaxSize()) {
-            // الشارت بكامل العرض — الأسعار ترسم فوقه بدون حجز مساحة
-            val chartW = size.width
-            val top = 8.dp.toPx()
-            val bottom = size.height - 8.dp.toPx()
-            val h = bottom - top
+    fun applyZoom(
+        factor: Double,
+        anchor: Offset? = null
+    ) {
+        val plotWidth =
+            chartSize.width.toFloat() -
+                leftInsetPx -
+                rightAxisPx
 
-            var lo = Float.MAX_VALUE
-            var hi = Float.MIN_VALUE
-            candles.forEach { lo = minOf(lo, it.low); hi = maxOf(hi, it.high) }
-            val pad = (hi - lo) * 0.12f
-            lo -= pad; hi += pad
-            if (hi <= lo) hi = lo + 0.01f
+        val plotHeight =
+            chartSize.height.toFloat() - timeAxisPx
 
-            fun y(p: Float) = bottom - (p - lo) / (hi - lo) * h
+        if (plotWidth <= 1f || plotHeight <= 1f) return
 
-            // الشبكة الأفقية + أسعار يمين شفافة فوق الشارت (بدون ظل أو خلفية)
-            val step = 0.005f
-            var g = ceil(lo / step) * step
-            while (g <= hi) {
-                val gy = y(g)
-                drawLine(C.Grid.copy(alpha = 0.6f), Offset(0f, gy), Offset(chartW, gy), 1f)
-                drawContext.canvas.nativeCanvas.drawText(
-                    fmt(g), chartW - 6.dp.toPx(), gy - 3.dp.toPx(), axisPaint
-                )
-                g += step
-            }
+        val current = fitViewportToCandles(
+            viewport,
+            candles
+        )
 
-            // خطوط عمودية خفيفة
-            for (i in 0..4) {
-                val gx = i * chartW / 4f
-                drawLine(C.Grid.copy(alpha = 0.35f), Offset(gx, top), Offset(gx, bottom), 1f)
-            }
-
-            // الشموع
-            val n = candles.size
-            val cw = chartW / 55f
-            candles.forEachIndexed { i, c ->
-                val x = chartW - (n - 1 - i) * cw - cw * 0.5f
-                if (x < -cw) return@forEachIndexed
-                val col = if (c.close >= c.open) C.Green else C.Red
-                drawLine(col, Offset(x, y(c.high)), Offset(x, y(c.low)), 1.3.dp.toPx())
-                val bt = y(maxOf(c.open, c.close))
-                val bb = y(minOf(c.open, c.close))
-                drawRoundRect(
-                    col,
-                    topLeft = Offset(x - cw * 0.32f, bt),
-                    size = Size(cw * 0.64f, (bb - bt).coerceAtLeast(2.dp.toPx())),
-                    cornerRadius = CornerRadius(2.dp.toPx())
-                )
-            }
-
-            // علامة أقل سعر (شفافة النص)
-            val minIdx = candles.indices.minByOrNull { candles[it].low } ?: 0
-            val mc = candles[minIdx]
-            val mx = chartW - (n - 1 - minIdx) * cw - cw * 0.5f
-            val pillW = 58.dp.toPx()
-            val pillH = 18.dp.toPx()
-            val px = (mx - pillW / 2).coerceIn(2f, chartW - pillW)
-            val py = (y(mc.low) + 8.dp.toPx()).coerceAtMost(bottom - pillH)
-            drawRoundRect(
-                Color(0xFF22303F).copy(alpha = 0.85f),
-                topLeft = Offset(px, py),
-                size = Size(pillW, pillH),
-                cornerRadius = CornerRadius(pillH / 2)
-            )
-            drawContext.canvas.nativeCanvas.drawText(
-                fmt(mc.low), px + pillW / 2, py + pillH / 2 + axisPx * 0.35f, pillPaint
-            )
-
-            // خط السعر الحالي المتقطع
-            val lc = candles.last().close
-            val yc = y(lc.coerceIn(lo, hi))
-            val dash = 8.dp.toPx()
-            val gap = 6.dp.toPx()
-            var dx = 0f
-            while (dx < chartW) {
-                drawLine(
-                    C.PriceTag.copy(alpha = 0.8f),
-                    Offset(dx, yc),
-                    Offset(minOf(dx + dash, chartW), yc),
-                    1.5.dp.toPx()
-                )
-                dx += dash + gap
-            }
-
-            // بطاقة السعر الزرقاء على اليمين (الوحيدة بخلفية)
-            val tagH = 20.dp.toPx()
-            val tagW = 62.dp.toPx()
-            val tx = chartW - tagW - 4.dp.toPx()
-            drawRoundRect(
-                C.PriceTag,
-                topLeft = Offset(tx, yc - tagH / 2),
-                size = Size(tagW, tagH),
-                cornerRadius = CornerRadius(4.dp.toPx())
-            )
-            drawContext.canvas.nativeCanvas.drawText(
-                fmt(lc), tx + tagW / 2, yc + tagPx * 0.35f, tagPaint
-            )
-
-            // M1 فوق البطاقة + العداد تحت الخط (شفافان)
-            drawContext.canvas.nativeCanvas.drawText(
-                "M1", tx - 6.dp.toPx(), yc - 8.dp.toPx(), smallPaint
-            )
-            drawContext.canvas.nativeCanvas.drawText(
-                String.format(Locale.US, "00:%02d", secondsLeft),
-                tx - 6.dp.toPx(), yc + 20.dp.toPx(), smallPaint
-            )
+        val anchorX = if (anchor != null) {
+            (
+                (anchor.x - leftInsetPx) / plotWidth
+            ).toDouble().coerceIn(0.0, 1.0)
+        } else {
+            0.5
         }
 
-        // السعر الحالي + الوقت أعلى اليسار (تحت مربع الأزواج) — الحافة اليسرى الفعلية
-        Column(
-            modifier = Modifier
-                .align(AbsoluteAlignment.TopLeft)
-                .padding(start = 14.dp, top = 64.dp)
+        val anchorY = if (anchor != null) {
+            (anchor.y / plotHeight)
+                .toDouble()
+                .coerceIn(0.0, 1.0)
+        } else {
+            0.5
+        }
+
+        viewport = fitViewportToCandles(
+            zoomViewport(
+                viewport = current,
+                factor = factor,
+                anchorX = anchorX,
+                anchorY = anchorY
+            ),
+            candles
+        )
+    }
+
+    // تتبع أحدث نسخة من الدالة داخل كاشف الإيماءات.
+    val currentZoom by rememberUpdatedState<
+        (Double, Offset?) -> Unit
+    >(
+        newValue = { factor, anchor ->
+            applyZoom(factor, anchor)
+        }
+    )
+
+    // تحديث تجريبي للأسعار.
+    // لا توجد هنا صفقات حقيقية أو اتصال بمزود أسعار.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(260L)
+
+            val now = System.currentTimeMillis()
+            val currentMinute =
+                now / MINUTE_MS * MINUTE_MS
+
+            // إضافة كل الدقائق الناقصة عند عودة التطبيق.
+            while (candles.last().time < currentMinute) {
+                val previous = candles.last()
+
+                candles.add(
+                    Candle(
+                        open = previous.close,
+                        high = previous.close,
+                        low = previous.close,
+                        close = previous.close,
+                        time = previous.time + MINUTE_MS
+                    )
+                )
+
+                // تحريك نافذة الزمن فقط عند بدء شمعة جديدة،
+                // وليس نتيجة سحب أو تكبير.
+                viewport = viewport.copy(
+                    centerBar = viewport.centerBar + 1.0
+                )
+
+                if (candles.size > 600) {
+                    candles.removeAt(0)
+                }
+            }
+
+            val index = candles.lastIndex
+            val current = candles[index]
+
+            val nextClose = (
+                current.close +
+                    (Random.nextFloat() - 0.5f) * 0.00035f
+            ).coerceAtLeast(0.00001f)
+
+            candles[index] = current.copy(
+                close = nextClose,
+                high = maxOf(current.high, nextClose),
+                low = minOf(current.low, nextClose)
+            )
+
+            secondsLeft = remainingSeconds(
+                candles.last().time,
+                now
+            )
+
+            clockText = clockNow()
+        }
+    }
+
+    // LTR محلي لهذا المكون لضمان بقاء الزوج والتوقيت يسارًا.
+    CompositionLocalProvider(
+        LocalLayoutDirection provides LayoutDirection.Ltr
+    ) {
+        Box(
+            modifier = modifier
+                .clip(RoundedCornerShape(0.dp))
+                .background(C.BG)
         ) {
-            Text(fmt(lastClose), color = C.TextSecondary, fontSize = 11.sp)
-            Text("$clockText UTC+3", color = C.TextSecondary, fontSize = 11.sp)
-        }
+            AsyncImage(
+                model = CHART_BG_URL,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize()
+            )
 
-        // أيقونة البرق — الحافة اليسرى الفعلية
-        LightningIcon(
-            Modifier
-                .align(AbsoluteAlignment.TopLeft)
-                .padding(start = 34.dp, top = 116.dp)
-                .size(16.dp)
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                C.BG.copy(alpha = 0.93f),
+                                Color(0xFF231C3E).copy(alpha = 0.92f),
+                                C.BG.copy(alpha = 0.96f)
+                            )
+                        )
+                    )
+            )
+
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onSizeChanged {
+                        chartSize = it
+                    }
+                    .pointerInput(Unit) {
+                        detectTransformGestures {
+                            centroid,
+                            _,
+                            zoom,
+                            _ ->
+
+                            // تجاهل pan والدوران عمدًا.
+                            if (
+                                zoom.isFinite() &&
+                                zoom > 0f &&
+                                abs(zoom - 1f) > 0.0001f
+                            ) {
+                                currentZoom(
+                                    zoom.toDouble(),
+                                    centroid
+                                )
+                            }
+                        }
+                    }
+            ) {
+                val plotLeft = leftInsetPx
+                val plotRight = size.width - rightAxisPx
+
+                val plotWidth = plotRight - plotLeft
+                val plotHeight = size.height - timeAxisPx
+
+                if (plotWidth <= 1f || plotHeight <= 1f) {
+                    return@Canvas
+                }
+
+                val view = fittedViewport
+
+                fun xForBar(bar: Double): Float {
+                    return plotLeft + (
+                        (
+                            bar - view.centerBar
+                        ) / view.visibleBars + 0.5
+                    ).toFloat() * plotWidth
+                }
+
+                fun yForPrice(price: Double): Float {
+                    return (
+                        (view.maxPrice - price) /
+                            view.priceSpan
+                    ).toFloat() * plotHeight
+                }
+
+                fun centeredBaseline(
+                    centerY: Float,
+                    paint: NativePaint
+                ): Float {
+                    return centerY -
+                        (paint.ascent() + paint.descent()) / 2f
+                }
+
+                val safeTop =
+                    plotHeight * CANDLE_SAFE_MARGIN.toFloat()
+
+                val safeBottom =
+                    plotHeight *
+                        (1.0 - CANDLE_SAFE_MARGIN).toFloat()
+
+                // =================================================
+                // شبكة السعر
+                // =================================================
+
+                val targetPriceRows = (
+                    plotHeight / 58.dp.toPx()
+                ).toInt().coerceIn(3, 12)
+
+                val priceStep = nicePriceStep(
+                    view.priceSpan / targetPriceRows
+                )
+
+                val decimals = priceDecimals(priceStep)
+
+                val firstPrice =
+                    ceil(view.minPrice / priceStep).toLong()
+
+                val lastPrice =
+                    floor(view.maxPrice / priceStep).toLong()
+
+                val native = drawContext.canvas.nativeCanvas
+
+                if (lastPrice >= firstPrice) {
+                    for (tick in firstPrice..lastPrice) {
+                        val price = tick.toDouble() * priceStep
+                        val y = yForPrice(price)
+
+                        drawLine(
+                            color = C.Grid.copy(alpha = 0.34f),
+                            start = Offset(plotLeft, y),
+                            end = Offset(plotRight, y),
+                            strokeWidth = 1.dp.toPx()
+                        )
+
+                        // عدم قص النص عند حافتي مساحة الرسم.
+                        if (
+                            y >= axisTextPx &&
+                            y <= plotHeight - axisTextPx / 2f
+                        ) {
+                            native.drawText(
+                                priceText(price, decimals),
+                                size.width - 5.dp.toPx(),
+                                centeredBaseline(y, axisPaint),
+                                axisPaint
+                            )
+                        }
+                    }
+                }
+
+                // =================================================
+                // شبكة الزمن + شريط أوقات الشموع
+                // =================================================
+
+                drawRect(
+                    color = C.Surface,
+                    topLeft = Offset(0f, plotHeight),
+                    size = Size(size.width, timeAxisPx)
+                )
+
+                drawLine(
+                    C.Divider,
+                    Offset(0f, plotHeight),
+                    Offset(size.width, plotHeight),
+                    1.dp.toPx()
+                )
+
+                val targetTimeColumns = (
+                    plotWidth / 64.dp.toPx()
+                ).toInt().coerceAtLeast(2)
+
+                val timeStep = niceTimeStep(
+                    view.visibleBars / targetTimeColumns
+                )
+
+                val firstBar =
+                    view.centerBar - view.visibleBars / 2.0
+
+                val lastBar =
+                    view.centerBar + view.visibleBars / 2.0
+
+                val firstTimeTick =
+                    ceil(firstBar / timeStep.toDouble()).toLong()
+
+                val lastTimeTick =
+                    floor(lastBar / timeStep.toDouble()).toLong()
+
+                if (lastTimeTick >= firstTimeTick) {
+                    for (tick in firstTimeTick..lastTimeTick) {
+                        val minute = tick * timeStep
+                        val x = xForBar(minute.toDouble())
+
+                        drawLine(
+                            color = C.Grid.copy(alpha = 0.28f),
+                            start = Offset(x, 0f),
+                            end = Offset(x, plotHeight),
+                            strokeWidth = 1.dp.toPx()
+                        )
+
+                        val label = candleTimeText(
+                            minute * MINUTE_MS
+                        )
+
+                        val halfText =
+                            timePaint.measureText(label) / 2f
+
+                        // إبقاء النص مرتبطًا بموقع خطه،
+                        // بدل إزاحته إلى موضع غير صحيح.
+                        if (
+                            x - halfText >= plotLeft &&
+                            x + halfText <= plotRight
+                        ) {
+                            native.drawText(
+                                label,
+                                x,
+                                centeredBaseline(
+                                    plotHeight + timeAxisPx / 2f,
+                                    timePaint
+                                ),
+                                timePaint
+                            )
+                        }
+                    }
+                }
+
+                // فصل عمود الأسعار عن منطقة الشموع.
+                drawLine(
+                    C.Divider.copy(alpha = 0.65f),
+                    Offset(plotRight, 0f),
+                    Offset(plotRight, plotHeight),
+                    1.dp.toPx()
+                )
+
+                // =================================================
+                // رسم الشموع
+                //
+                // fitViewport يجعل الشموع داخل نطاق الأمان.
+                // clipRect حماية إضافية من تجاوزات البكسل.
+                // =================================================
+
+                val candleSpacing =
+                    plotWidth / view.visibleBars.toFloat()
+
+                val bodyWidth = (
+                    candleSpacing * 0.64f
+                ).coerceAtLeast(0.7.dp.toPx())
+
+                val wickWidth = minOf(
+                    1.2.dp.toPx(),
+                    bodyWidth
+                )
+
+                clipRect(
+                    left = plotLeft,
+                    top = safeTop,
+                    right = plotRight,
+                    bottom = safeBottom
+                ) {
+                    candles.forEach { candle ->
+                        val x = xForBar(candle.barPosition())
+
+                        if (
+                            x + bodyWidth / 2f >= plotLeft &&
+                            x - bodyWidth / 2f <= plotRight
+                        ) {
+                            val color =
+                                if (candle.close >= candle.open) {
+                                    C.Green
+                                } else {
+                                    C.Red
+                                }
+
+                            val highY =
+                                yForPrice(candle.high.toDouble())
+
+                            val lowY =
+                                yForPrice(candle.low.toDouble())
+
+                            val openY =
+                                yForPrice(candle.open.toDouble())
+
+                            val closeY =
+                                yForPrice(candle.close.toDouble())
+
+                            drawLine(
+                                color = color,
+                                start = Offset(x, highY),
+                                end = Offset(x, lowY),
+                                strokeWidth = wickWidth,
+                                cap = StrokeCap.Butt
+                            )
+
+                            val bodyTop = minOf(openY, closeY)
+                            val bodyBottom = maxOf(openY, closeY)
+                            val bodyHeight = bodyBottom - bodyTop
+
+                            if (bodyHeight < 1.dp.toPx()) {
+                                // شمعة دوجي: خط في موضعها الحقيقي.
+                                drawLine(
+                                    color = color,
+                                    start = Offset(
+                                        x - bodyWidth / 2f,
+                                        (openY + closeY) / 2f
+                                    ),
+                                    end = Offset(
+                                        x + bodyWidth / 2f,
+                                        (openY + closeY) / 2f
+                                    ),
+                                    strokeWidth = 1.dp.toPx()
+                                )
+                            } else {
+                                drawRect(
+                                    color = color,
+                                    topLeft = Offset(
+                                        x - bodyWidth / 2f,
+                                        bodyTop
+                                    ),
+                                    size = Size(
+                                        bodyWidth,
+                                        bodyHeight
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // =================================================
+                // خط السعر الحالي
+                //
+                // لا يتم تثبيت السعر على حافة مصطنعة.
+                // إذا كان خارج النافذة لا نرسمه في موضع كاذب.
+                // =================================================
+
+                val currentPrice =
+                    candles.last().close.toDouble()
+
+                val currentY = yForPrice(currentPrice)
+
+                if (currentY in 0f..plotHeight) {
+                    val dash = 7.dp.toPx()
+                    val gap = 5.dp.toPx()
+
+                    var dashX = plotLeft
+
+                    while (dashX < plotRight) {
+                        drawLine(
+                            color = C.Cyan.copy(alpha = 0.85f),
+                            start = Offset(dashX, currentY),
+                            end = Offset(
+                                minOf(dashX + dash, plotRight),
+                                currentY
+                            ),
+                            strokeWidth = 1.dp.toPx()
+                        )
+
+                        dashX += dash + gap
+                    }
+
+                    val tagLabel = priceText(
+                        currentPrice,
+                        decimals
+                    )
+
+                    // تصغير خط البطاقة فقط إذا احتاج الرقم مساحة أكبر.
+                    tagPaint.textSize = tagTextPx
+
+                    val availableTextWidth =
+                        rightAxisPx - 12.dp.toPx()
+
+                    val measuredWidth =
+                        tagPaint.measureText(tagLabel)
+
+                    if (measuredWidth > availableTextWidth) {
+                        tagPaint.textSize =
+                            tagTextPx *
+                                availableTextWidth / measuredWidth
+                    }
+
+                    val tagHeight = 22.dp.toPx()
+
+                    drawRoundRect(
+                        color = C.PriceTag,
+                        topLeft = Offset(
+                            plotRight + 2.dp.toPx(),
+                            currentY - tagHeight / 2f
+                        ),
+                        size = Size(
+                            rightAxisPx - 6.dp.toPx(),
+                            tagHeight
+                        ),
+                        cornerRadius = CornerRadius(
+                            4.dp.toPx()
+                        )
+                    )
+
+                    native.drawText(
+                        tagLabel,
+                        plotRight + rightAxisPx / 2f -
+                            1.dp.toPx(),
+                        centeredBaseline(currentY, tagPaint),
+                        tagPaint
+                    )
+
+                    native.drawText(
+                        "M1",
+                        plotRight - 6.dp.toPx(),
+                        currentY - 9.dp.toPx(),
+                        detailPaint
+                    )
+
+                    native.drawText(
+                        String.format(
+                            Locale.US,
+                            "%02d:%02d",
+                            secondsLeft / 60,
+                            secondsLeft % 60
+                        ),
+                        plotRight - 6.dp.toPx(),
+                        currentY + 19.dp.toPx(),
+                        detailPaint
+                    )
+                }
+            }
+
+            PairHeader(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 12.dp, top = 8.dp)
+            )
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 14.dp, top = 60.dp)
+            ) {
+                Text(
+                    fmt(candles.last().close),
+                    color = C.TextSecondary,
+                    fontSize = 11.sp
+                )
+
+                Text(
+                    "$clockText UTC+3",
+                    color = C.TextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+
+            // أزرار التكبير لا تحرك الرسم بالسحب.
+            // نقطة ارتكازها هي مركز مساحة الرسم.
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 10.dp, top = 58.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                ChartControl("−") {
+                    applyZoom(1.0 / 1.25)
+                }
+
+                ChartControl("+") {
+                    applyZoom(1.25)
+                }
+
+                ChartControl("↺") {
+                    viewport = initialViewport(candles)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChartControl(
+    label: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(C.Surface)
+            .border(
+                1.dp,
+                C.Purple.copy(alpha = 0.55f),
+                RoundedCornerShape(10.dp)
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = C.Cyan,
+            fontSize = 19.sp,
+            fontWeight = FontWeight.Bold
         )
     }
 }
 
 // ============================================================
-// شريط نسبة الشراء/البيع (متحرك) — داخل الحاوية الصلبة
+// لوحة التداول المعتمة
 // ============================================================
+
+@Composable
+fun TradePanel() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(C.BG)
+    ) {
+        // محور الوقت مرسوم في نهاية الشارت مباشرة فوق هذه اللوحة.
+        Spacer(Modifier.height(12.dp))
+
+        SentimentBar()
+
+        Spacer(Modifier.height(12.dp))
+
+        TradeInputs()
+
+        Spacer(Modifier.height(10.dp))
+
+        TradeButtons()
+
+        Spacer(Modifier.height(10.dp))
+    }
+}
+
+// ============================================================
+// نسبة الشراء والبيع
+// ============================================================
+
 @Composable
 fun SentimentBar() {
-    var buy by remember { mutableStateOf(33) }
+    var buy by remember {
+        mutableStateOf(33)
+    }
+
     LaunchedEffect(Unit) {
         while (true) {
-            delay(2200)
+            delay(2200L)
             buy = Random.nextInt(30, 37)
         }
     }
@@ -569,38 +1436,73 @@ fun SentimentBar() {
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text("$buy%", color = C.Green, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(
+            "$buy%",
+            color = C.Green,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+
         Spacer(Modifier.width(8.dp))
 
         BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)
-                .height(10.dp)
+                .height(16.dp)
         ) {
-            val w = maxWidth
-            Row(Modifier.fillMaxSize().clip(RoundedCornerShape(5.dp))) {
-                Box(Modifier.weight(buy.toFloat()).fillMaxHeight().background(C.Green))
-                Box(Modifier.weight((100 - buy).toFloat()).fillMaxHeight().background(C.Red))
+            val availableWidth = maxWidth
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .align(Alignment.Center)
+                    .clip(RoundedCornerShape(5.dp))
+            ) {
+                Box(
+                    Modifier
+                        .weight(buy.toFloat())
+                        .fillMaxHeight()
+                        .background(C.Green)
+                )
+
+                Box(
+                    Modifier
+                        .weight((100 - buy).toFloat())
+                        .fillMaxHeight()
+                        .background(C.Red)
+                )
             }
+
             Box(
                 Modifier
                     .align(Alignment.CenterStart)
-                    .offset(x = w * buy / 100f - 1.dp)
+                    .offset(
+                        x = availableWidth *
+                            (buy / 100f) - 1.25.dp
+                    )
                     .width(2.5.dp)
                     .height(16.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFFB0BEC5))
+                    .background(C.Cyan)
             )
         }
 
         Spacer(Modifier.width(8.dp))
-        Text("${100 - buy}%", color = C.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+        Text(
+            "${100 - buy}%",
+            color = C.Red,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
 // ============================================================
-// صناديق الوقت والمبلغ — بارتفاع موحد 48.dp
+// الوقت والمبلغ
 // ============================================================
+
 @Composable
 fun TradeInputs() {
     Row(
@@ -609,102 +1511,127 @@ fun TradeInputs() {
             .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // الزمن (يسار مثل الصورة)
-        Column(Modifier.weight(1f)) {
-            Text("الزمن", color = C.TextSecondary, fontSize = 12.sp)
-            Spacer(Modifier.height(6.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(C.Surface)
-                    .border(1.dp, C.Divider, RoundedCornerShape(10.dp))
-                    .padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "00:01:00",
-                    color = C.TextPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
-                ClockIcon(Modifier.size(18.dp))
-            }
+        TradeInput(
+            label = "الزمن",
+            value = "00:01:00",
+            modifier = Modifier.weight(1f)
+        ) {
+            ClockIcon(Modifier.size(18.dp))
         }
 
-        // المبلغ (يمين مثل الصورة)
-        Column(Modifier.weight(1f)) {
-            Text("المبلغ", color = C.TextSecondary, fontSize = 12.sp)
-            Spacer(Modifier.height(6.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(C.Surface)
-                    .border(1.dp, C.Divider, RoundedCornerShape(10.dp))
-                    .padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "1",
-                    color = C.TextPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
+        TradeInput(
+            label = "المبلغ",
+            value = "1",
+            modifier = Modifier.weight(1f)
+        ) {
+            DollarIcon(Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun TradeInput(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    icon: @Composable () -> Unit
+) {
+    Column(modifier) {
+        Text(
+            label,
+            color = C.TextSecondary,
+            fontSize = 12.sp
+        )
+
+        Spacer(Modifier.height(6.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(C.Surface)
+                .border(
+                    1.dp,
+                    C.Divider,
+                    RoundedCornerShape(10.dp)
                 )
-                DollarIcon(Modifier.size(18.dp))
-            }
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                value,
+                color = C.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+
+            icon()
         }
     }
 }
 
 // ============================================================
-// أزرار الشراء / البيع — بدون AI، بنفس عرض وطول صناديق الوقت والمبلغ
+// أزرار الشراء والبيع — نفس عرض صناديق الإدخال
 // ============================================================
+
 @Composable
 fun TradeButtons() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // شراء (يسار)
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(48.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(C.Green)
-                .clickable { },
-            contentAlignment = Alignment.Center
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("شراء", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(8.dp))
-                Text("92%", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            }
-        }
+        TradeButton(
+            label = "شراء",
+            color = C.Green,
+            modifier = Modifier.weight(1f)
+        )
 
-        // بيع (يمين)
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(48.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(C.Red)
-                .clickable { },
-            contentAlignment = Alignment.Center
+        TradeButton(
+            label = "بيع",
+            color = C.Red,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun TradeButton(
+    label: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(48.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(color)
+            .clickable {
+                // اربط تنفيذ الصفقة هنا.
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("بيع", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(8.dp))
-                Text("92%", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            }
+            Text(
+                label,
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(Modifier.width(8.dp))
+
+            Text(
+                "92%",
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
@@ -712,12 +1639,21 @@ fun TradeButtons() {
 // ============================================================
 // الشريط السفلي
 // ============================================================
+
 @Composable
 fun BottomNavBar() {
-    var selected by remember { mutableStateOf(2) }
+    var selected by remember {
+        mutableStateOf(2)
+    }
 
     Column {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(C.Divider))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(C.Divider)
+        )
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -726,11 +1662,46 @@ fun BottomNavBar() {
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BottomItem("التداولات", selected == 0, { selected = 0 }) { c -> TradesIcon(Modifier.size(24.dp), c) }
-            BottomItem("الرؤى", selected == 1, { selected = 1 }) { c -> SignalIcon(Modifier.size(24.dp), c) }
-            BottomItem("Pro mode", selected == 2, { selected = 2 }, highlight = true) { c -> ProIcon(Modifier.size(28.dp), c) }
-            BottomItem("أول الاجتماعي", selected == 3, { selected = 3 }) { c -> SocialIcon(Modifier.size(24.dp), c) }
-            BottomItem("المزيد", selected == 4, { selected = 4 }) { c -> DotsIcon(Modifier.size(22.dp), c) }
+            BottomItem(
+                "التداولات",
+                selected == 0,
+                { selected = 0 }
+            ) {
+                TradesIcon(Modifier.size(24.dp), it)
+            }
+
+            BottomItem(
+                "الرؤى",
+                selected == 1,
+                { selected = 1 }
+            ) {
+                SignalIcon(Modifier.size(24.dp), it)
+            }
+
+            BottomItem(
+                "Pro mode",
+                selected == 2,
+                { selected = 2 },
+                highlight = true
+            ) {
+                ProIcon(Modifier.size(28.dp), it)
+            }
+
+            BottomItem(
+                "أول الاجتماعي",
+                selected == 3,
+                { selected = 3 }
+            ) {
+                SocialIcon(Modifier.size(24.dp), it)
+            }
+
+            BottomItem(
+                "المزيد",
+                selected == 4,
+                { selected = 4 }
+            ) {
+                DotsIcon(Modifier.size(22.dp), it)
+            }
         }
     }
 }
@@ -744,13 +1715,14 @@ fun BottomItem(
     icon: @Composable (Color) -> Unit
 ) {
     val iconColor = when {
-        highlight && selected -> Color(0xFF7FB3E8)
-        selected -> C.Blue
+        highlight && selected -> C.Cyan
+        selected -> C.Purple
         else -> C.TextSecondary
     }
+
     val labelColor = when {
-        highlight && selected -> Color.White
-        selected -> C.Blue
+        highlight && selected -> C.TextPrimary
+        selected -> C.Cyan
         else -> C.TextSecondary
     }
 
@@ -766,182 +1738,463 @@ fun BottomItem(
                 modifier = Modifier
                     .size(54.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(if (selected) Color(0xFF13293F) else Color.Transparent)
-                    .border(1.5.dp, if (selected) C.Blue else C.Divider, RoundedCornerShape(14.dp)),
+                    .background(
+                        if (selected) {
+                            C.SurfaceRaised
+                        } else {
+                            Color.Transparent
+                        }
+                    )
+                    .border(
+                        1.5.dp,
+                        if (selected) C.Cyan else C.Divider,
+                        RoundedCornerShape(14.dp)
+                    ),
                 contentAlignment = Alignment.Center
-            ) { icon(iconColor) }
+            ) {
+                icon(iconColor)
+            }
         } else {
-            Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) { icon(iconColor) }
+            Box(
+                Modifier.size(30.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                icon(iconColor)
+            }
         }
+
         Spacer(Modifier.height(3.dp))
-        Text(label, color = labelColor, fontSize = 10.sp, textAlign = TextAlign.Center, maxLines = 1)
+
+        Text(
+            label,
+            color = labelColor,
+            fontSize = 10.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 1
+        )
     }
 }
 
 // ============================================================
-// الأيقونات — كلها مرسومة بالكود
+// الأيقونات
 // ============================================================
 
 @Composable
-fun LightningIcon(modifier: Modifier = Modifier, color: Color = C.TextSecondary) {
+fun DownArrow(
+    modifier: Modifier = Modifier,
+    color: Color = C.TextSecondary
+) {
     Canvas(modifier) {
-        val w = size.width; val h = size.height
-        val p = Path().apply {
-            moveTo(w * 0.58f, 0f)
-            lineTo(w * 0.15f, h * 0.55f)
-            lineTo(w * 0.42f, h * 0.55f)
-            lineTo(w * 0.35f, h)
-            lineTo(w * 0.85f, h * 0.40f)
-            lineTo(w * 0.55f, h * 0.40f)
-            close()
-        }
-        drawPath(p, color)
-    }
-}
-
-@Composable
-fun DownArrow(modifier: Modifier = Modifier, color: Color = C.TextSecondary) {
-    Canvas(modifier) {
-        val p = Path().apply {
+        val path = Path().apply {
             moveTo(0f, 0f)
             lineTo(size.width, 0f)
-            lineTo(size.width / 2, size.height)
+            lineTo(size.width / 2f, size.height)
             close()
         }
-        drawPath(p, color)
+
+        drawPath(path, color)
     }
 }
 
 @Composable
-fun DotsIcon(modifier: Modifier = Modifier, color: Color = Color.White) {
+fun DotsIcon(
+    modifier: Modifier = Modifier,
+    color: Color = C.TextPrimary
+) {
     Canvas(modifier) {
-        val r = size.minDimension * 0.11f
-        val cy = size.height / 2
-        drawCircle(color, r, Offset(size.width * 0.15f, cy))
-        drawCircle(color, r, Offset(size.width * 0.5f, cy))
-        drawCircle(color, r, Offset(size.width * 0.85f, cy))
+        val radius = size.minDimension * 0.11f
+        val cy = size.height / 2f
+
+        drawCircle(
+            color,
+            radius,
+            Offset(size.width * 0.15f, cy)
+        )
+
+        drawCircle(
+            color,
+            radius,
+            Offset(size.width * 0.5f, cy)
+        )
+
+        drawCircle(
+            color,
+            radius,
+            Offset(size.width * 0.85f, cy)
+        )
     }
 }
 
 @Composable
-fun WalletIcon(modifier: Modifier = Modifier, color: Color = Color.White) {
+fun WalletIcon(
+    modifier: Modifier = Modifier,
+    color: Color = Color.White
+) {
     Canvas(modifier) {
-        val w = size.width; val h = size.height
-        drawRoundRect(color, Offset(w * 0.05f, h * 0.22f), Size(w * 0.9f, h * 0.62f),
-            CornerRadius(w * 0.1f), style = Stroke(width = w * 0.08f))
-        drawRoundRect(color, Offset(w * 0.55f, h * 0.4f), Size(w * 0.4f, h * 0.28f),
-            CornerRadius(w * 0.06f), style = Stroke(width = w * 0.07f))
-        drawCircle(color, w * 0.05f, Offset(w * 0.73f, h * 0.54f))
+        val w = size.width
+        val h = size.height
+
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.05f, h * 0.22f),
+            size = Size(w * 0.9f, h * 0.62f),
+            cornerRadius = CornerRadius(w * 0.1f),
+            style = Stroke(width = w * 0.08f)
+        )
+
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.55f, h * 0.4f),
+            size = Size(w * 0.4f, h * 0.28f),
+            cornerRadius = CornerRadius(w * 0.06f),
+            style = Stroke(width = w * 0.07f)
+        )
+
+        drawCircle(
+            color,
+            w * 0.05f,
+            Offset(w * 0.73f, h * 0.54f)
+        )
     }
 }
 
 @Composable
-fun ClockIcon(modifier: Modifier = Modifier, color: Color = C.TextSecondary) {
+fun ClockIcon(
+    modifier: Modifier = Modifier,
+    color: Color = C.Cyan
+) {
     Canvas(modifier) {
-        val r = size.minDimension * 0.4f
-        drawCircle(color, r, Offset(size.width / 2, size.height / 2), style = Stroke(width = size.minDimension * 0.09f))
-        drawLine(color, Offset(size.width / 2, size.height / 2), Offset(size.width / 2, size.height * 0.25f),
-            size.minDimension * 0.09f, cap = StrokeCap.Round)
-        drawLine(color, Offset(size.width / 2, size.height / 2), Offset(size.width * 0.72f, size.height / 2),
-            size.minDimension * 0.09f, cap = StrokeCap.Round)
+        val dimension = size.minDimension
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val stroke = dimension * 0.09f
+
+        drawCircle(
+            color,
+            dimension * 0.4f,
+            Offset(cx, cy),
+            style = Stroke(width = stroke)
+        )
+
+        drawLine(
+            color,
+            Offset(cx, cy),
+            Offset(cx, size.height * 0.25f),
+            stroke,
+            cap = StrokeCap.Round
+        )
+
+        drawLine(
+            color,
+            Offset(cx, cy),
+            Offset(size.width * 0.72f, cy),
+            stroke,
+            cap = StrokeCap.Round
+        )
     }
 }
 
 @Composable
-fun DollarIcon(modifier: Modifier = Modifier, color: Color = C.TextSecondary) {
+fun DollarIcon(
+    modifier: Modifier = Modifier,
+    color: Color = C.Cyan
+) {
     Canvas(modifier) {
-        val r = size.minDimension * 0.4f
-        val sw = size.minDimension * 0.09f
-        drawCircle(color, r, Offset(size.width / 2, size.height / 2), style = Stroke(width = sw))
-        val cx = size.width / 2; val cy = size.height / 2
-        val s = size.minDimension * 0.16f
-        drawLine(color, Offset(cx + s * 0.6f, cy - s), Offset(cx - s * 0.5f, cy - s * 0.2f), sw, cap = StrokeCap.Round)
-        drawLine(color, Offset(cx - s * 0.5f, cy - s * 0.2f), Offset(cx + s * 0.5f, cy + s * 0.2f), sw, cap = StrokeCap.Round)
-        drawLine(color, Offset(cx + s * 0.5f, cy + s * 0.2f), Offset(cx - s * 0.6f, cy + s), sw, cap = StrokeCap.Round)
-        drawLine(color, Offset(cx, cy - s * 1.4f), Offset(cx, cy - s), sw, cap = StrokeCap.Round)
-        drawLine(color, Offset(cx, cy + s), Offset(cx, cy + s * 1.4f), sw, cap = StrokeCap.Round)
+        val dimension = size.minDimension
+        val stroke = dimension * 0.09f
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val s = dimension * 0.16f
+
+        drawCircle(
+            color,
+            dimension * 0.4f,
+            Offset(cx, cy),
+            style = Stroke(width = stroke)
+        )
+
+        drawLine(
+            color,
+            Offset(cx + s * 0.6f, cy - s),
+            Offset(cx - s * 0.5f, cy - s * 0.2f),
+            stroke,
+            cap = StrokeCap.Round
+        )
+
+        drawLine(
+            color,
+            Offset(cx - s * 0.5f, cy - s * 0.2f),
+            Offset(cx + s * 0.5f, cy + s * 0.2f),
+            stroke,
+            cap = StrokeCap.Round
+        )
+
+        drawLine(
+            color,
+            Offset(cx + s * 0.5f, cy + s * 0.2f),
+            Offset(cx - s * 0.6f, cy + s),
+            stroke,
+            cap = StrokeCap.Round
+        )
+
+        drawLine(
+            color,
+            Offset(cx, cy - s * 1.4f),
+            Offset(cx, cy - s),
+            stroke,
+            cap = StrokeCap.Round
+        )
+
+        drawLine(
+            color,
+            Offset(cx, cy + s),
+            Offset(cx, cy + s * 1.4f),
+            stroke,
+            cap = StrokeCap.Round
+        )
     }
 }
 
-// علم الإمارات (أحمر عمودي + خطوط أفقية)
 @Composable
 fun FlagAE(modifier: Modifier = Modifier) {
     Canvas(modifier.clip(CircleShape)) {
-        val w = size.width; val h = size.height
-        drawRect(Color(0xFF00732F), size = Size(w, h / 3f))
-        drawRect(Color.White, topLeft = Offset(0f, h / 3f), size = Size(w, h / 3f))
-        drawRect(Color(0xFF151515), topLeft = Offset(0f, 2 * h / 3f), size = Size(w, h / 3f))
-        drawRect(Color(0xFFFF0000), size = Size(w * 0.28f, h))
+        val w = size.width
+        val h = size.height
+
+        drawRect(
+            Color(0xFF00732F),
+            size = Size(w, h / 3f)
+        )
+
+        drawRect(
+            Color.White,
+            topLeft = Offset(0f, h / 3f),
+            size = Size(w, h / 3f)
+        )
+
+        drawRect(
+            Color(0xFF151515),
+            topLeft = Offset(0f, 2f * h / 3f),
+            size = Size(w, h / 3f)
+        )
+
+        drawRect(
+            Color.Red,
+            size = Size(w * 0.28f, h)
+        )
     }
 }
 
-// علم الصين
 @Composable
 fun FlagCN(modifier: Modifier = Modifier) {
     Canvas(modifier.clip(CircleShape)) {
         drawRect(Color(0xFFDE2910))
-        drawCircle(Color(0xFFFFDE00), size.minDimension * 0.16f, Offset(size.width * 0.32f, size.height * 0.34f))
-    }
-}
 
-// ===== أيقونات الشريط السفلي =====
-
-@Composable
-fun TradesIcon(modifier: Modifier = Modifier, color: Color = Color.White) {
-    Canvas(modifier) {
-        val w = size.width; val h = size.height
-        val sw = w * 0.09f
-        drawLine(color, Offset(w * 0.3f, h * 0.85f), Offset(w * 0.3f, h * 0.15f), sw, cap = StrokeCap.Round)
-        drawLine(color, Offset(w * 0.3f, h * 0.15f), Offset(w * 0.15f, h * 0.32f), sw, cap = StrokeCap.Round)
-        drawLine(color, Offset(w * 0.3f, h * 0.15f), Offset(w * 0.45f, h * 0.32f), sw, cap = StrokeCap.Round)
-        drawLine(color, Offset(w * 0.7f, h * 0.15f), Offset(w * 0.7f, h * 0.85f), sw, cap = StrokeCap.Round)
-        drawLine(color, Offset(w * 0.7f, h * 0.85f), Offset(w * 0.55f, h * 0.68f), sw, cap = StrokeCap.Round)
-        drawLine(color, Offset(w * 0.7f, h * 0.85f), Offset(w * 0.85f, h * 0.68f), sw, cap = StrokeCap.Round)
+        drawCircle(
+            Color(0xFFFFDE00),
+            size.minDimension * 0.16f,
+            Offset(
+                size.width * 0.32f,
+                size.height * 0.34f
+            )
+        )
     }
 }
 
 @Composable
-fun SignalIcon(modifier: Modifier = Modifier, color: Color = Color.White) {
+fun TradesIcon(
+    modifier: Modifier = Modifier,
+    color: Color = Color.White
+) {
     Canvas(modifier) {
-        val cx = size.width / 2
+        val w = size.width
+        val h = size.height
+        val stroke = w * 0.09f
+
+        drawLine(
+            color,
+            Offset(w * 0.3f, h * 0.85f),
+            Offset(w * 0.3f, h * 0.15f),
+            stroke,
+            cap = StrokeCap.Round
+        )
+
+        drawLine(
+            color,
+            Offset(w * 0.3f, h * 0.15f),
+            Offset(w * 0.15f, h * 0.32f),
+            stroke,
+            cap = StrokeCap.Round
+        )
+
+        drawLine(
+            color,
+            Offset(w * 0.3f, h * 0.15f),
+            Offset(w * 0.45f, h * 0.32f),
+            stroke,
+            cap = StrokeCap.Round
+        )
+
+        drawLine(
+            color,
+            Offset(w * 0.7f, h * 0.15f),
+            Offset(w * 0.7f, h * 0.85f),
+            stroke,
+            cap = StrokeCap.Round
+        )
+
+        drawLine(
+            color,
+            Offset(w * 0.7f, h * 0.85f),
+            Offset(w * 0.55f, h * 0.68f),
+            stroke,
+            cap = StrokeCap.Round
+        )
+
+        drawLine(
+            color,
+            Offset(w * 0.7f, h * 0.85f),
+            Offset(w * 0.85f, h * 0.68f),
+            stroke,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+fun SignalIcon(
+    modifier: Modifier = Modifier,
+    color: Color = Color.White
+) {
+    Canvas(modifier) {
+        val cx = size.width / 2f
         val cy = size.height * 0.75f
-        val sw = size.minDimension * 0.09f
-        drawArc(color, 180f, 180f, false,
-            topLeft = Offset(cx - size.width * 0.42f, cy - size.height * 0.42f),
-            size = Size(size.width * 0.84f, size.height * 0.84f), style = Stroke(width = sw))
-        drawArc(color, 180f, 180f, false,
-            topLeft = Offset(cx - size.width * 0.26f, cy - size.height * 0.26f),
-            size = Size(size.width * 0.52f, size.height * 0.52f), style = Stroke(width = sw))
-        drawCircle(color, size.minDimension * 0.1f, Offset(cx, cy - size.height * 0.02f))
+        val stroke = size.minDimension * 0.09f
+
+        drawArc(
+            color = color,
+            startAngle = 180f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(
+                cx - size.width * 0.42f,
+                cy - size.height * 0.42f
+            ),
+            size = Size(
+                size.width * 0.84f,
+                size.height * 0.84f
+            ),
+            style = Stroke(width = stroke)
+        )
+
+        drawArc(
+            color = color,
+            startAngle = 180f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(
+                cx - size.width * 0.26f,
+                cy - size.height * 0.26f
+            ),
+            size = Size(
+                size.width * 0.52f,
+                size.height * 0.52f
+            ),
+            style = Stroke(width = stroke)
+        )
+
+        drawCircle(
+            color,
+            size.minDimension * 0.1f,
+            Offset(cx, cy - size.height * 0.02f)
+        )
     }
 }
 
 @Composable
-fun ProIcon(modifier: Modifier = Modifier, color: Color = Color.White) {
+fun ProIcon(
+    modifier: Modifier = Modifier,
+    color: Color = Color.White
+) {
     Canvas(modifier) {
-        val w = size.width; val h = size.height
-        drawRoundRect(color, Offset(w * 0.08f, h * 0.12f), Size(w * 0.84f, h * 0.76f),
-            CornerRadius(w * 0.16f), style = Stroke(width = w * 0.08f))
-        val p = Path().apply {
+        val w = size.width
+        val h = size.height
+
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.08f, h * 0.12f),
+            size = Size(w * 0.84f, h * 0.76f),
+            cornerRadius = CornerRadius(w * 0.16f),
+            style = Stroke(width = w * 0.08f)
+        )
+
+        val path = Path().apply {
             moveTo(w * 0.24f, h * 0.62f)
             lineTo(w * 0.40f, h * 0.44f)
             lineTo(w * 0.54f, h * 0.56f)
             lineTo(w * 0.76f, h * 0.34f)
         }
-        drawPath(p, color, style = Stroke(width = w * 0.08f, cap = StrokeCap.Round))
+
+        drawPath(
+            path,
+            color,
+            style = Stroke(
+                width = w * 0.08f,
+                cap = StrokeCap.Round
+            )
+        )
     }
 }
 
 @Composable
-fun SocialIcon(modifier: Modifier = Modifier, color: Color = Color.White) {
+fun SocialIcon(
+    modifier: Modifier = Modifier,
+    color: Color = Color.White
+) {
     Canvas(modifier) {
-        val cx = size.width / 2
-        val cy = size.height / 2
-        drawCircle(color, size.minDimension * 0.17f, Offset(cx, cy - size.height * 0.16f))
-        drawArc(color, 180f, 180f, false,
-            topLeft = Offset(cx - size.width * 0.28f, cy + size.height * 0.04f),
-            size = Size(size.width * 0.56f, size.height * 0.5f), style = Stroke(width = size.minDimension * 0.08f))
-        drawCircle(color, size.minDimension * 0.09f, Offset(cx - size.width * 0.36f, cy - size.height * 0.14f))
-        drawCircle(color, size.minDimension * 0.09f, Offset(cx + size.width * 0.36f, cy - size.height * 0.14f))
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+
+        drawCircle(
+            color,
+            size.minDimension * 0.17f,
+            Offset(cx, cy - size.height * 0.16f)
+        )
+
+        drawArc(
+            color = color,
+            startAngle = 180f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(
+                cx - size.width * 0.28f,
+                cy + size.height * 0.04f
+            ),
+            size = Size(
+                size.width * 0.56f,
+                size.height * 0.5f
+            ),
+            style = Stroke(
+                width = size.minDimension * 0.08f
+            )
+        )
+
+        drawCircle(
+            color,
+            size.minDimension * 0.09f,
+            Offset(
+                cx - size.width * 0.36f,
+                cy - size.height * 0.14f
+            )
+        )
+
+        drawCircle(
+            color,
+            size.minDimension * 0.09f,
+            Offset(
+                cx + size.width * 0.36f,
+                cy - size.height * 0.14f
+            )
+        )
     }
 }
