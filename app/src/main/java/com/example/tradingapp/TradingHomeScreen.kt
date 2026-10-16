@@ -10,13 +10,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -25,8 +25,10 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -45,6 +47,7 @@ import android.graphics.Paint as NativePaint
 const val AVATAR_URL = "https://i.ibb.co/Z68jNfbd/IMG-20250906-195228-439.jpg"
 const val AVATAR_FRAME_URL = "https://i.ibb.co/5xvxC8Kw/file-00000000d4f882439f813f969679659f.png"
 const val CHART_BG_URL = "https://i.ibb.co/zWHWPv92/file-0000000090c48211944cf52560e3482a.png"
+const val GIFT_ICON_URL = "https://cdn-icons-png.flaticon.com/128/18546/18546266.png"
 
 // ============================================================
 // الألوان
@@ -55,6 +58,7 @@ object C {
     val Green = Color(0xFF2ECC71)
     val Red = Color(0xFFE74C3C)
     val Blue = Color(0xFF3498DB)
+    val Yellow = Color(0xFFF1C40F)
     val TextPrimary = Color(0xFFFFFFFF)
     val TextSecondary = Color(0xFF8899AA)
     val Divider = Color(0xFF2A3441)
@@ -155,19 +159,21 @@ fun TradingHomeScreen() {
             // الشارت الحي (فوق الخلفية، تحت كل العناصر)
             LiveCandlestickChart(Modifier.matchParentSize())
 
-            // مربع اختيار الأزواج عائم داخل منطقة الشارت
+            // مربع اختيار الأزواج عائم داخل منطقة الشارت — على الحافة اليسرى الفعلية
             PairHeader(
                 Modifier
-                    .align(Alignment.TopStart)
-                    .padding(top = 8.dp)
+                    .align(AbsoluteAlignment.TopLeft)
+                    .padding(top = 8.dp, start = 12.dp)
             )
 
-            // ===== القائمة السفلية كاملة ملتصقة فوق الشريط السفلي =====
+            // ===== القائمة السفلية داخل حاوية صلبة معتمة =====
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .background(C.BG)
             ) {
+                Spacer(Modifier.height(12.dp))
                 SentimentBar()
                 Spacer(Modifier.height(12.dp))
                 TradeInputs()
@@ -182,155 +188,164 @@ fun TradingHomeScreen() {
 }
 
 // ============================================================
-// الشريط العلوي — بعد التبديل:
-// الرصيد + المحفظة في جهة، والهدية + الأفاتار في الجهة الثانية
+// الشريط العلوي — بترتيب فيزيائي ثابت (Ltr):
+// المحفظة الصفراء على الحافة اليسرى، ثم الرصيد، ثم الهدية والأفاتار يميناً
 // ============================================================
 @Composable
 fun TopBar() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(C.BG)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // بطاقة الرصيد (مكان الأفاتار سابقاً)
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(12.dp))
-                .background(C.Surface)
-                .padding(horizontal = 14.dp, vertical = 6.dp),
+                .fillMaxWidth()
+                .background(C.BG)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("QT Real", color = C.TextSecondary, fontSize = 10.sp)
-                    Spacer(Modifier.width(6.dp))
-                    Text("حلال", color = C.Green, fontSize = 10.sp)
-                    Spacer(Modifier.width(6.dp))
-                    Text("USD", color = C.TextSecondary, fontSize = 10.sp)
-                }
-                Text(
-                    "0.39",
-                    color = C.TextPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Spacer(Modifier.width(10.dp))
-            DownArrow(Modifier.size(10.dp))
-        }
-
-        Spacer(Modifier.width(8.dp))
-
-        // زر المحفظة الأخضر (جنب الرصيد)
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(C.Green),
-            contentAlignment = Alignment.Center
-        ) {
-            WalletIcon(Modifier.size(26.dp))
-        }
-
-        Spacer(Modifier.weight(1f))
-
-        // أيقونة الهدية مع علامة X (مكان الرصيد سابقاً)
-        Box {
-            GiftIcon(Modifier.size(36.dp))
+            // زر المحفظة الأصفر — على الحافة اليسرى (مكان الهدية سابقاً)
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = 3.dp, y = (-3).dp)
-                    .size(14.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF10182B))
-                    .border(1.dp, Color(0xFF3A4A5F), CircleShape)
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(C.Yellow),
+                contentAlignment = Alignment.Center
             ) {
-                Canvas(Modifier.fillMaxSize()) {
-                    val m = size.minDimension * 0.22f
-                    val cx = size.width / 2
-                    val cy = size.height / 2
-                    drawLine(Color.White, Offset(cx - m, cy - m), Offset(cx + m, cy + m), 2.5f, cap = StrokeCap.Round)
-                    drawLine(Color.White, Offset(cx + m, cy - m), Offset(cx - m, cy + m), 2.5f, cap = StrokeCap.Round)
+                WalletIcon(Modifier.size(26.dp))
+            }
+
+            Spacer(Modifier.width(8.dp))
+
+            // بطاقة الرصيد (مكان زر المحفظة سابقاً)
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(C.Surface)
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("QT Real", color = C.TextSecondary, fontSize = 10.sp)
+                        Spacer(Modifier.width(6.dp))
+                        Text("حلال", color = C.Green, fontSize = 10.sp)
+                        Spacer(Modifier.width(6.dp))
+                        Text("USD", color = C.TextSecondary, fontSize = 10.sp)
+                    }
+                    Text(
+                        "0.39",
+                        color = C.TextPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                DownArrow(Modifier.size(10.dp))
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            // أيقونة الهدية الجديدة (رابطك) مع علامة X
+            Box {
+                AsyncImage(
+                    model = GIFT_ICON_URL,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(36.dp)
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 3.dp, y = (-3).dp)
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF10182B))
+                        .border(1.dp, Color(0xFF3A4A5F), CircleShape)
+                ) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        val m = size.minDimension * 0.22f
+                        val cx = size.width / 2
+                        val cy = size.height / 2
+                        drawLine(Color.White, Offset(cx - m, cy - m), Offset(cx + m, cy + m), 2.5f, cap = StrokeCap.Round)
+                        drawLine(Color.White, Offset(cx + m, cy - m), Offset(cx - m, cy + m), 2.5f, cap = StrokeCap.Round)
+                    }
                 }
             }
-        }
 
-        Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(10.dp))
 
-        // الأفاتار من رابطك + الإطار من رابطك فوقه
-        Box(
-            modifier = Modifier.size(52.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            AsyncImage(
-                model = AVATAR_URL,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(C.Surface)
-            )
-            AsyncImage(
-                model = AVATAR_FRAME_URL,
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.size(52.dp)
-            )
+            // الأفاتار من رابطك + الإطار من رابطك فوقه
+            Box(
+                modifier = Modifier.size(52.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = AVATAR_URL,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(C.Surface)
+                )
+                AsyncImage(
+                    model = AVATAR_FRAME_URL,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(52.dp)
+                )
+            }
         }
     }
 }
 
 // ============================================================
-// رأس الزوج — عائم داخل منطقة الشارت
+// رأس الزوج — على الحافة اليسرى الفعلية بترتيب ثابت (Ltr)
 // ============================================================
 @Composable
 fun PairHeader(modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(22.dp))
-                .background(C.Surface.copy(alpha = 0.92f))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = modifier,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // الأعلام المتداخلة
-            Box(Modifier.width(34.dp).height(22.dp)) {
-                FlagAE(Modifier.size(22.dp).align(Alignment.CenterStart))
-                FlagCN(
-                    Modifier
-                        .size(22.dp)
-                        .align(Alignment.CenterEnd)
-                        .border(1.5.dp, C.Surface, CircleShape)
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(C.Surface.copy(alpha = 0.92f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // الأعلام المتداخلة
+                Box(Modifier.width(34.dp).height(22.dp)) {
+                    FlagAE(Modifier.size(22.dp).align(Alignment.CenterStart))
+                    FlagCN(
+                        Modifier
+                            .size(22.dp)
+                            .align(Alignment.CenterEnd)
+                            .border(1.5.dp, C.Surface, CircleShape)
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "AED/CNY OTC",
+                    color = C.TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
+                Spacer(Modifier.width(6.dp))
+                DownArrow(Modifier.size(9.dp))
             }
+
             Spacer(Modifier.width(8.dp))
-            Text(
-                "AED/CNY OTC",
-                color = C.TextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(Modifier.width(6.dp))
-            DownArrow(Modifier.size(9.dp))
-        }
 
-        Spacer(Modifier.width(8.dp))
-
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(C.Surface.copy(alpha = 0.92f)),
-            contentAlignment = Alignment.Center
-        ) {
-            DotsIcon(Modifier.size(16.dp))
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(C.Surface.copy(alpha = 0.92f)),
+                contentAlignment = Alignment.Center
+            ) {
+                DotsIcon(Modifier.size(16.dp))
+            }
         }
     }
 }
@@ -515,20 +530,20 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
             )
         }
 
-        // السعر الحالي + الوقت أعلى اليسار (تحت مربع الأزواج)
+        // السعر الحالي + الوقت أعلى اليسار (تحت مربع الأزواج) — الحافة اليسرى الفعلية
         Column(
             modifier = Modifier
-                .align(Alignment.TopStart)
+                .align(AbsoluteAlignment.TopLeft)
                 .padding(start = 14.dp, top = 64.dp)
         ) {
             Text(fmt(lastClose), color = C.TextSecondary, fontSize = 11.sp)
             Text("$clockText UTC+3", color = C.TextSecondary, fontSize = 11.sp)
         }
 
-        // أيقونة البرق
+        // أيقونة البرق — الحافة اليسرى الفعلية
         LightningIcon(
             Modifier
-                .align(Alignment.TopStart)
+                .align(AbsoluteAlignment.TopLeft)
                 .padding(start = 34.dp, top = 116.dp)
                 .size(16.dp)
         )
@@ -536,7 +551,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier) {
 }
 
 // ============================================================
-// شريط نسبة الشراء/البيع (متحرك)
+// شريط نسبة الشراء/البيع (متحرك) — داخل الحاوية الصلبة
 // ============================================================
 @Composable
 fun SentimentBar() {
@@ -584,7 +599,7 @@ fun SentimentBar() {
 }
 
 // ============================================================
-// صناديق الوقت والمبلغ
+// صناديق الوقت والمبلغ — بارتفاع موحد 48.dp
 // ============================================================
 @Composable
 fun TradeInputs() {
@@ -601,10 +616,11 @@ fun TradeInputs() {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(48.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(C.Surface)
                     .border(1.dp, C.Divider, RoundedCornerShape(10.dp))
-                    .padding(horizontal = 14.dp, vertical = 13.dp),
+                    .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -625,10 +641,11 @@ fun TradeInputs() {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(48.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(C.Surface)
                     .border(1.dp, C.Divider, RoundedCornerShape(10.dp))
-                    .padding(horizontal = 14.dp, vertical = 13.dp),
+                    .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -645,7 +662,7 @@ fun TradeInputs() {
 }
 
 // ============================================================
-// أزرار الشراء / AI / البيع — ملتصقة فوق الشريط السفلي
+// أزرار الشراء / البيع — بدون AI، بنفس عرض وطول صناديق الوقت والمبلغ
 // ============================================================
 @Composable
 fun TradeButtons() {
@@ -660,36 +677,16 @@ fun TradeButtons() {
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(62.dp)
+                .height(48.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(C.Green)
                 .clickable { },
             contentAlignment = Alignment.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("شراء", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("شراء", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(8.dp))
                 Text("92%", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        // AI (وسط)
-        Box(
-            modifier = Modifier
-                .size(62.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(Brush.radialGradient(listOf(Color(0xFF5AC8FA), Color(0xFF1E88E5))))
-                .border(2.dp, Color(0xFF8AD4FF), RoundedCornerShape(18.dp))
-                .clickable { },
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Color.White),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("AI", color = Color(0xFF1E88E5), fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
             }
         }
 
@@ -697,14 +694,15 @@ fun TradeButtons() {
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(62.dp)
+                .height(48.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(C.Red)
                 .clickable { },
             contentAlignment = Alignment.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("بيع", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("بيع", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(8.dp))
                 Text("92%", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
         }
@@ -783,21 +781,6 @@ fun BottomItem(
 // ============================================================
 // الأيقونات — كلها مرسومة بالكود
 // ============================================================
-
-@Composable
-fun GiftIcon(modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val w = size.width; val h = size.height
-        val blue = Color(0xFF2E9BDE)
-        val dark = Color(0xFF1E6FA8)
-        val ribbon = Color(0xFFBFE6FF)
-        drawRoundRect(blue, Offset(w * 0.12f, h * 0.34f), Size(w * 0.76f, h * 0.54f), CornerRadius(w * 0.08f))
-        drawRoundRect(dark, Offset(w * 0.08f, h * 0.22f), Size(w * 0.84f, h * 0.18f), CornerRadius(w * 0.06f))
-        drawRect(ribbon, Offset(w * 0.44f, h * 0.22f), Size(w * 0.12f, h * 0.66f))
-        drawCircle(ribbon, w * 0.11f, Offset(w * 0.38f, h * 0.15f))
-        drawCircle(ribbon, w * 0.11f, Offset(w * 0.62f, h * 0.15f))
-    }
-}
 
 @Composable
 fun LightningIcon(modifier: Modifier = Modifier, color: Color = C.TextSecondary) {
