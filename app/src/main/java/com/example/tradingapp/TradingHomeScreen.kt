@@ -28,7 +28,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -65,14 +64,12 @@ import android.graphics.Paint as NativePaint
 
 const val AVATAR_URL = "https://i.ibb.co/Z68jNfbd/IMG-20250906-195228-439.jpg"
 const val AVATAR_FRAME_URL = "https://i.ibb.co/5xvxC8Kw/file-00000000d4f882439f813f969679659f.png"
-const val CHART_BG_URL = "https://i.ibb.co/zWHWPv92/file-0000000090c48211944cf52560e3482a.png"
 const val GIFT_ICON_URL = "https://cdn-icons-png.flaticon.com/128/18546/18546266.png"
 
 object C {
     val BG = Color(0xFF141126)
     val Surface = Color(0xFF24203D)
     val SurfaceRaised = Color(0xFF30284F)
-    val Purple = Color(0xFF9C7BFF)
     val Cyan = Color(0xFF58D9F5)
     val Green = Color(0xFF00E676)
     val Red = Color(0xFFFF2D55)
@@ -90,9 +87,8 @@ object C {
     val PkStarOn = Color(0xFFF5A623)
     val PkPct = Color(0xFF71B982)
     val BarBg = Color(0xFF344766)
-    val BarFill = Color(0xFF398BD0)
     val BarOpenGreen = Color(0xFF2EBD85)
-    // ألوان من HTML
+    // خلفية الشارت الصلبة (مطابقة لـ --cg في HTML)
     val ChartBg = Color(0xFF3C3861)
 }
 
@@ -108,6 +104,7 @@ private const val ZOOM_SMOOTH = 0.22f
 private const val INERTIA_DECAY = 0.93
 private const val MIN_VISIBLE_BARS_LIMIT = 10.0
 private const val MAX_VISIBLE_BARS_LIMIT = 120.0
+private const val DV_ALPHA = 0.20f
 
 private fun barPosition(time: Long, origin: Long): Double =
     (time - origin).toDouble() / MINUTE_MS.toDouble()
@@ -116,44 +113,6 @@ data class Candle(
     val open: Float, val high: Float, val low: Float, val close: Float,
     val time: Long = 0L
 )
-
-fun seedCandles(
-    lastOpenTime: Long = System.currentTimeMillis() / MINUTE_MS * MINUTE_MS
-): List<Candle> {
-    val anchors = listOf(
-        0 to 1.8772f, 5 to 1.8748f, 9 to 1.8742f,
-        13 to 1.8708f, 17 to 1.8685f, 21 to 1.8662f,
-        25 to 1.8644f, 28 to 1.86344f, 32 to 1.8660f,
-        36 to 1.8686f, 40 to 1.8678f, 44 to 1.8672f,
-        48 to 1.8686f, 52 to 1.86978f
-    )
-    fun priceAt(index: Int): Float {
-        var a = anchors.first(); var b = anchors.last()
-        for (k in 0 until anchors.lastIndex) {
-            if (index in anchors[k].first..anchors[k + 1].first) {
-                a = anchors[k]; b = anchors[k + 1]; break
-            }
-        }
-        val fraction = if (a.first == b.first) 0f
-            else (index - a.first).toFloat() / (b.first - a.first).toFloat()
-        return a.second + (b.second - a.second) * fraction
-    }
-    val random = java.util.Random(42)
-    val result = ArrayList<Candle>()
-    var previousClose = 1.8772f
-    for (index in 0..52) {
-        val close = priceAt(index) + (random.nextFloat() - 0.5f) * 0.0009f
-        result.add(Candle(
-            open = previousClose,
-            high = maxOf(previousClose, close) + random.nextFloat() * 0.0008f,
-            low = minOf(previousClose, close) - random.nextFloat() * 0.0008f,
-            close = close,
-            time = lastOpenTime - (52L - index.toLong()) * MINUTE_MS
-        ))
-        previousClose = close
-    }
-    return result
-}
 
 fun clockNow(): String = SimpleDateFormat("HH:mm:ss", Locale.US).apply {
     timeZone = TimeZone.getTimeZone("GMT+3")
@@ -170,7 +129,7 @@ private fun remainingSeconds(openTime: Long, now: Long): Int =
     ceil((openTime + MINUTE_MS - now).toDouble() / 1000.0).toInt().coerceIn(0, 60)
 
 // ============================================================
-// Biquote API — نفس الموجود في HTML (esm.sh/biquote@0.3.0)
+// Biquote API
 // ============================================================
 object BiquoteApi {
     private const val BASE = "https://biquote.io"
@@ -245,7 +204,6 @@ object BiquoteApi {
 object SymCatalog {
     val CRX = Regex("^(BTC|ETH|SOL|XRP|BNB|ADA|DOGE|DOT|MATIC|AVAX|LINK|LTC|TRX|ATOM|ETC|XLM|ALGO|VET|FIL|NEAR|APT|ARB|OP|INJ|SUI|SEI|TIA|TON|PEPE|SHIB)")
     val COX = Regex("^(XAU|XAG|XPT|XPD|USOIL|UKOIL|WTI|BRENT|NGAS)")
-    val FXR = Regex("^(EUR|USD|GBP|JPY|CHF|AUD|CAD|NZD|TRY|ZAR|MXN|SEK|NOK|SGD|HKD|PLN|DKK|HUF|CZK|ILS|CNY|QAR|SAR|UAH|IDR|THB|MYR|PHP|INR|KRW|BRL|ARS|CLP|COP|PEN|RUB)")
     val FLAGS = mapOf(
         "EUR" to "eu","USD" to "us","GBP" to "gb","JPY" to "jp","CHF" to "ch","AUD" to "au",
         "CAD" to "ca","NZD" to "nz","TRY" to "tr","ZAR" to "za","MXN" to "mx","SEK" to "se",
@@ -275,10 +233,10 @@ object SymCatalog {
 }
 
 // ============================================================
-// ✅ دالة mlc — تحديث الشموع بدقة (نفس منطق الـ HTML)
+// mergeCandle - يعادل mlc() في HTML بالحرف
 // ============================================================
 private fun mergeCandle(list: MutableList<Candle>, incoming: Candle, bulk: Boolean = false): Boolean {
-    val c = incoming.close
+    var c = incoming.close
     if (!c.isFinite() || c <= 0f) return false
     var o = incoming.open
     var h = incoming.high
@@ -297,16 +255,21 @@ private fun mergeCandle(list: MutableList<Candle>, incoming: Candle, bulk: Boole
         return true
     }
 
-    // ابحث عن الوقت
-    var exactIndex = -1
-    for (i in n - 1 downTo 0) {
-        if (list[i].time == t) { exactIndex = i; break }
-        if (list[i].time < t) break
+    // بحث ثنائي عن الوقت
+    var lo = 0; var hi = n - 1; var exact = -1; var insertAt = n
+    while (lo <= hi) {
+        val mid = (lo + hi) ushr 1
+        val mt = list[mid].time
+        when {
+            mt == t -> { exact = mid; break }
+            mt < t -> lo = mid + 1
+            else -> { insertAt = mid; hi = mid - 1 }
+        }
     }
 
-    if (exactIndex >= 0) {
-        val e = list[exactIndex]
-        list[exactIndex] = e.copy(
+    if (exact >= 0) {
+        val e = list[exact]
+        list[exact] = e.copy(
             high = maxOf(e.high, h),
             low = minOf(e.low, l),
             close = c
@@ -314,12 +277,8 @@ private fun mergeCandle(list: MutableList<Candle>, incoming: Candle, bulk: Boole
         return false
     }
 
-    // إدراج في المكان المناسب
-    var insertAt = n
-    for (i in 0 until n) {
-        if (list[i].time > t) { insertAt = i; break }
-    }
-    if (insertAt == n) {
+    if (insertAt >= n) {
+        // شمعة جديدة في النهاية - open يتوافق مع آخر close
         o = list[n - 1].close
         h = maxOf(h, o)
         l = minOf(l, o)
@@ -355,8 +314,7 @@ object TradeSounds {
                         "triangle" -> 2.0 / PI * asin(sin(x))
                         else       -> sin(x)
                     }
-                    val sample = (s * env * 0.18 * Short.MAX_VALUE).toInt()
-                        .coerceIn(-32768, 32767)
+                    val sample = (s * env * 0.18 * Short.MAX_VALUE).toInt().coerceIn(-32768, 32767)
                     buf[pos] = (buf[pos].toInt() + sample).coerceIn(-32768, 32767).toShort()
                 }
             }
@@ -386,15 +344,15 @@ object TradeSounds {
         Triple(760f,  0f,   0.06f to "triangle")
     ))
     fun win() = playTones(listOf(
-        Triple(784f,  0f,     0.28f to "sine"),
-        Triple(1046f, 90f,    0.28f to "sine"),
-        Triple(1318f, 180f,   0.28f to "sine"),
-        Triple(1568f, 270f,   0.40f to "sine")
+        Triple(784f,  0f,   0.28f to "sine"),
+        Triple(1046f, 90f,  0.28f to "sine"),
+        Triple(1318f, 180f, 0.28f to "sine"),
+        Triple(1568f, 270f, 0.40f to "sine")
     ))
     fun lose() = playTones(listOf(
-        Triple(392f,  0f,     0.30f to "sawtooth"),
-        Triple(294f, 120f,   0.30f to "sawtooth"),
-        Triple(196f, 240f,   0.30f to "sawtooth")
+        Triple(392f,  0f,   0.30f to "sawtooth"),
+        Triple(294f, 120f,  0.30f to "sawtooth"),
+        Triple(196f, 240f,  0.30f to "sawtooth")
     ))
 }
 
@@ -414,8 +372,9 @@ private data class ChartViewport(
 
 private fun initialViewport(candles: List<Candle>, origin: Long): ChartViewport {
     if (candles.isEmpty()) return ChartViewport(60.0, 0.0, LIVE_CANDLE_FRACTION, 1.0, MIN_PRICE_SPAN)
-    val low = candles.minOf { it.low.toDouble() }
-    val high = candles.maxOf { it.high.toDouble() }
+    val visible = candles.takeLast(min(60, candles.size))
+    val low = visible.minOf { it.low.toDouble() }
+    val high = visible.maxOf { it.high.toDouble() }
     return ChartViewport(
         visibleBars = 60.0,
         anchorBar = barPosition(candles.last().time, origin),
@@ -594,23 +553,25 @@ fun PairHeader(modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
 }
 
 // ============================================================
-// الشارت الحي — متصل بـ Biquote بنفس منطق الـ HTML
+// الشارت الحي - الحل الجذري
 // ============================================================
 @Composable
 fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> Unit) {
     val sym by TradeStore.currentSymbol.collectAsState()
-    val candles = remember { mutableStateListOf<Candle>().apply { addAll(seedCandles()) } }
-    var origin by remember { mutableStateOf(candles.first().time) }
-    val now0 = remember { System.currentTimeMillis() }
-    var viewport by remember { mutableStateOf(initialViewport(candles, origin)) }
+    // بيانات الشموع الحقيقية (تتحدث فقط عبر mergeCandle من API)
+    val candles = remember { mutableStateListOf<Candle>() }
+    // DV - النسخة المعروضة (سلسة، تُعاد باستمرار نحو الشمعة الأخيرة الحقيقية)
+    var displayCandle by remember { mutableStateOf<Candle?>(null) }
+    var livePrice by remember { mutableStateOf(0f) }
+    var origin by remember { mutableStateOf(0L) }
+    var viewport by remember { mutableStateOf(ChartViewport(60.0, 0.0, LIVE_CANDLE_FRACTION, 1.0, MIN_PRICE_SPAN)) }
     var bsTarget by remember { mutableStateOf(60.0) }
     var followLive by remember { mutableStateOf(true) }
     var interacting by remember { mutableStateOf(false) }
     var chartSize by remember { mutableStateOf(IntSize.Zero) }
-    var secondsLeft by remember { mutableStateOf(remainingSeconds(candles.last().time, now0)) }
+    var secondsLeft by remember { mutableStateOf(60) }
     var clockText by remember { mutableStateOf(clockNow()) }
     var inertia by remember { mutableStateOf(0.0) }
-    var livePrice by remember { mutableStateOf(candles.last().close) }
 
     val density = LocalDensity.current
     val axisTextPx = with(density) { 9.sp.toPx() }
@@ -707,7 +668,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
         inertia = inertia * 0.4 + (-it.toDouble() / chartSize.width.coerceAtLeast(1) * viewport.visibleBars) * 0.6
     })
 
-    // Smooth zoom loop
+    // حلقة السلاسة للـ Zoom والعطالة
     LaunchedEffect(Unit) {
         var last = System.nanoTime()
         while (true) {
@@ -737,82 +698,107 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
         }
     }
 
-    // جلب البيانات من Biquote بناءً على الرمز (نفس منطق ldd + fpr في HTML)
+    // ═══════════════════════════════════════════════════════════
+    // الحلقة الأساسية لجلب البيانات - المصدر الوحيد للشموع
+    // ═══════════════════════════════════════════════════════════
     LaunchedEffect(sym) {
-        // تحميل تاريخ الشموع
-        val realBars = BiquoteApi.ohlc(sym, "1m", 300)
-        if (realBars.isNotEmpty()) {
-            candles.clear()
-            origin = realBars.first().time
-            // نستخدم mlc بدل addAll للحفاظ على الترتيب والأسعار
-            for (b in realBars) mergeCandle(candles, b, bulk = true)
+        // إعادة ضبط كاملة عند تغيير الزوج
+        candles.clear()
+        displayCandle = null
+        livePrice = 0f
+        followLive = true
+        inertia = 0.0
+
+        // التحميل الأولي
+        val initialBars = BiquoteApi.ohlc(sym, "1m", 300)
+        if (initialBars.isNotEmpty()) {
+            origin = initialBars.first().time
+            for (b in initialBars) mergeCandle(candles, b, bulk = true)
+            while (candles.size > 1500) candles.removeAt(0)
             viewport = initialViewport(candles, origin)
             bsTarget = viewport.visibleBars
+            livePrice = candles.last().close
+            displayCandle = candles.last().copy()
         }
-        // تحديث كل ثانية بالسعر
+
+        // استطلاع كل ثانية
         while (true) {
             delay(1000L)
+
+            // السعر اللحظي (للعرض والتسوية)
             val tick = BiquoteApi.tick(sym)
-            if (tick != null) {
-                val price = tick.toFloat()
-                livePrice = price
-                // جلب آخر شمعتين للتحديث
-                val lastBars = BiquoteApi.ohlc(sym, "1m", 2)
+            if (tick != null && tick > 0) livePrice = tick.toFloat()
+
+            // آخر شمعتين من API - المصدر الوحيد لتحديث الشموع
+            val lastBars = BiquoteApi.ohlc(sym, "1m", 2)
+            if (lastBars.isNotEmpty()) {
                 for (b in lastBars) mergeCandle(candles, b)
-                if (candles.isNotEmpty()) {
-                    val i = candles.lastIndex
-                    val c = candles[i]
-                    candles[i] = c.copy(
-                        close = price,
-                        high = maxOf(c.high, price),
-                        low = minOf(c.low, price)
+                // لو كنا بنتابع، أعد التثبيت على الشمعة الحية
+                if (followLive && !interacting && candles.isNotEmpty()) {
+                    val live = barPosition(candles.last().time, origin)
+                    if (abs(viewport.anchorBar - live) > 0.001 ||
+                        abs(viewport.anchorFraction - LIVE_CANDLE_FRACTION) > 0.001) {
+                        viewport = viewport.copy(
+                            anchorBar = live,
+                            anchorFraction = LIVE_CANDLE_FRACTION
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // حلقة DV - تحريف الشمعة الأخيرة نحو القيمة الحقيقية بسلاسة
+    // ═══════════════════════════════════════════════════════════
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(16L)
+            if (candles.isEmpty()) continue
+            val real = candles.last()
+            val dv = displayCandle
+            when {
+                dv == null -> displayCandle = real
+                dv.time != real.time -> {
+                    // شمعة جديدة - ابدأ مسطحة من إغلاق الشمعة السابقة
+                    val prevClose = if (candles.size >= 2) candles[candles.size - 2].close else real.open
+                    displayCandle = Candle(prevClose, prevClose, prevClose, real.close, real.time)
+                }
+                else -> {
+                    val nO = dv.open + (real.open - dv.open) * DV_ALPHA
+                    val nH = dv.high + (real.high - dv.high) * DV_ALPHA
+                    val nL = dv.low  + (real.low  - dv.low)  * DV_ALPHA
+                    val nC = dv.close + (real.close - dv.close) * DV_ALPHA
+                    val finalClose = if (abs(real.close - nC) < 0.0000001f) real.close else nC
+                    displayCandle = Candle(
+                        open = nO,
+                        high = maxOf(nH, finalClose),
+                        low = minOf(nL, finalClose),
+                        close = finalClose,
+                        time = real.time
                     )
                 }
             }
         }
     }
 
-    // Loop لتحديث الوقت، الشمعة الحية، وتسوية الصفقات
+    // ═══════════════════════════════════════════════════════════
+    // حلقة الوقت والتسوية - لا تلمس الشموع
+    // ═══════════════════════════════════════════════════════════
     LaunchedEffect(Unit) {
         while (true) {
             delay(300L)
-            if (candles.isEmpty()) continue
             val now = System.currentTimeMillis()
-            val minute = now / MINUTE_MS * MINUTE_MS
-            // إضافة شمعة جديدة عند بداية كل دقيقة
-            while (candles.isNotEmpty() && candles.last().time < minute) {
-                val previous = candles.last()
-                candles.add(Candle(previous.close, previous.close, previous.close, previous.close,
-                    previous.time + MINUTE_MS))
-                if (candles.size > 600) candles.removeAt(0)
-            }
-            // محاكاة تحديث الشمعة الحية إذا لم يكن هناك tick حي
+            clockText = clockNow()
             if (candles.isNotEmpty()) {
-                val index = candles.lastIndex
-                val current = candles[index]
-                val close = livePrice.coerceAtLeast(0.00001f)
-                candles[index] = current.copy(
-                    close = close,
-                    high = maxOf(current.high, close),
-                    low = minOf(current.low, close)
-                )
-                if (followLive && !interacting) {
-                    val live = barPosition(candles.last().time, origin)
-                    val view = viewport
-                    val desiredCenter = live + (0.5 - LIVE_CANDLE_FRACTION) * view.visibleBars
-                    if (abs(desiredCenter - view.centerBar) > 1e-9) {
-                        viewport = view.copy(anchorBar = live, anchorFraction = LIVE_CANDLE_FRACTION)
-                    }
-                }
                 secondsLeft = remainingSeconds(candles.last().time, now)
-                clockText = clockNow()
             }
             // تسوية الصفقات
             val closedNow = TradeStore.openTrades.filter { it.expiresAt <= now }
             for (tr in closedNow) {
                 TradeStore.openTrades.remove(tr)
-                val lastPrice = candles.lastOrNull()?.close ?: tr.entry
-                val win = if (tr.direction > 0) lastPrice > tr.entry else lastPrice < tr.entry
+                val price = if (livePrice > 0f) livePrice else (candles.lastOrNull()?.close ?: tr.entry)
+                val win = if (tr.direction > 0) price > tr.entry else price < tr.entry
                 TradeStore.closedTrades.add(tr to win)
                 if (win) TradeSounds.win() else TradeSounds.lose()
             }
@@ -821,13 +807,6 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Box(modifier.background(C.ChartBg)) {
-            AsyncImage(model = CHART_BG_URL, contentDescription = null,
-                contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
-            Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(
-                C.ChartBg.copy(alpha = 0.80f),
-                Color(0xFF231C3E).copy(alpha = 0.78f),
-                C.ChartBg.copy(alpha = 0.84f)
-            ))))
             Canvas(
                 Modifier.fillMaxSize().onSizeChanged { chartSize = it }
                     .pointerInput(Unit) {
@@ -887,17 +866,23 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
             ) {
                 val plotWidth = size.width; val plotHeight = size.height
                 if (plotWidth <= 1f || plotHeight <= 1f) return@Canvas
-                // خلفية الشارت
+                // خلفية صلبة فقط
                 drawRect(C.ChartBg)
                 if (candles.isEmpty()) return@Canvas
                 val view = viewport
+                val dv = displayCandle
+                val lastIdx = candles.lastIndex
+
                 fun xForBar(bar: Double): Float =
                     (view.fractionFor(bar) * plotWidth.toDouble()).toFloat()
                 fun yForPrice(price: Double): Float =
                     ((view.maxPrice - price) / view.priceSpan * plotHeight.toDouble()).toFloat()
                 fun baseline(y: Float, paint: NativePaint): Float =
                     y - (paint.ascent() + paint.descent()) / 2f
+
                 val native = drawContext.canvas.nativeCanvas
+
+                // شبكة الأسعار
                 val rows = (plotHeight / 58.dp.toPx()).toInt().coerceIn(3, 12)
                 val priceStep = nicePriceStep(view.priceSpan / rows)
                 val decimals = priceDecimals(priceStep)
@@ -907,14 +892,15 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
                     for (tick in firstPrice..lastPrice) {
                         val price = tick.toDouble() * priceStep
                         val y = yForPrice(price)
-                        drawLine(C.Grid.copy(alpha = 0.34f), Offset(0f, y),
-                            Offset(plotWidth, y), 1.dp.toPx())
+                        drawLine(C.Grid.copy(alpha = 0.34f), Offset(0f, y), Offset(plotWidth, y), 1.dp.toPx())
                         if (y >= axisTextPx && y <= plotHeight - axisTextPx / 2f) {
                             native.drawText(priceText(price, decimals), plotWidth - 5.dp.toPx(),
                                 baseline(y, axisPaint), axisPaint)
                         }
                     }
                 }
+
+                // شبكة الوقت
                 val columns = (plotWidth / 64.dp.toPx()).toInt().coerceAtLeast(2)
                 val timeStep = niceTimeStep(view.visibleBars / columns)
                 val originMinute = origin / MINUTE_MS
@@ -926,8 +912,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
                     for (tick in firstTick..lastTick) {
                         val minute = tick * timeStep
                         val x = xForBar((minute - originMinute).toDouble())
-                        drawLine(C.Grid.copy(alpha = 0.28f), Offset(x, 0f),
-                            Offset(x, plotHeight), 1.dp.toPx())
+                        drawLine(C.Grid.copy(alpha = 0.28f), Offset(x, 0f), Offset(x, plotHeight), 1.dp.toPx())
                         val label = candleTimeText(minute * MINUTE_MS)
                         val halfText = timePaint.measureText(label) / 2f
                         if (x - halfText >= 0f && x + halfText <= plotWidth) {
@@ -936,38 +921,39 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
                         }
                     }
                 }
+
+                // حساب حدود الرسم
                 val spacing = plotWidth / view.visibleBars.toFloat()
                 val bodyWidth = (spacing * 0.64f).coerceIn(MINBW * density.density * 0.5f, MAXBW * density.density)
                 val wickWidth = minOf(1.2.dp.toPx(), bodyWidth)
-                // حساب النطاق المرئي
                 val firstBar = max(0, floor(view.centerBar - view.visibleBars / 2.0).toInt() - 2)
-                val lastBar = min(candles.lastIndex, ceil(view.centerBar + view.visibleBars / 2.0).toInt() + 2)
+                val lastBar = min(lastIdx, ceil(view.centerBar + view.visibleBars / 2.0).toInt() + 2)
+
                 clipRect(0f, 0f, plotWidth, plotHeight) {
                     for (i in firstBar..lastBar) {
-                        val candle = candles[i]
+                        val real = candles[i]
+                        // الشمعة الأخيرة تُرسم من DV (النسخة السلسة)
+                        val candle = if (i == lastIdx && dv != null && dv.time == real.time) dv else real
                         val x = xForBar(barPosition(candle.time, origin))
-                        if (x + bodyWidth / 2f >= 0f && x - bodyWidth / 2f <= plotWidth) {
-                            // ✅ إصلاح: اللون يعتمد على الإغلاق مقابل الفتح
-                            val color = if (candle.close >= candle.open) C.Green else C.Red
-                            val highY = yForPrice(candle.high.toDouble())
-                            val lowY = yForPrice(candle.low.toDouble())
-                            val openY = yForPrice(candle.open.toDouble())
-                            val closeY = yForPrice(candle.close.toDouble())
-                            // الظل
-                            drawLine(color, Offset(x, highY), Offset(x, lowY),
-                                wickWidth, cap = StrokeCap.Butt)
-                            // ✅ إصلاح: الجسم بارتفاع حقيقي
-                            val top = minOf(openY, closeY)
-                            val height = abs(openY - closeY)
-                            if (height < 1.dp.toPx()) {
-                                drawLine(color, Offset(x - bodyWidth / 2f, (openY + closeY) / 2f),
-                                    Offset(x + bodyWidth / 2f, (openY + closeY) / 2f), 1.dp.toPx())
-                            } else {
-                                drawRect(color, Offset(x - bodyWidth / 2f, top), Size(bodyWidth, height))
-                            }
+                        if (x + bodyWidth / 2f < 0f || x - bodyWidth / 2f > plotWidth) continue
+                        val color = if (candle.close >= candle.open) C.Green else C.Red
+                        val yH = yForPrice(candle.high.toDouble())
+                        val yL = yForPrice(candle.low.toDouble())
+                        val yO = yForPrice(candle.open.toDouble())
+                        val yC = yForPrice(candle.close.toDouble())
+                        // ظل
+                        drawLine(color, Offset(x, yH), Offset(x, yL), wickWidth, cap = StrokeCap.Butt)
+                        // جسم
+                        val top = minOf(yO, yC)
+                        val height = abs(yO - yC)
+                        if (height < 1.dp.toPx()) {
+                            drawLine(color, Offset(x - bodyWidth / 2f, (yO + yC) / 2f),
+                                Offset(x + bodyWidth / 2f, (yO + yC) / 2f), 1.dp.toPx())
+                        } else {
+                            drawRect(color, Offset(x - bodyWidth / 2f, top), Size(bodyWidth, height))
                         }
                     }
-                    // علامات الصفقات المفتوحة
+                    // خطوط الصفقات المفتوحة
                     TradeStore.openTrades.filter { it.symbol == sym }.forEach { tr ->
                         val yEntry = yForPrice(tr.entry.toDouble())
                         val xEntry = xForBar(barPosition(tr.openedAt, origin))
@@ -977,16 +963,18 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
                         drawCircle(col, 4.dp.toPx(), Offset(xEntry, yEntry))
                     }
                 }
-                val currentPrice = livePrice.toDouble()
-                val currentY = yForPrice(currentPrice)
-                if (currentY in 0f..plotHeight) {
+
+                // خط السعر الحالي + العلامة
+                val displayPrice = dv?.close ?: (if (livePrice > 0f) livePrice else candles.last().close)
+                val currentY = yForPrice(displayPrice.toDouble())
+                if (currentY in 0f..plotHeight && displayPrice > 0f) {
                     val dash = 7.dp.toPx(); val gap = 5.dp.toPx(); var x = 0f
                     while (x < plotWidth) {
                         drawLine(C.Cyan.copy(alpha = 0.85f), Offset(x, currentY),
                             Offset(minOf(x + dash, plotWidth), currentY), 1.dp.toPx())
                         x += dash + gap
                     }
-                    val label = priceText(currentPrice, decimals)
+                    val label = priceText(displayPrice.toDouble(), decimals)
                     val tagWidth = tagPaint.measureText(label) + 14.dp.toPx()
                     val tagHeight = 20.dp.toPx()
                     drawRoundRect(C.PriceTag,
@@ -1004,7 +992,8 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
             PairHeader(Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 8.dp),
                 onClick = onOpenPairPicker)
             Column(Modifier.align(Alignment.TopStart).padding(start = 14.dp, top = 60.dp)) {
-                Text(fmt(livePrice), color = C.TextSecondary, fontSize = 11.sp)
+                val displayPrice = displayCandle?.close ?: (if (livePrice > 0f) livePrice else 0f)
+                Text(fmt(displayPrice), color = C.TextSecondary, fontSize = 11.sp)
                 Text("$clockText UTC+3", color = C.TextSecondary, fontSize = 11.sp)
             }
             OpenTradeProgressBars(Modifier.align(Alignment.BottomStart).padding(12.dp))
