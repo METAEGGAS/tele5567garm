@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -71,7 +72,6 @@ object C {
     val Surface = Color(0xFF24203D)
     val SurfaceRaised = Color(0xFF30284F)
     val Cyan = Color(0xFF58D9F5)
-    // ✅ ألوان فلورسنت ساطعة
     val Green = Color(0xFF39FF14)   // Neon Green
     val Red = Color(0xFFFF1A1A)     // Neon Red
     val Blue = Cyan
@@ -136,7 +136,7 @@ object BiquoteApi {
         }
         return try {
             val c = (URL(BASE + path + qs).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"; connectTimeout = 8000; readTimeout = 8000
+                requestMethod = "GET"; connectTimeout = 5000; readTimeout = 5000
             }
             if (c.responseCode in 200..299) c.inputStream.bufferedReader().use { it.readText() }
             else null
@@ -177,29 +177,29 @@ object BiquoteApi {
                 list.sortedBy { it.time }
             } catch (e: Exception) { emptyList() }
         }
-
-    suspend fun symbols(liveOnly: Boolean = true): List<String> = withContext(Dispatchers.IO) {
-        val txt = get("/api/symbols", mapOf("liveOnly" to liveOnly.toString())) ?: return@withContext emptyList()
-        try {
-            val arr = JSONArray(txt)
-            val out = ArrayList<String>()
-            for (i in 0 until arr.length()) {
-                val v = arr.opt(i)
-                val s = when (v) {
-                    is String -> v
-                    is JSONObject -> v.optString("symbol", v.optString("name", ""))
-                    else -> ""
-                }
-                if (s.isNotBlank()) out.add(s.uppercase().replace(Regex("[_/\\-]"), ""))
-            }
-            out.distinct()
-        } catch (e: Exception) { emptyList() }
-    }
 }
 
 object SymCatalog {
-    val CRX = Regex("^(BTC|ETH|SOL|XRP|BNB|ADA|DOGE|DOT|MATIC|AVAX|LINK|LTC|TRX|ATOM|ETC|XLM|ALGO|VET|FIL|NEAR|APT|ARB|OP|INJ|SUI|SEI|TIA|TON|PEPE|SHIB)")
-    val COX = Regex("^(XAU|XAG|XPT|XPD|USOIL|UKOIL|WTI|BRENT|NGAS)")
+    // ✅ قوائم ثابتة شاملة
+    val FX_SYMBOLS = listOf(
+        "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD",
+        "EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "CADJPY", "CHFJPY", "NZDJPY",
+        "EURCHF", "EURAUD", "EURCAD", "EURNZD", "GBPCHF", "GBPAUD", "GBPCAD",
+        "GBPNZD", "AUDCHF", "AUDCAD", "AUDNZD", "CADCHF", "NZDCAD", "NZDCHF"
+    )
+
+    val CRYPTO_SYMBOLS = listOf(
+        "BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "BNBUSD", "ADAUSD",
+        "DOGEUSD", "DOTUSD", "MATICUSD", "AVAXUSD", "LINKUSD", "LTCUSD",
+        "TRXUSD", "ATOMUSD", "ETCUSD", "XLMUSD", "ALGOUSD", "VETUSD",
+        "FILUSD", "NEARUSD", "APTUSD", "ARBUSD", "OPUSD", "INJUSD",
+        "SUIUSD", "SEIUSD", "TIAUSD", "TONUSD", "PEPEUSD", "SHIBUSD"
+    )
+
+    val COMMODITY_SYMBOLS = listOf(
+        "XAUUSD", "XAGUSD", "USOIL", "UKOIL", "NGAS"
+    )
+
     val FLAGS = mapOf(
         "EUR" to "eu","USD" to "us","GBP" to "gb","JPY" to "jp","CHF" to "ch","AUD" to "au",
         "CAD" to "ca","NZD" to "nz","TRY" to "tr","ZAR" to "za","MXN" to "mx","SEK" to "se",
@@ -207,9 +207,8 @@ object SymCatalog {
         "CZK" to "cz","ILS" to "il","CNY" to "cn","QAR" to "qa","SAR" to "sa","UAH" to "ua",
         "IDR" to "id","AED" to "ae"
     )
-    val DEFAULTS = listOf("EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","XAUUSD","BTCUSD","ETHUSD","AEDCNY")
 
-    fun isFx(s: String) = !CRX.containsMatchIn(s) && !COX.containsMatchIn(s) && s.length == 6
+    fun isFx(s: String) = FX_SYMBOLS.contains(s)
     fun pretty(s: String): String = if (s.length == 6) "${s.substring(0,3)}/${s.substring(3)}" else s
     fun base(s: String) = if (s.length >= 6) s.substring(0,3) else s
     fun quote(s: String) = if (s.length >= 6) s.substring(3) else ""
@@ -558,6 +557,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
     var secondsLeft by remember { mutableStateOf(60) }
     var clockText by remember { mutableStateOf(clockNow()) }
     var inertia by remember { mutableStateOf(0.0) }
+    var isLoading by remember { mutableStateOf(true) } // ✅ حالة تحميل
 
     val density = LocalDensity.current
     val axisTextPx = with(density) { 9.sp.toPx() }
@@ -634,7 +634,6 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
         val first = barPosition(candles.first().time, origin)
         val last = barPosition(candles.last().time, origin)
         val half = view.visibleBars / 2.0
-        // ✅ منع التمرير للخلف: لا يمكن رؤية أي شمعة قبل الشمعة الأولى
         val minCenter = first + half - 1.0
         val maxCenter = last + half - 2.0
         val center = if (minCenter <= maxCenter)
@@ -685,22 +684,32 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
         }
     }
 
+    // ✅ حل جذري لمشكلة عدم ظهور الشموع عند أول فتح
     LaunchedEffect(sym) {
+        isLoading = true
         candles.clear()
         displayCandle = null
         livePrice = 0f
         followLive = true
         inertia = 0.0
 
-        val initialBars = BiquoteApi.ohlc(sym, "1m", 300)
-        if (initialBars.isNotEmpty()) {
-            origin = initialBars.first().time
-            for (b in initialBars) mergeCandle(candles, b, bulk = true)
-            while (candles.size > 1500) candles.removeAt(0)
-            viewport = initialViewport(candles, origin)
-            bsTarget = viewport.visibleBars
-            livePrice = candles.last().close
-            displayCandle = candles.last().copy()
+        // محاولة جلب البيانات مع إعادة المحاولة حتى النجاح
+        var success = false
+        while (!success) {
+            val initialBars = BiquoteApi.ohlc(sym, "1m", 300)
+            if (initialBars.isNotEmpty()) {
+                origin = initialBars.first().time
+                for (b in initialBars) mergeCandle(candles, b, bulk = true)
+                while (candles.size > 1500) candles.removeAt(0)
+                viewport = initialViewport(candles, origin)
+                bsTarget = viewport.visibleBars
+                livePrice = candles.last().close
+                displayCandle = candles.last().copy()
+                success = true
+                isLoading = false
+            } else {
+                delay(1500L) // انتظار قبل إعادة المحاولة
+            }
         }
 
         while (true) {
@@ -775,190 +784,194 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Box(modifier.background(C.ChartBg)) {
-            // ✅ صورة الخلفية المطلوبة
             AsyncImage(
                 model = CHART_BG_URL,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize()
             )
-            // طبقة تعتيم خفيفة لضمان وضوح الشموع
             Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.25f)))
 
-            Canvas(
-                Modifier.fillMaxSize().onSizeChanged { chartSize = it }
-                    .pointerInput(Unit) {
-                        try {
-                            awaitEachGesture {
-                                awaitFirstDown(requireUnconsumed = false)
-                                onBegin()
-                                var pinchStarted = false
-                                var dragging = false
-                                var accumulatedPan = Offset.Zero
-                                var accumulatedZoom = 1f
-                                val slop = viewConfiguration.touchSlop
-                                try {
-                                    do {
-                                        val event = awaitPointerEvent()
-                                        val pressed = event.changes.count { it.pressed }
-                                        val stable = event.changes.count { it.pressed && it.previousPressed }
-                                        if (pressed >= 2) {
-                                            if (!pinchStarted) {
-                                                pinchStarted = true; dragging = false
-                                                accumulatedZoom = 1f; onPinchStart()
-                                            }
-                                            if (pressed == stable) {
-                                                val zoom = event.calculateZoom()
-                                                if (zoom.isFinite() && zoom > 0f) {
-                                                    if (!dragging) {
-                                                        accumulatedZoom *= zoom
-                                                        val radius = event.calculateCentroidSize(useCurrent = false)
-                                                        if (abs(1f - accumulatedZoom) * radius > slop) {
-                                                            dragging = true
-                                                            onZoom(accumulatedZoom.toDouble())
-                                                        }
-                                                    } else onZoom(zoom.toDouble())
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = C.Cyan,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            } else {
+                Canvas(
+                    Modifier.fillMaxSize().onSizeChanged { chartSize = it }
+                        .pointerInput(Unit) {
+                            try {
+                                awaitEachGesture {
+                                    awaitFirstDown(requireUnconsumed = false)
+                                    onBegin()
+                                    var pinchStarted = false
+                                    var dragging = false
+                                    var accumulatedPan = Offset.Zero
+                                    var accumulatedZoom = 1f
+                                    val slop = viewConfiguration.touchSlop
+                                    try {
+                                        do {
+                                            val event = awaitPointerEvent()
+                                            val pressed = event.changes.count { it.pressed }
+                                            val stable = event.changes.count { it.pressed && it.previousPressed }
+                                            if (pressed >= 2) {
+                                                if (!pinchStarted) {
+                                                    pinchStarted = true; dragging = false
+                                                    accumulatedZoom = 1f; onPinchStart()
                                                 }
-                                            }
-                                            event.changes.forEach { it.consume() }
-                                        } else if (pressed == 1 && stable == 1 && !pinchStarted) {
-                                            val pan = event.calculatePan()
-                                            if (!dragging) {
-                                                accumulatedPan += pan
-                                                if (abs(accumulatedPan.x) > slop) {
-                                                    dragging = true
-                                                    val excess = accumulatedPan.x -
-                                                        if (accumulatedPan.x > 0f) slop else -slop
-                                                    onPan(excess)
+                                                if (pressed == stable) {
+                                                    val zoom = event.calculateZoom()
+                                                    if (zoom.isFinite() && zoom > 0f) {
+                                                        if (!dragging) {
+                                                            accumulatedZoom *= zoom
+                                                            val radius = event.calculateCentroidSize(useCurrent = false)
+                                                            if (abs(1f - accumulatedZoom) * radius > slop) {
+                                                                dragging = true
+                                                                onZoom(accumulatedZoom.toDouble())
+                                                            }
+                                                        } else onZoom(zoom.toDouble())
+                                                    }
                                                 }
-                                            } else onPan(pan.x)
-                                            if (dragging) event.changes.forEach { it.consume() }
-                                        } else if (pinchStarted) {
-                                            event.changes.forEach { it.consume() }
-                                        }
-                                    } while (event.changes.any { it.pressed })
-                                } finally { onEnd() }
+                                                event.changes.forEach { it.consume() }
+                                            } else if (pressed == 1 && stable == 1 && !pinchStarted) {
+                                                val pan = event.calculatePan()
+                                                if (!dragging) {
+                                                    accumulatedPan += pan
+                                                    if (abs(accumulatedPan.x) > slop) {
+                                                        dragging = true
+                                                        val excess = accumulatedPan.x -
+                                                            if (accumulatedPan.x > 0f) slop else -slop
+                                                        onPan(excess)
+                                                    }
+                                                } else onPan(pan.x)
+                                                if (dragging) event.changes.forEach { it.consume() }
+                                            } else if (pinchStarted) {
+                                                event.changes.forEach { it.consume() }
+                                            }
+                                        } while (event.changes.any { it.pressed })
+                                    } finally { onEnd() }
+                                }
+                            } finally { onEnd() }
+                        }
+                ) {
+                    val plotWidth = size.width; val plotHeight = size.height
+                    if (plotWidth <= 1f || plotHeight <= 1f) return@Canvas
+                    if (candles.isEmpty()) return@Canvas
+                    val view = viewport
+                    val dv = displayCandle
+                    val lastIdx = candles.lastIndex
+
+                    fun xForBar(bar: Double): Float =
+                        (view.fractionFor(bar) * plotWidth.toDouble()).toFloat()
+                    fun yForPrice(price: Double): Float =
+                        ((view.maxPrice - price) / view.priceSpan * plotHeight.toDouble()).toFloat()
+                    fun baseline(y: Float, paint: NativePaint): Float =
+                        y - (paint.ascent() + paint.descent()) / 2f
+
+                    val native = drawContext.canvas.nativeCanvas
+
+                    val rows = (plotHeight / 58.dp.toPx()).toInt().coerceIn(3, 12)
+                    val priceStep = nicePriceStep(view.priceSpan / rows)
+                    val decimals = priceDecimals(priceStep)
+                    val firstPrice = ceil(view.minPrice / priceStep).toLong()
+                    val lastPrice = floor(view.maxPrice / priceStep).toLong()
+                    if (lastPrice >= firstPrice) {
+                        for (tick in firstPrice..lastPrice) {
+                            val price = tick.toDouble() * priceStep
+                            val y = yForPrice(price)
+                            drawLine(C.Grid.copy(alpha = 0.34f), Offset(0f, y), Offset(plotWidth, y), 1.dp.toPx())
+                            if (y >= axisTextPx && y <= plotHeight - axisTextPx / 2f) {
+                                native.drawText(priceText(price, decimals), plotWidth - 5.dp.toPx(),
+                                    baseline(y, axisPaint), axisPaint)
                             }
-                        } finally { onEnd() }
-                    }
-            ) {
-                val plotWidth = size.width; val plotHeight = size.height
-                if (plotWidth <= 1f || plotHeight <= 1f) return@Canvas
-                if (candles.isEmpty()) return@Canvas
-                val view = viewport
-                val dv = displayCandle
-                val lastIdx = candles.lastIndex
-
-                fun xForBar(bar: Double): Float =
-                    (view.fractionFor(bar) * plotWidth.toDouble()).toFloat()
-                fun yForPrice(price: Double): Float =
-                    ((view.maxPrice - price) / view.priceSpan * plotHeight.toDouble()).toFloat()
-                fun baseline(y: Float, paint: NativePaint): Float =
-                    y - (paint.ascent() + paint.descent()) / 2f
-
-                val native = drawContext.canvas.nativeCanvas
-
-                val rows = (plotHeight / 58.dp.toPx()).toInt().coerceIn(3, 12)
-                val priceStep = nicePriceStep(view.priceSpan / rows)
-                val decimals = priceDecimals(priceStep)
-                val firstPrice = ceil(view.minPrice / priceStep).toLong()
-                val lastPrice = floor(view.maxPrice / priceStep).toLong()
-                if (lastPrice >= firstPrice) {
-                    for (tick in firstPrice..lastPrice) {
-                        val price = tick.toDouble() * priceStep
-                        val y = yForPrice(price)
-                        drawLine(C.Grid.copy(alpha = 0.34f), Offset(0f, y), Offset(plotWidth, y), 1.dp.toPx())
-                        if (y >= axisTextPx && y <= plotHeight - axisTextPx / 2f) {
-                            native.drawText(priceText(price, decimals), plotWidth - 5.dp.toPx(),
-                                baseline(y, axisPaint), axisPaint)
                         }
                     }
-                }
 
-                val columns = (plotWidth / 64.dp.toPx()).toInt().coerceAtLeast(2)
-                val timeStep = niceTimeStep(view.visibleBars / columns)
-                val originMinute = origin / MINUTE_MS
-                val left = view.centerBar - view.visibleBars / 2.0 + originMinute
-                val right = view.centerBar + view.visibleBars / 2.0 + originMinute
-                val firstTick = ceil(left / timeStep).toLong()
-                val lastTick = floor(right / timeStep).toLong()
-                if (lastTick >= firstTick) {
-                    for (tick in firstTick..lastTick) {
-                        val minute = tick * timeStep
-                        val x = xForBar((minute - originMinute).toDouble())
-                        drawLine(C.Grid.copy(alpha = 0.28f), Offset(x, 0f), Offset(x, plotHeight), 1.dp.toPx())
-                        val label = candleTimeText(minute * MINUTE_MS)
-                        val halfText = timePaint.measureText(label) / 2f
-                        if (x - halfText >= 0f && x + halfText <= plotWidth) {
-                            native.drawText(label, x,
-                                baseline(plotHeight - 7.dp.toPx(), timePaint), timePaint)
+                    val columns = (plotWidth / 64.dp.toPx()).toInt().coerceAtLeast(2)
+                    val timeStep = niceTimeStep(view.visibleBars / columns)
+                    val originMinute = origin / MINUTE_MS
+                    val left = view.centerBar - view.visibleBars / 2.0 + originMinute
+                    val right = view.centerBar + view.visibleBars / 2.0 + originMinute
+                    val firstTick = ceil(left / timeStep).toLong()
+                    val lastTick = floor(right / timeStep).toLong()
+                    if (lastTick >= firstTick) {
+                        for (tick in firstTick..lastTick) {
+                            val minute = tick * timeStep
+                            val x = xForBar((minute - originMinute).toDouble())
+                            drawLine(C.Grid.copy(alpha = 0.28f), Offset(x, 0f), Offset(x, plotHeight), 1.dp.toPx())
+                            val label = candleTimeText(minute * MINUTE_MS)
+                            val halfText = timePaint.measureText(label) / 2f
+                            if (x - halfText >= 0f && x + halfText <= plotWidth) {
+                                native.drawText(label, x,
+                                    baseline(plotHeight - 7.dp.toPx(), timePaint), timePaint)
+                            }
                         }
                     }
-                }
 
-                val spacing = plotWidth / view.visibleBars.toFloat()
-                // ✅ عرض الشمعة يتناسب مع التباعد لتقليل الفراغات
-                val bodyWidth = (spacing * 0.85f).coerceIn(MINBW, spacing * 0.95f)
-                val wickWidth = minOf(1.2.dp.toPx(), bodyWidth)
-                val firstBar = max(0, floor(view.centerBar - view.visibleBars / 2.0).toInt() - 2)
-                val lastBar = min(lastIdx, ceil(view.centerBar + view.visibleBars / 2.0).toInt() + 2)
+                    val spacing = plotWidth / view.visibleBars.toFloat()
+                    val bodyWidth = (spacing * 0.85f).coerceIn(MINBW, spacing * 0.95f)
+                    val wickWidth = minOf(1.2.dp.toPx(), bodyWidth)
+                    val firstBar = max(0, floor(view.centerBar - view.visibleBars / 2.0).toInt() - 2)
+                    val lastBar = min(lastIdx, ceil(view.centerBar + view.visibleBars / 2.0).toInt() + 2)
 
-                clipRect(0f, 0f, plotWidth, plotHeight) {
-                    for (i in firstBar..lastBar) {
-                        val real = candles[i]
-                        val candle = if (i == lastIdx && dv != null && dv.time == real.time) dv else real
-                        val x = xForBar(barPosition(candle.time, origin))
-                        if (x + bodyWidth / 2f < 0f || x - bodyWidth / 2f > plotWidth) continue
-                        // ✅ ألوان فلورسنت ساطعة
-                        val color = if (candle.close >= candle.open) C.Green else C.Red
-                        val yH = yForPrice(candle.high.toDouble())
-                        val yL = yForPrice(candle.low.toDouble())
-                        val yO = yForPrice(candle.open.toDouble())
-                        val yC = yForPrice(candle.close.toDouble())
-                        drawLine(color, Offset(x, yH), Offset(x, yL), wickWidth, cap = StrokeCap.Butt)
-                        val top = minOf(yO, yC)
-                        val height = abs(yO - yC)
-                        if (height < 1.dp.toPx()) {
-                            drawLine(color, Offset(x - bodyWidth / 2f, (yO + yC) / 2f),
-                                Offset(x + bodyWidth / 2f, (yO + yC) / 2f), 1.dp.toPx())
-                        } else {
-                            drawRect(color, Offset(x - bodyWidth / 2f, top), Size(bodyWidth, height))
+                    clipRect(0f, 0f, plotWidth, plotHeight) {
+                        for (i in firstBar..lastBar) {
+                            val real = candles[i]
+                            val candle = if (i == lastIdx && dv != null && dv.time == real.time) dv else real
+                            val x = xForBar(barPosition(candle.time, origin))
+                            if (x + bodyWidth / 2f < 0f || x - bodyWidth / 2f > plotWidth) continue
+                            val color = if (candle.close >= candle.open) C.Green else C.Red
+                            val yH = yForPrice(candle.high.toDouble())
+                            val yL = yForPrice(candle.low.toDouble())
+                            val yO = yForPrice(candle.open.toDouble())
+                            val yC = yForPrice(candle.close.toDouble())
+                            drawLine(color, Offset(x, yH), Offset(x, yL), wickWidth, cap = StrokeCap.Butt)
+                            val top = minOf(yO, yC)
+                            val height = abs(yO - yC)
+                            if (height < 1.dp.toPx()) {
+                                drawLine(color, Offset(x - bodyWidth / 2f, (yO + yC) / 2f),
+                                    Offset(x + bodyWidth / 2f, (yO + yC) / 2f), 1.dp.toPx())
+                            } else {
+                                drawRect(color, Offset(x - bodyWidth / 2f, top), Size(bodyWidth, height))
+                            }
+                        }
+                        TradeStore.openTrades.filter { it.symbol == sym }.forEach { tr ->
+                            val yEntry = yForPrice(tr.entry.toDouble())
+                            val xEntry = xForBar(barPosition(tr.openedAt, origin))
+                            val col = if (tr.direction > 0) C.BarOpenGreen else C.Red
+                            drawLine(col.copy(alpha = 0.8f), Offset(xEntry, yEntry),
+                                Offset(plotWidth - 54f, yEntry), 2.dp.toPx())
+                            drawCircle(col, 4.dp.toPx(), Offset(xEntry, yEntry))
                         }
                     }
-                    TradeStore.openTrades.filter { it.symbol == sym }.forEach { tr ->
-                        val yEntry = yForPrice(tr.entry.toDouble())
-                        val xEntry = xForBar(barPosition(tr.openedAt, origin))
-                        val col = if (tr.direction > 0) C.BarOpenGreen else C.Red
-                        drawLine(col.copy(alpha = 0.8f), Offset(xEntry, yEntry),
-                            Offset(plotWidth - 54f, yEntry), 2.dp.toPx())
-                        drawCircle(col, 4.dp.toPx(), Offset(xEntry, yEntry))
-                    }
-                }
 
-                val displayPrice = dv?.close ?: (if (livePrice > 0f) livePrice else candles.last().close)
-                val currentY = yForPrice(displayPrice.toDouble())
-                if (currentY in 0f..plotHeight && displayPrice > 0f) {
-                    val dash = 7.dp.toPx(); val gap = 5.dp.toPx(); var x = 0f
-                    while (x < plotWidth) {
-                        drawLine(C.Cyan.copy(alpha = 0.85f), Offset(x, currentY),
-                            Offset(minOf(x + dash, plotWidth), currentY), 1.dp.toPx())
-                        x += dash + gap
+                    val displayPrice = dv?.close ?: (if (livePrice > 0f) livePrice else candles.last().close)
+                    val currentY = yForPrice(displayPrice.toDouble())
+                    if (currentY in 0f..plotHeight && displayPrice > 0f) {
+                        val dash = 7.dp.toPx(); val gap = 5.dp.toPx(); var x = 0f
+                        while (x < plotWidth) {
+                            drawLine(C.Cyan.copy(alpha = 0.85f), Offset(x, currentY),
+                                Offset(minOf(x + dash, plotWidth), currentY), 1.dp.toPx())
+                            x += dash + gap
+                        }
+                        val label = priceText(displayPrice.toDouble(), decimals)
+                        val tagWidth = tagPaint.measureText(label) + 14.dp.toPx()
+                        val tagHeight = 20.dp.toPx()
+                        drawRoundRect(C.PriceTag,
+                            Offset(plotWidth - tagWidth - 3.dp.toPx(), currentY - tagHeight / 2f),
+                            Size(tagWidth, tagHeight), CornerRadius(4.dp.toPx()))
+                        native.drawText(label, plotWidth - 3.dp.toPx() - tagWidth / 2f,
+                            baseline(currentY, tagPaint), tagPaint)
+                        native.drawText("M1", plotWidth - 6.dp.toPx(),
+                            currentY - 11.dp.toPx(), detailPaint)
+                        native.drawText(String.format(Locale.US, "%02d:%02d",
+                            secondsLeft / 60, secondsLeft % 60), plotWidth - 6.dp.toPx(),
+                            currentY + 21.dp.toPx(), detailPaint)
                     }
-                    val label = priceText(displayPrice.toDouble(), decimals)
-                    val tagWidth = tagPaint.measureText(label) + 14.dp.toPx()
-                    val tagHeight = 20.dp.toPx()
-                    drawRoundRect(C.PriceTag,
-                        Offset(plotWidth - tagWidth - 3.dp.toPx(), currentY - tagHeight / 2f),
-                        Size(tagWidth, tagHeight), CornerRadius(4.dp.toPx()))
-                    native.drawText(label, plotWidth - 3.dp.toPx() - tagWidth / 2f,
-                        baseline(currentY, tagPaint), tagPaint)
-                    native.drawText("M1", plotWidth - 6.dp.toPx(),
-                        currentY - 11.dp.toPx(), detailPaint)
-                    native.drawText(String.format(Locale.US, "%02d:%02d",
-                        secondsLeft / 60, secondsLeft % 60), plotWidth - 6.dp.toPx(),
-                        currentY + 21.dp.toPx(), detailPaint)
                 }
             }
+
             PairHeader(Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 8.dp),
                 onClick = onOpenPairPicker)
             Column(Modifier.align(Alignment.TopStart).padding(start = 14.dp, top = 60.dp)) {
@@ -1014,32 +1027,46 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
     val tabs = listOf("العملات", "العملات الرقمية", "السلع", "الأسهم")
     var selectedTab by remember { mutableStateOf(0) }
     var query by remember { mutableStateOf("") }
-    var activeSymbols by remember { mutableStateOf(SymCatalog.DEFAULTS) }
+    var activeSymbols by remember { mutableStateOf<List<String>>(emptyList()) }
+    var connectedMap by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    var isCheckingConnection by remember { mutableStateOf(true) }
     val favorites = remember { mutableStateListOf<String>() }
 
+    // ✅ فحص حالة الاتصال بشكل متوازي
     LaunchedEffect(Unit) {
-        val remote = BiquoteApi.symbols(liveOnly = true)
-        if (remote.isNotEmpty()) {
-            activeSymbols = (remote + SymCatalog.DEFAULTS).distinct()
+        val allSymbols = SymCatalog.FX_SYMBOLS + SymCatalog.CRYPTO_SYMBOLS + SymCatalog.COMMODITY_SYMBOLS
+        val results = mutableMapOf<String, Boolean>()
+        coroutineScope {
+            val jobs = allSymbols.map { sym ->
+                async(Dispatchers.IO) {
+                    val res = BiquoteApi.ohlc(sym, "1m", 1).isNotEmpty()
+                    results[sym] = res
+                }
+            }
+            jobs.awaitAll()
         }
+        connectedMap = results
+        activeSymbols = allSymbols
+        isCheckingConnection = false
     }
 
     val filtered = activeSymbols.filter {
         val catOk = when (selectedTab) {
-            0 -> SymCatalog.isFx(it)
-            1 -> SymCatalog.CRX.containsMatchIn(it)
-            2 -> SymCatalog.COX.containsMatchIn(it)
+            0 -> SymCatalog.FX_SYMBOLS.contains(it)
+            1 -> SymCatalog.CRYPTO_SYMBOLS.contains(it)
+            2 -> SymCatalog.COMMODITY_SYMBOLS.contains(it)
             else -> false
         }
         catOk && (query.isBlank() || it.contains(query.uppercase()))
-    }
+    }.sortedWith(compareBy({ !(connectedMap[it] ?: false) }, { it })) // ✅ الفرز: المتصل أولاً
 
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f))
         .clickable(onClick = onDismiss)) {
         Box(
             Modifier.fillMaxWidth(0.80f).fillMaxHeight()
+                .align(Alignment.CenterStart) // ✅ الفتح من اليسار
                 .background(C.PkBg)
-                .border(1.dp, C.PkBd, RoundedCornerShape(topEnd = 18.dp, bottomEnd = 18.dp))
+                .border(1.dp, C.PkBd, RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp))
                 .clickable(enabled = false, onClick = {})
         ) {
             Column(Modifier.fillMaxSize()) {
@@ -1103,66 +1130,82 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
                     Text("الإيراد ▾", color = Color(0xFF8EA0B8),
                         fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
-                LazyColumn(Modifier.fillMaxSize()) {
-                    items(filtered) { c ->
-                        val base = SymCatalog.base(c); val quote = SymCatalog.quote(c)
-                        val cryptoIcon = SymCatalog.cryptoIconUrl(c)
-                        Row(Modifier.fillMaxWidth()
-                            .clickable {
-                                TradeStore.currentSymbol.value = c
-                                onDismiss()
-                            }
-                            .padding(horizontal = 12.dp, vertical = 9.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(9.dp)
-                        ) {
-                            val fav = favorites.contains(c)
-                            Text(if (fav) "★" else "☆",
-                                color = C.PkStarOn, fontSize = 20.sp,
-                                modifier = Modifier.clickable {
-                                    if (fav) favorites.remove(c) else favorites.add(c)
-                                })
-                            Box(Modifier.width(42.dp).height(28.dp)) {
-                                if (cryptoIcon != null) {
-                                    AsyncImage(model = cryptoIcon, contentDescription = null,
-                                        modifier = Modifier.size(28.dp).clip(CircleShape)
-                                            .border(2.dp, C.PkBg, CircleShape)
-                                            .align(Alignment.CenterStart))
-                                } else {
-                                    val baseFlag = SymCatalog.flagUrl(SymCatalog.FLAGS[base])
-                                    if (baseFlag != null) AsyncImage(model = baseFlag, contentDescription = null,
-                                        modifier = Modifier.size(28.dp).clip(CircleShape)
-                                            .border(2.dp, C.PkBg, CircleShape)
-                                            .align(Alignment.CenterStart))
-                                    else Box(Modifier.size(28.dp).clip(CircleShape)
-                                        .background(Color(0xFFF0B90B))
-                                        .border(2.dp, C.PkBg, CircleShape)
-                                        .align(Alignment.CenterStart),
-                                        contentAlignment = Alignment.Center) {
-                                        Text(base.take(1), color = Color(0xFF1B2233),
-                                            fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                                }
-                                if (cryptoIcon == null) {
-                                    Box(Modifier.offset(x = 14.dp)) {
-                                        val quoteFlag = SymCatalog.flagUrl(SymCatalog.FLAGS[quote])
-                                        if (quoteFlag != null) AsyncImage(model = quoteFlag,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(28.dp).clip(CircleShape)
-                                                .border(2.dp, C.PkBg, CircleShape))
-                                        else Box(Modifier.size(28.dp).clip(CircleShape)
-                                            .background(Color(0xFFF0B90B))
-                                            .border(2.dp, C.PkBg, CircleShape),
-                                            contentAlignment = Alignment.Center) {
-                                            Text(quote.take(1), color = Color(0xFF1B2233),
-                                                fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+
+                if (isCheckingConnection) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = C.Cyan)
+                    }
+                } else {
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        items(filtered) { c ->
+                            val base = SymCatalog.base(c); val quote = SymCatalog.quote(c)
+                            val cryptoIcon = SymCatalog.cryptoIconUrl(c)
+                            val isConnected = connectedMap[c] ?: false
+                            
+                            Row(Modifier.fillMaxWidth()
+                                .clickable {
+                                    if (isConnected) {
+                                        TradeStore.currentSymbol.value = c
+                                        onDismiss()
                                     }
                                 }
+                                .padding(horizontal = 12.dp, vertical = 9.dp)
+                                .alpha(if (isConnected) 1f else 0.5f), // تعتيم غير المتصل
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(9.dp)
+                            ) {
+                                val fav = favorites.contains(c)
+                                Text(if (fav) "★" else "☆",
+                                    color = C.PkStarOn, fontSize = 20.sp,
+                                    modifier = Modifier.clickable(enabled = isConnected) {
+                                        if (fav) favorites.remove(c) else favorites.add(c)
+                                    })
+                                Box(Modifier.width(42.dp).height(28.dp)) {
+                                    if (cryptoIcon != null) {
+                                        AsyncImage(model = cryptoIcon, contentDescription = null,
+                                            modifier = Modifier.size(28.dp).clip(CircleShape)
+                                                .border(2.dp, C.PkBg, CircleShape)
+                                                .align(Alignment.CenterStart))
+                                    } else {
+                                        val baseFlag = SymCatalog.flagUrl(SymCatalog.FLAGS[base])
+                                        if (baseFlag != null) AsyncImage(model = baseFlag, contentDescription = null,
+                                            modifier = Modifier.size(28.dp).clip(CircleShape)
+                                                .border(2.dp, C.PkBg, CircleShape)
+                                                .align(Alignment.CenterStart))
+                                        else Box(Modifier.size(28.dp).clip(CircleShape)
+                                            .background(Color(0xFFF0B90B))
+                                            .border(2.dp, C.PkBg, CircleShape)
+                                            .align(Alignment.CenterStart),
+                                            contentAlignment = Alignment.Center) {
+                                            Text(base.take(1), color = Color(0xFF1B2233),
+                                                fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                                    }
+                                    if (cryptoIcon == null) {
+                                        Box(Modifier.offset(x = 14.dp)) {
+                                            val quoteFlag = SymCatalog.flagUrl(SymCatalog.FLAGS[quote])
+                                            if (quoteFlag != null) AsyncImage(model = quoteFlag,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(28.dp).clip(CircleShape)
+                                                    .border(2.dp, C.PkBg, CircleShape))
+                                            else Box(Modifier.size(28.dp).clip(CircleShape)
+                                                .background(Color(0xFFF0B90B))
+                                                .border(2.dp, C.PkBg, CircleShape),
+                                                contentAlignment = Alignment.Center) {
+                                                Text(quote.take(1), color = Color(0xFF1B2233),
+                                                    fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                                        }
+                                    }
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Text("$base/$quote", color = Color(0xFFDFE8F5),
+                                        fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                                    if (!isConnected) {
+                                        Text("غير متصل", color = C.Red, fontSize = 10.sp)
+                                    }
+                                }
+                                Text("+${SymCatalog.payout(c)}%", color = C.PkPct,
+                                    fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
-                            Text("$base/$quote", color = Color(0xFFDFE8F5),
-                                fontSize = 14.sp, fontWeight = FontWeight.ExtraBold,
-                                modifier = Modifier.weight(1f))
-                            Text("+${SymCatalog.payout(c)}%", color = C.PkPct,
-                                fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1236,7 +1279,6 @@ fun TradeButtons() {
     val payout = remember(sym) { SymCatalog.payout(sym) }
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        // ✅ الأزرار تستخدم الألوان الجديدة تلقائياً
         TradeButton("شراء", C.Green, payout, Modifier.weight(1f)) { openTrade(+1, sym, payout) }
         TradeButton("بيع", C.Red, payout, Modifier.weight(1f)) { openTrade(-1, sym, payout) }
     }
