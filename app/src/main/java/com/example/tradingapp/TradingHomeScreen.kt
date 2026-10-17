@@ -13,9 +13,11 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -152,7 +154,7 @@ object BiquoteApi {
 
     suspend fun latest(symbols: List<String>): Map<String, Double> = withContext(Dispatchers.IO) {
         if (symbols.isEmpty()) return@withContext emptyMap()
-        val params = symbols.take(100).map { "symbols" to it } // Biquote يدعم حتى 100 رمز في الطلب[reference:3]
+        val params = symbols.take(100).map { "symbols" to it }
         val txt = get("/api/latest", params) ?: return@withContext emptyMap()
         try {
             val arr = JSONArray(txt)
@@ -218,12 +220,33 @@ object BiquoteApi {
 }
 
 object SymCatalog {
-    // أنماط التصنيف التلقائي
-    private val CRYPTO_PATTERN = Regex("^(BTC|ETH|SOL|XRP|BNB|ADA|DOGE|DOT|MATIC|AVAX|LINK|LTC|TRX|ATOM|ETC|XLM|ALGO|VET|FIL|NEAR|APT|ARB|OP|INJ|SUI|SEI|TIA|TON|PEPE|SHIB|BCH|EOS|XMR|DASH|ZEC|COMP|MKR|AAVE|UNI|SNX|CRV|SUSHI|YFI|BAL|REN|KNC|ZRX|BAT|OMG|STORJ|MANA|SAND|AXS|ENJ|CHZ|GALA|IMX|APE|LDO|RPL|SSV|BLUR|WLD|JUP|PYTH|STRK|DYM|MANTA|ALT|PIXEL|PORTAL|AEVO|ETHFI|OM|ENA|REZ|SAGA|TAO|FET|AGIX|OCEAN|RNDR|AKT|GLM|HNT|AR|FIL|STORJ|SC|HIVE|BLZ|GRT|LPT|THETA|FTM|ONE|HBAR|VET|ICP|EGLD|FLOW|ROSE|KAVA|CELO|BAND|API3|INJ|SEI|TIA|SUI|APT|ARB|OP|MATIC|DOT|LINK|AVAX|ATOM|ALGO|XLM|TRX|LTC|BCH|ETC|XRP|BNB|SOL|ETH|BTC)"))
-    private val FOREX_PATTERN = Regex("^(EUR|USD|GBP|JPY|CHF|AUD|CAD|NZD|TRY|ZAR|MXN|SEK|NOK|SGD|HKD|PLN|DKK|HUF|CZK|ILS|CNY|QAR|SAR|UAH|IDR|THB|MYR|PHP|INR|KRW|BRL|ARS|CLP|COP|PEN|RUB)")
-    private val COMMODITY_PATTERN = Regex("^(XAU|XAG|XPT|XPD|USOIL|UKOIL|WTI|BRENT|NGAS|COPPER|CORN|WHEAT|SOYBEAN|COFFEE|SUGAR|COTTON|COCOA)")
-    private val INDEX_PATTERN = Regex("^(US30|US500|USTEC|UK100|GER40|FRA40|JP225|AUS200|HK50|EUSTX50|SPX500|NAS100|DJ30)")
-    private val STOCK_PATTERN = Regex("^[A-Z]{1,5}$") // رموز أسهم قصيرة (مبدئي)
+    private val FOREX_CODES = setOf(
+        "EUR", "USD", "GBP", "JPY", "CHF", "AUD", "CAD", "NZD", "TRY", "ZAR",
+        "MXN", "SEK", "NOK", "SGD", "HKD", "PLN", "DKK", "HUF", "CZK", "ILS",
+        "CNY", "QAR", "SAR", "UAH", "IDR", "THB", "MYR", "PHP", "INR", "KRW",
+        "BRL", "ARS", "CLP", "COP", "PEN", "RUB", "AED"
+    )
+    private val CRYPTO_CODES = setOf(
+        "BTC", "ETH", "SOL", "XRP", "BNB", "ADA", "DOGE", "DOT", "MATIC", "AVAX",
+        "LINK", "LTC", "TRX", "ATOM", "ETC", "XLM", "ALGO", "VET", "FIL", "NEAR",
+        "APT", "ARB", "OP", "INJ", "SUI", "SEI", "TIA", "TON", "PEPE", "SHIB",
+        "BCH", "EOS", "XMR", "DASH", "ZEC", "COMP", "MKR", "AAVE", "UNI", "SNX",
+        "CRV", "SUSHI", "YFI", "BAL", "REN", "KNC", "ZRX", "BAT", "OMG", "STORJ",
+        "MANA", "SAND", "AXS", "ENJ", "CHZ", "GALA", "IMX", "APE", "LDO", "RPL",
+        "SSV", "BLUR", "WLD", "JUP", "PYTH", "STRK", "DYM", "MANTA", "ALT",
+        "PIXEL", "PORTAL", "AEVO", "ETHFI", "ENA", "REZ", "SAGA", "TAO",
+        "FET", "AGIX", "OCEAN", "RNDR", "AKT", "GLM", "HNT", "AR", "SC", "HIVE",
+        "BLZ", "GRT", "LPT", "THETA", "FTM", "ONE", "HBAR", "ICP", "EGLD",
+        "FLOW", "ROSE", "KAVA", "CELO", "BAND", "API3"
+    )
+    private val COMMODITY_CODES = setOf(
+        "XAU", "XAG", "XPT", "XPD", "USOIL", "UKOIL", "WTI", "BRENT", "NGAS",
+        "COPPER", "CORN", "WHEAT", "SOYBEAN", "COFFEE", "SUGAR", "COTTON", "COCOA"
+    )
+    private val INDEX_CODES = setOf(
+        "US30", "US500", "USTEC", "UK100", "GER40", "FRA40", "JP225", "AUS200",
+        "HK50", "EUSTX50", "SPX500", "NAS100", "DJ30"
+    )
 
     val FLAGS = mapOf(
         "EUR" to "eu","USD" to "us","GBP" to "gb","JPY" to "jp","CHF" to "ch","AUD" to "au",
@@ -233,24 +256,35 @@ object SymCatalog {
         "IDR" to "id","AED" to "ae"
     )
 
-    fun isCrypto(s: String) = CRYPTO_PATTERN.containsMatchIn(s)
-    fun isForex(s: String) = FOREX_PATTERN.containsMatchIn(s) && s.length == 6 && !isCrypto(s)
-    fun isCommodity(s: String) = COMMODITY_PATTERN.containsMatchIn(s)
-    fun isIndex(s: String) = INDEX_PATTERN.containsMatchIn(s)
-    fun isStock(s: String) = STOCK_PATTERN.matches(s) && !isForex(s) && !isCrypto(s) && !isCommodity(s) && !isIndex(s)
+    // الترتيب مهم: الفوركس أولاً (لتفادي تعارض البادئات مثل ARS مع AR الكريبتو)
+    fun isForex(s: String): Boolean =
+        s.length == 6 && FOREX_CODES.any { s.startsWith(it) }
 
-    fun pretty(s: String): String = when {
-        s.length == 6 -> "${s.substring(0,3)}/${s.substring(3)}"
-        else -> s
-    }
+    fun isCrypto(s: String): Boolean =
+        !isForex(s) && CRYPTO_CODES.any { s.startsWith(it) }
+
+    fun isCommodity(s: String): Boolean =
+        !isForex(s) && !isCrypto(s) && COMMODITY_CODES.any { s.startsWith(it) }
+
+    fun isIndex(s: String): Boolean =
+        INDEX_CODES.contains(s)
+
+    fun isStock(s: String): Boolean =
+        Regex("^[A-Z]{1,5}$").matches(s) &&
+            !isForex(s) && !isCrypto(s) && !isCommodity(s) && !isIndex(s)
+
+    fun pretty(s: String): String =
+        if (s.length == 6) "${s.substring(0,3)}/${s.substring(3)}" else s
+
     fun base(s: String) = if (s.length >= 6) s.substring(0,3) else s
     fun quote(s: String) = if (s.length >= 6) s.substring(3) else ""
     fun flagUrl(cc: String?): String? = cc?.let { "https://flagcdn.com/${it}.svg" }
 
     fun cryptoIconUrl(symbol: String): String? {
         val base = base(symbol).lowercase()
-        val known = setOf("btc","eth","sol","xrp","bnb","ada","doge","dot","matic","avax","link","ltc","trx","atom","etc","xlm","algo","vet","fil","near","apt","arb","op","inj","sui","sei","tia","ton","pepe","shib","bch","eos","xmr","dash","zec","comp","mkr","aave","uni","snx","crv","sushi","yfi","bal","ren","knc","zrx","bat","omg","storj","mana","sand","axs","enj","chz","gala","imx","ape","ldo","rpl","ssv","blur","wld","jup","pyth","strk","dym","manta","alt","pixel","portal","aevo","ethfi","om","ena","rez","saga","tao","fet","agix","ocean","rndr","akt","glm","hnt","ar","fil","storj","sc","hive","blz","grt","lpt","theta","ftm","one","hbar","vet","icp","egld","flow","rose","kava","celo","band","api3")
-        return if (base in known) "https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/svg/color/$base.svg" else null
+        return if (base in CRYPTO_CODES.map { it.lowercase() }.toSet())
+            "https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/svg/color/$base.svg"
+        else null
     }
 
     fun payout(symbol: String): Int {
@@ -1071,26 +1105,31 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
     val favorites = remember { mutableStateListOf<String>() }
 
     LaunchedEffect(Unit) {
-        // 1. جلب القائمة الكاملة (حوالي 1700 أصل) من Biquote[reference:4]
         val remoteSymbols = BiquoteApi.symbols(liveOnly = false)
         val symbols = remoteSymbols.distinct().sorted()
         allSymbols = symbols
 
-        // 2. فحص حالة الاتصال على دفعات (Biquote يدعم حتى 100 رمز في الطلب)[reference:5]
-        val conn = mutableMapOf<String, Boolean>()
-        symbols.chunked(100).forEach { chunk ->
-            val latest = BiquoteApi.latest(chunk)
-            chunk.forEach { sym ->
-                conn[sym] = latest.containsKey(sym)
+        if (symbols.isNotEmpty()) {
+            val conn = mutableMapOf<String, Boolean>()
+            coroutineScope {
+                val jobs = symbols.chunked(100).map { chunk ->
+                    async(Dispatchers.IO) {
+                        val latest = BiquoteApi.latest(chunk)
+                        chunk.map { it to latest.containsKey(it) }
+                    }
+                }
+                jobs.awaitAll().flatten().forEach { (sym, connected) ->
+                    conn[sym] = connected
+                }
             }
+            connectedMap = conn
         }
-        connectedMap = conn
         isLoading = false
     }
 
     val filtered = allSymbols.filter { sym ->
         val catOk = when (selectedTab) {
-            0 -> true // الجميع
+            0 -> true
             1 -> SymCatalog.isForex(sym)
             2 -> SymCatalog.isCrypto(sym)
             3 -> SymCatalog.isCommodity(sym)
@@ -1104,7 +1143,7 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f))
         .clickable(onClick = onDismiss)) {
         Box(
-            Modifier.fillMaxWidth(0.85f).fillMaxHeight() // عرض أكبر قليلاً لاستيعاب التبويبات
+            Modifier.fillMaxWidth(0.88f).fillMaxHeight()
                 .align(Alignment.CenterStart)
                 .background(C.PkBg)
                 .border(1.dp, C.PkBd, RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp))
@@ -1119,20 +1158,24 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
                     Text("✕", color = Color(0xFFCFD9E8), fontSize = 19.sp,
                         modifier = Modifier.clickable(onClick = onDismiss).padding(6.dp))
                 }
-                // تبويبات أكثر (قابلة للتمرير أفقياً)
-                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     tabs.forEachIndexed { i, t ->
                         val on = i == selectedTab
                         Box(Modifier.clip(RoundedCornerShape(8.dp))
                             .background(if (on) C.PkTabOn else C.PkTab)
                             .clickable { selectedTab = i }
-                            .padding(horizontal = 8.dp, vertical = 7.dp)) {
+                            .padding(horizontal = 10.dp, vertical = 7.dp)) {
                             Text(t, color = if (on) Color.White else Color(0xFFA9B6CC),
-                                fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                         }
                     }
                 }
+
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                     verticalAlignment = Alignment.CenterVertically) {
@@ -1165,11 +1208,12 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
                         Text("🔍", color = Color(0xFF9FB0C9), fontSize = 14.sp)
                     }
                 }
+
                 Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(tabs[selectedTab], color = Color(0xFF8EA0B8),
                         fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Text("الإيراد ▾", color = Color(0xFF8EA0B8),
+                    Text("${filtered.size} أصل", color = Color(0xFF8EA0B8),
                         fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
 
@@ -1183,7 +1227,7 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
                             val base = SymCatalog.base(c); val quote = SymCatalog.quote(c)
                             val cryptoIcon = SymCatalog.cryptoIconUrl(c)
                             val isConnected = connectedMap[c] ?: false
-                            
+
                             Row(Modifier.fillMaxWidth()
                                 .clickable(enabled = isConnected) {
                                     TradeStore.currentSymbol.value = c
