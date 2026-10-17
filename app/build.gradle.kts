@@ -55,4 +55,6 @@ dependencies {
 
     // Coil - لتحميل الصور من الإنترنت
     implementation("io.coil-kt:coil-compose:2.6.0")
+implementation("io.coil-kt:coil-svg:2.6.0")
+
 }
