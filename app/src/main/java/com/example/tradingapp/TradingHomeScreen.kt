@@ -73,8 +73,8 @@ object C {
     val Surface = Color(0xFF24203D)
     val SurfaceRaised = Color(0xFF30284F)
     val Cyan = Color(0xFF58D9F5)
-    val Green = Color(0xFF39FF14)   // Neon Green
-    val Red = Color(0xFFFF1A1A)     // Neon Red
+    val Green = Color(0xFF39FF14)
+    val Red = Color(0xFFFF1A1A)
     val Blue = Cyan
     val Yellow = Color(0xFFFFD34D)
     val TextPrimary = Color(0xFFF5F2FF)
@@ -131,13 +131,13 @@ private fun remainingSeconds(openTime: Long, now: Long): Int =
 object BiquoteApi {
     private const val BASE = "https://biquote.io"
 
-    private fun get(path: String, params: Map<String, String> = emptyMap()): String? {
-        val qs = if (params.isEmpty()) "" else "?" + params.entries.joinToString("&") {
-            "${it.key}=${URLEncoder.encode(it.value, "UTF-8")}"
+    private fun get(path: String, params: List<Pair<String, String>> = emptyList()): String? {
+        val qs = if (params.isEmpty()) "" else "?" + params.joinToString("&") {
+            "${it.first}=${URLEncoder.encode(it.second, "UTF-8")}"
         }
         return try {
             val c = (URL(BASE + path + qs).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"; connectTimeout = 5000; readTimeout = 5000
+                requestMethod = "GET"; connectTimeout = 6000; readTimeout = 6000
             }
             if (c.responseCode in 200..299) c.inputStream.bufferedReader().use { it.readText() }
             else null
@@ -145,22 +145,41 @@ object BiquoteApi {
     }
 
     suspend fun tick(symbol: String): Double? = withContext(Dispatchers.IO) {
-        val txt = get("/api/${symbol.uppercase()}") ?: return@withContext null
+        val txt = get("/api/${symbol.uppercase()}", listOf("allowStale" to "false")) ?: return@withContext null
         try { JSONObject(txt).optDouble("mid", Double.NaN).takeIf { it.isFinite() && it > 0 } }
         catch (e: Exception) { null }
+    }
+
+    suspend fun latest(symbols: List<String>): Map<String, Double> = withContext(Dispatchers.IO) {
+        if (symbols.isEmpty()) return@withContext emptyMap()
+        val params = symbols.take(100).map { "symbols" to it } // Biquote يدعم حتى 100 رمز في الطلب[reference:3]
+        val txt = get("/api/latest", params) ?: return@withContext emptyMap()
+        try {
+            val arr = JSONArray(txt)
+            val map = mutableMapOf<String, Double>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val name = obj.optString("symbol", obj.optString("name", ""))
+                val mid = obj.optDouble("mid", Double.NaN)
+                if (name.isNotBlank() && mid.isFinite() && mid > 0) {
+                    map[name.uppercase()] = mid
+                }
+            }
+            map
+        } catch (e: Exception) { emptyMap() }
     }
 
     suspend fun ohlc(symbol: String, interval: String = "1m", limit: Int = 300): List<Candle> =
         withContext(Dispatchers.IO) {
             val txt = get("/api/${symbol.uppercase()}/ohlc",
-                mapOf("interval" to interval, "limit" to limit.toString())) ?: return@withContext emptyList()
+                listOf("interval" to interval, "limit" to limit.toString())) ?: return@withContext emptyList()
             try {
                 val root = JSONObject(txt)
                 val arr: JSONArray = root.optJSONArray("bars") ?: return@withContext emptyList()
                 val list = ArrayList<Candle>(arr.length())
                 for (i in 0 until arr.length()) {
                     val b = arr.getJSONObject(i)
-                    val t = (b.opt("time") ?: b.opt("t") ?: b.opt("openTime"))
+                    val t = (b.opt("openTime") ?: b.opt("time") ?: b.opt("t"))
                     val ts = when (t) {
                         is Number -> t.toLong()
                         is String -> try { java.time.Instant.parse(t).toEpochMilli() }
@@ -178,27 +197,33 @@ object BiquoteApi {
                 list.sortedBy { it.time }
             } catch (e: Exception) { emptyList() }
         }
+
+    suspend fun symbols(liveOnly: Boolean = false): List<String> = withContext(Dispatchers.IO) {
+        val txt = get("/api/symbols", listOf("liveOnly" to liveOnly.toString())) ?: return@withContext emptyList()
+        try {
+            val arr = JSONArray(txt)
+            val out = ArrayList<String>()
+            for (i in 0 until arr.length()) {
+                val v = arr.opt(i)
+                val s = when (v) {
+                    is String -> v
+                    is JSONObject -> v.optString("name", v.optString("symbol", ""))
+                    else -> ""
+                }
+                if (s.isNotBlank()) out.add(s.uppercase().replace(Regex("[_/\\-]"), ""))
+            }
+            out.distinct()
+        } catch (e: Exception) { emptyList() }
+    }
 }
 
 object SymCatalog {
-    val FX_SYMBOLS = listOf(
-        "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD",
-        "EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "CADJPY", "CHFJPY", "NZDJPY",
-        "EURCHF", "EURAUD", "EURCAD", "EURNZD", "GBPCHF", "GBPAUD", "GBPCAD",
-        "GBPNZD", "AUDCHF", "AUDCAD", "AUDNZD", "CADCHF", "NZDCAD", "NZDCHF"
-    )
-
-    val CRYPTO_SYMBOLS = listOf(
-        "BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "BNBUSD", "ADAUSD",
-        "DOGEUSD", "DOTUSD", "MATICUSD", "AVAXUSD", "LINKUSD", "LTCUSD",
-        "TRXUSD", "ATOMUSD", "ETCUSD", "XLMUSD", "ALGOUSD", "VETUSD",
-        "FILUSD", "NEARUSD", "APTUSD", "ARBUSD", "OPUSD", "INJUSD",
-        "SUIUSD", "SEIUSD", "TIAUSD", "TONUSD", "PEPEUSD", "SHIBUSD"
-    )
-
-    val COMMODITY_SYMBOLS = listOf(
-        "XAUUSD", "XAGUSD", "USOIL", "UKOIL", "NGAS"
-    )
+    // أنماط التصنيف التلقائي
+    private val CRYPTO_PATTERN = Regex("^(BTC|ETH|SOL|XRP|BNB|ADA|DOGE|DOT|MATIC|AVAX|LINK|LTC|TRX|ATOM|ETC|XLM|ALGO|VET|FIL|NEAR|APT|ARB|OP|INJ|SUI|SEI|TIA|TON|PEPE|SHIB|BCH|EOS|XMR|DASH|ZEC|COMP|MKR|AAVE|UNI|SNX|CRV|SUSHI|YFI|BAL|REN|KNC|ZRX|BAT|OMG|STORJ|MANA|SAND|AXS|ENJ|CHZ|GALA|IMX|APE|LDO|RPL|SSV|BLUR|WLD|JUP|PYTH|STRK|DYM|MANTA|ALT|PIXEL|PORTAL|AEVO|ETHFI|OM|ENA|REZ|SAGA|TAO|FET|AGIX|OCEAN|RNDR|AKT|GLM|HNT|AR|FIL|STORJ|SC|HIVE|BLZ|GRT|LPT|THETA|FTM|ONE|HBAR|VET|ICP|EGLD|FLOW|ROSE|KAVA|CELO|BAND|API3|INJ|SEI|TIA|SUI|APT|ARB|OP|MATIC|DOT|LINK|AVAX|ATOM|ALGO|XLM|TRX|LTC|BCH|ETC|XRP|BNB|SOL|ETH|BTC)"))
+    private val FOREX_PATTERN = Regex("^(EUR|USD|GBP|JPY|CHF|AUD|CAD|NZD|TRY|ZAR|MXN|SEK|NOK|SGD|HKD|PLN|DKK|HUF|CZK|ILS|CNY|QAR|SAR|UAH|IDR|THB|MYR|PHP|INR|KRW|BRL|ARS|CLP|COP|PEN|RUB)")
+    private val COMMODITY_PATTERN = Regex("^(XAU|XAG|XPT|XPD|USOIL|UKOIL|WTI|BRENT|NGAS|COPPER|CORN|WHEAT|SOYBEAN|COFFEE|SUGAR|COTTON|COCOA)")
+    private val INDEX_PATTERN = Regex("^(US30|US500|USTEC|UK100|GER40|FRA40|JP225|AUS200|HK50|EUSTX50|SPX500|NAS100|DJ30)")
+    private val STOCK_PATTERN = Regex("^[A-Z]{1,5}$") // رموز أسهم قصيرة (مبدئي)
 
     val FLAGS = mapOf(
         "EUR" to "eu","USD" to "us","GBP" to "gb","JPY" to "jp","CHF" to "ch","AUD" to "au",
@@ -208,15 +233,23 @@ object SymCatalog {
         "IDR" to "id","AED" to "ae"
     )
 
-    fun isFx(s: String) = FX_SYMBOLS.contains(s)
-    fun pretty(s: String): String = if (s.length == 6) "${s.substring(0,3)}/${s.substring(3)}" else s
+    fun isCrypto(s: String) = CRYPTO_PATTERN.containsMatchIn(s)
+    fun isForex(s: String) = FOREX_PATTERN.containsMatchIn(s) && s.length == 6 && !isCrypto(s)
+    fun isCommodity(s: String) = COMMODITY_PATTERN.containsMatchIn(s)
+    fun isIndex(s: String) = INDEX_PATTERN.containsMatchIn(s)
+    fun isStock(s: String) = STOCK_PATTERN.matches(s) && !isForex(s) && !isCrypto(s) && !isCommodity(s) && !isIndex(s)
+
+    fun pretty(s: String): String = when {
+        s.length == 6 -> "${s.substring(0,3)}/${s.substring(3)}"
+        else -> s
+    }
     fun base(s: String) = if (s.length >= 6) s.substring(0,3) else s
     fun quote(s: String) = if (s.length >= 6) s.substring(3) else ""
     fun flagUrl(cc: String?): String? = cc?.let { "https://flagcdn.com/${it}.svg" }
 
     fun cryptoIconUrl(symbol: String): String? {
         val base = base(symbol).lowercase()
-        val known = setOf("btc","eth","sol","xrp","bnb","ada","doge","dot","matic","avax","link","ltc","trx","atom","etc","xlm","algo","vet","fil","near","apt","arb","op","inj","sui","sei","tia","ton","pepe","shib")
+        val known = setOf("btc","eth","sol","xrp","bnb","ada","doge","dot","matic","avax","link","ltc","trx","atom","etc","xlm","algo","vet","fil","near","apt","arb","op","inj","sui","sei","tia","ton","pepe","shib","bch","eos","xmr","dash","zec","comp","mkr","aave","uni","snx","crv","sushi","yfi","bal","ren","knc","zrx","bat","omg","storj","mana","sand","axs","enj","chz","gala","imx","ape","ldo","rpl","ssv","blur","wld","jup","pyth","strk","dym","manta","alt","pixel","portal","aevo","ethfi","om","ena","rez","saga","tao","fet","agix","ocean","rndr","akt","glm","hnt","ar","fil","storj","sc","hive","blz","grt","lpt","theta","ftm","one","hbar","vet","icp","egld","flow","rose","kava","celo","band","api3")
         return if (base in known) "https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/svg/color/$base.svg" else null
     }
 
@@ -422,7 +455,7 @@ data class OpenTrade(
 )
 
 object TradeStore {
-    val currentSymbol = MutableStateFlow("AEDCNY")
+    val currentSymbol = MutableStateFlow("EURUSD")
     val openTrades = mutableStateListOf<OpenTrade>()
     val closedTrades = mutableStateListOf<Pair<OpenTrade, Boolean>>()
 }
@@ -693,7 +726,8 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
         inertia = 0.0
 
         var success = false
-        while (!success) {
+        var retries = 0
+        while (!success && retries < 10) {
             val initialBars = BiquoteApi.ohlc(sym, "1m", 300)
             if (initialBars.isNotEmpty()) {
                 origin = initialBars.first().time
@@ -706,8 +740,14 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
                 success = true
                 isLoading = false
             } else {
+                retries++
                 delay(1500L)
             }
+        }
+
+        if (!success) {
+            isLoading = false
+            return@LaunchedEffect
         }
 
         while (true) {
@@ -1005,7 +1045,7 @@ fun OpenTradeProgressBars(modifier: Modifier = Modifier) {
                     Text("${SymCatalog.pretty(tr.symbol)}  ${if (tr.direction > 0) "شراء" else "بيع"}",
                         color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     val remain = ((tr.expiresAt - tick) / 1000L).coerceAtLeast(0L)
-                    Text(String.format("%02d:%02d", remain / 60, remain % 60),
+                    Text(String.format(Locale.US, "%02d:%02d", remain / 60, remain % 60),
                         color = C.TextSecondary, fontSize = 11.sp)
                 }
                 Spacer(Modifier.height(6.dp))
@@ -1022,45 +1062,49 @@ fun OpenTradeProgressBars(modifier: Modifier = Modifier) {
 
 @Composable
 fun PairPickerSheet(onDismiss: () -> Unit) {
-    val tabs = listOf("العملات", "العملات الرقمية", "السلع", "الأسهم")
+    val tabs = listOf("الجميع", "فوركس", "عملات رقمية", "سلع", "مؤشرات", "أسهم")
     var selectedTab by remember { mutableStateOf(0) }
     var query by remember { mutableStateOf("") }
-    var activeSymbols by remember { mutableStateOf<List<String>>(emptyList()) }
+    var allSymbols by remember { mutableStateOf<List<String>>(emptyList()) }
     var connectedMap by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
-    var isCheckingConnection by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(true) }
     val favorites = remember { mutableStateListOf<String>() }
 
     LaunchedEffect(Unit) {
-        val allSymbols = SymCatalog.FX_SYMBOLS + SymCatalog.CRYPTO_SYMBOLS + SymCatalog.COMMODITY_SYMBOLS
-        val results = mutableMapOf<String, Boolean>()
-        coroutineScope {
-            val jobs = allSymbols.map { sym ->
-                async(Dispatchers.IO) {
-                    val res = BiquoteApi.ohlc(sym, "1m", 1).isNotEmpty()
-                    results[sym] = res
-                }
+        // 1. جلب القائمة الكاملة (حوالي 1700 أصل) من Biquote[reference:4]
+        val remoteSymbols = BiquoteApi.symbols(liveOnly = false)
+        val symbols = remoteSymbols.distinct().sorted()
+        allSymbols = symbols
+
+        // 2. فحص حالة الاتصال على دفعات (Biquote يدعم حتى 100 رمز في الطلب)[reference:5]
+        val conn = mutableMapOf<String, Boolean>()
+        symbols.chunked(100).forEach { chunk ->
+            val latest = BiquoteApi.latest(chunk)
+            chunk.forEach { sym ->
+                conn[sym] = latest.containsKey(sym)
             }
-            jobs.awaitAll()
         }
-        connectedMap = results
-        activeSymbols = allSymbols
-        isCheckingConnection = false
+        connectedMap = conn
+        isLoading = false
     }
 
-    val filtered = activeSymbols.filter {
+    val filtered = allSymbols.filter { sym ->
         val catOk = when (selectedTab) {
-            0 -> SymCatalog.FX_SYMBOLS.contains(it)
-            1 -> SymCatalog.CRYPTO_SYMBOLS.contains(it)
-            2 -> SymCatalog.COMMODITY_SYMBOLS.contains(it)
+            0 -> true // الجميع
+            1 -> SymCatalog.isForex(sym)
+            2 -> SymCatalog.isCrypto(sym)
+            3 -> SymCatalog.isCommodity(sym)
+            4 -> SymCatalog.isIndex(sym)
+            5 -> SymCatalog.isStock(sym)
             else -> false
         }
-        catOk && (query.isBlank() || it.contains(query.uppercase()))
+        catOk && (query.isBlank() || sym.contains(query.uppercase()))
     }.sortedWith(compareBy({ !(connectedMap[it] ?: false) }, { it }))
 
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f))
         .clickable(onClick = onDismiss)) {
         Box(
-            Modifier.fillMaxWidth(0.80f).fillMaxHeight()
+            Modifier.fillMaxWidth(0.85f).fillMaxHeight() // عرض أكبر قليلاً لاستيعاب التبويبات
                 .align(Alignment.CenterStart)
                 .background(C.PkBg)
                 .border(1.dp, C.PkBd, RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp))
@@ -1069,22 +1113,23 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 10.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Text("اختر زوج التداول", color = Color.White,
+                    Text("اختر الأصل", color = Color.White,
                         fontSize = 14.sp, fontWeight = FontWeight.ExtraBold,
                         modifier = Modifier.weight(1f))
                     Text("✕", color = Color(0xFFCFD9E8), fontSize = 19.sp,
                         modifier = Modifier.clickable(onClick = onDismiss).padding(6.dp))
                 }
+                // تبويبات أكثر (قابلة للتمرير أفقياً)
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     tabs.forEachIndexed { i, t ->
                         val on = i == selectedTab
                         Box(Modifier.clip(RoundedCornerShape(8.dp))
                             .background(if (on) C.PkTabOn else C.PkTab)
                             .clickable { selectedTab = i }
-                            .padding(horizontal = 10.dp, vertical = 7.dp)) {
+                            .padding(horizontal = 8.dp, vertical = 7.dp)) {
                             Text(t, color = if (on) Color.White else Color(0xFFA9B6CC),
-                                fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1128,7 +1173,7 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
                         fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
 
-                if (isCheckingConnection) {
+                if (isLoading) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = C.Cyan)
                     }
@@ -1140,11 +1185,9 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
                             val isConnected = connectedMap[c] ?: false
                             
                             Row(Modifier.fillMaxWidth()
-                                .clickable {
-                                    if (isConnected) {
-                                        TradeStore.currentSymbol.value = c
-                                        onDismiss()
-                                    }
+                                .clickable(enabled = isConnected) {
+                                    TradeStore.currentSymbol.value = c
+                                    onDismiss()
                                 }
                                 .padding(horizontal = 12.dp, vertical = 9.dp)
                                 .alpha(if (isConnected) 1f else 0.5f),
@@ -1194,7 +1237,7 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
                                     }
                                 }
                                 Column(Modifier.weight(1f)) {
-                                    Text("$base/$quote", color = Color(0xFFDFE8F5),
+                                    Text(SymCatalog.pretty(c), color = Color(0xFFDFE8F5),
                                         fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
                                     if (!isConnected) {
                                         Text("غير متصل", color = C.Red, fontSize = 10.sp)
