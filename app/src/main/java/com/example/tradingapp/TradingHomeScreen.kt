@@ -152,25 +152,6 @@ object BiquoteApi {
         catch (e: Exception) { null }
     }
 
-    suspend fun latest(symbols: List<String>): Map<String, Double> = withContext(Dispatchers.IO) {
-        if (symbols.isEmpty()) return@withContext emptyMap()
-        val params = symbols.take(100).map { "symbols" to it }
-        val txt = get("/api/latest", params) ?: return@withContext emptyMap()
-        try {
-            val arr = JSONArray(txt)
-            val map = mutableMapOf<String, Double>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val name = obj.optString("symbol", obj.optString("name", ""))
-                val mid = obj.optDouble("mid", Double.NaN)
-                if (name.isNotBlank() && mid.isFinite() && mid > 0) {
-                    map[name.uppercase()] = mid
-                }
-            }
-            map
-        } catch (e: Exception) { emptyMap() }
-    }
-
     suspend fun ohlc(symbol: String, interval: String = "1m", limit: Int = 300): List<Candle> =
         withContext(Dispatchers.IO) {
             val txt = get("/api/${symbol.uppercase()}/ohlc",
@@ -256,7 +237,6 @@ object SymCatalog {
         "IDR" to "id","AED" to "ae"
     )
 
-    // الترتيب مهم: الفوركس أولاً (لتفادي تعارض البادئات مثل ARS مع AR الكريبتو)
     fun isForex(s: String): Boolean =
         s.length == 6 && FOREX_CODES.any { s.startsWith(it) }
 
@@ -1105,25 +1085,20 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
     val favorites = remember { mutableStateListOf<String>() }
 
     LaunchedEffect(Unit) {
-        val remoteSymbols = BiquoteApi.symbols(liveOnly = false)
-        val symbols = remoteSymbols.distinct().sorted()
-        allSymbols = symbols
-
-        if (symbols.isNotEmpty()) {
-            val conn = mutableMapOf<String, Boolean>()
-            coroutineScope {
-                val jobs = symbols.chunked(100).map { chunk ->
-                    async(Dispatchers.IO) {
-                        val latest = BiquoteApi.latest(chunk)
-                        chunk.map { it to latest.containsKey(it) }
-                    }
-                }
-                jobs.awaitAll().flatten().forEach { (sym, connected) ->
-                    conn[sym] = connected
-                }
-            }
-            connectedMap = conn
+        // 1. جلب كل الأصول
+        val allSymbolsList = BiquoteApi.symbols(liveOnly = false)
+        // 2. جلب الأصول النشطة فقط
+        val liveSymbolsList = BiquoteApi.symbols(liveOnly = true)
+        
+        val liveSet = liveSymbolsList.toSet()
+        val conn = mutableMapOf<String, Boolean>()
+        
+        allSymbolsList.forEach { sym ->
+            conn[sym] = liveSet.contains(sym)
         }
+        
+        allSymbols = allSymbolsList
+        connectedMap = conn
         isLoading = false
     }
 
