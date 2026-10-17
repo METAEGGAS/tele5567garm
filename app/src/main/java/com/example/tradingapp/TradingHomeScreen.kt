@@ -1,5 +1,6 @@
 package com.example.tradingapp
 
+import android.content.Context
 import android.graphics.Typeface
 import android.media.AudioAttributes
 import android.media.AudioFormat
@@ -44,6 +45,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
@@ -87,12 +89,14 @@ object C {
     val Divider = Color(0xFF3D355A)
     val Grid = Color(0xFF67558D)
     val PriceTag = Cyan
-    val PkBg = Color(0xFF1E1E2E) 
-    val PkBd = Color(0xFF2F80ED) 
-    val PkTab = Color(0xFF2A2A3C)
-    val PkTabOn = Color(0xFF2F80ED) 
-    val PkStarOn = Color(0xFFFFD700) 
-    val PkPct = Color(0xFF00E676) 
+    // ألوان صفحة اختيار الأزواج — متناسقة 100% مع ثيم التطبيق
+    val PkBg = Color(0xFF141126)
+    val PkSurface = Color(0xFF24203D)
+    val PkTab = Color(0xFF24203D)
+    val PkTabOn = Color(0xFF58D9F5)
+    val PkStarOn = Color(0xFFFFD700)
+    val PkPct = Color(0xFF39FF14)
+    val NotifyGreen = Color(0xFF2EBD85)
     val BarBg = Color(0xFF344766)
     val BarOpenGreen = Color(0xFF00E676)
     val ChartBg = Color(0xFF3C3861)
@@ -103,7 +107,6 @@ private const val MIN_PRICE_SPAN = 0.00001
 private const val LIVE_CANDLE_FRACTION = 0.80
 private const val MINBW = 2f
 private const val PAD = 6f
-private const val WHEEL_FACTOR = 1.32
 private const val PINCH_AMPLIFY = 4.0
 private const val ZOOM_SMOOTH = 0.22f
 private const val INERTIA_DECAY = 0.93
@@ -134,7 +137,27 @@ private fun remainingSeconds(openTime: Long, now: Long): Int =
     ceil((openTime + MINUTE_MS - now).toDouble() / 1000.0).toInt().coerceIn(0, 60)
 
 // ============================================================
-// مزود الأيقونات الشامل
+// حفظ جلسة المستخدم (آخر زوج مستخدم)
+// ============================================================
+object PairSession {
+    private const val PREFS = "trading_session"
+    private const val KEY_SYMBOL = "last_symbol"
+
+    fun load(context: Context): String? =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_SYMBOL, null)
+            ?.uppercase()
+            ?.replace(Regex("[_/\\-]"), "")
+
+    fun save(context: Context, symbol: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_SYMBOL, symbol.uppercase()).apply()
+    }
+}
+
+// ============================================================
+// مزود الأيقونات الشامل — مع مصادر احتياطية متعددة لكل عملة
+// كل عنصر خارجي = أيقونة عملة واحدة = قائمة روابط تُجرّب بالترتيب
 // ============================================================
 object IconProvider {
     private val FLAG_MAP = mapOf(
@@ -147,38 +170,94 @@ object IconProvider {
         "KRW" to "kr", "BRL" to "br", "ARS" to "ar", "CLP" to "cl", "COP" to "co",
         "PEN" to "pe", "RUB" to "ru"
     )
-    private val CRYPTO_BASE = "https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/svg/color/"
+    private val CRYPTO_SVG = "https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/svg/color/"
+    private val CRYPTO_PNG = "https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/128/color/"
     private val STOCK_BASE = "https://assets.parqet.com/logos/symbol/"
 
-    fun getPairIcons(symbol: String): List<String> {
-        val s = symbol.uppercase()
-        if (s.length == 6 && FLAG_MAP.containsKey(s.substring(0, 3))) {
+    private val COMMODITY_ICONS = mapOf(
+        "XAUUSD" to listOf("https://cdn-icons-png.flaticon.com/512/2933/2933245.png"),
+        "XAGUSD" to listOf("https://cdn-icons-png.flaticon.com/512/2933/2933253.png"),
+        "USOIL" to listOf("https://cdn-icons-png.flaticon.com/512/2933/2933251.png"),
+        "UKOIL" to listOf("https://cdn-icons-png.flaticon.com/512/2933/2933251.png"),
+        "NGAS" to listOf("https://cdn-icons-png.flaticon.com/512/2933/2933254.png")
+    )
+    private val INDEX_ICONS = mapOf(
+        "US30" to listOf("https://cdn-icons-png.flaticon.com/512/2933/2933255.png"),
+        "US500" to listOf("https://cdn-icons-png.flaticon.com/512/2933/2933256.png"),
+        "USTEC" to listOf("https://cdn-icons-png.flaticon.com/512/2933/2933257.png")
+    )
+
+    /** يرجع قائمة أيقونات، كل أيقونة عبارة عن قائمة روابط احتياطية تُجرّب بالترتيب */
+    fun getPairIcons(symbol: String): List<List<String>> {
+        val s = symbol.uppercase().replace(Regex("[_/\\-]"), "")
+
+        // فوركس: علم لكل عملة مع 3 مصادر احتياطية
+        if (s.length == 6) {
             val base = FLAG_MAP[s.substring(0, 3)]
             val quote = FLAG_MAP[s.substring(3)]
             if (base != null && quote != null) {
-                return listOf("https://flagcdn.com/$base.svg", "https://flagcdn.com/$quote.svg")
+                return listOf(flagUrls(base), flagUrls(quote))
             }
         }
-        if (s.endsWith("USD") || s.endsWith("USDT")) {
-            val coin = s.replace("USD", "").replace("USDT", "").lowercase()
-            return listOf("$CRYPTO_BASE$coin.svg")
+        // سلع
+        COMMODITY_ICONS[s]?.let { return listOf(it) }
+        // مؤشرات
+        INDEX_ICONS[s]?.let { return listOf(it) }
+        // عملات رقمية (BTCUSD / BTCUSDT ...)
+        if (s.endsWith("USDT")) {
+            val coin = s.removeSuffix("USDT").lowercase()
+            return listOf(listOf("$CRYPTO_SVG$coin.svg", "$CRYPTO_PNG$coin.png"))
         }
-        val commodityIcons = mapOf(
-            "XAUUSD" to "https://cdn-icons-png.flaticon.com/512/2933/2933245.png",
-            "XAGUSD" to "https://cdn-icons-png.flaticon.com/512/2933/2933253.png",
-            "USOIL" to "https://cdn-icons-png.flaticon.com/512/2933/2933251.png",
-            "UKOIL" to "https://cdn-icons-png.flaticon.com/512/2933/2933251.png",
-            "NGAS" to "https://cdn-icons-png.flaticon.com/512/2933/2933254.png"
+        if (s.endsWith("USD") && s.length > 3) {
+            val coin = s.removeSuffix("USD").lowercase()
+            return listOf(listOf("$CRYPTO_SVG$coin.svg", "$CRYPTO_PNG$coin.png"))
+        }
+        // أسهم
+        return listOf(listOf("$STOCK_BASE$s?format=png"))
+    }
+
+    private fun flagUrls(code: String): List<String> = listOf(
+        "https://flagcdn.com/$code.svg",
+        "https://flagcdn.com/w160/$code.png",
+        "https://flagcdn.com/w80/$code.png"
+    )
+}
+
+// ============================================================
+// أيقونة عملة ذكية: تجرّب المصادر بالترتيب، وعند فشل الجميع
+// تعرض حرفي العملة داخل دائرة — لا يظهر مكان فارغ أبداً
+// ============================================================
+@Composable
+fun CurrencyIcon(
+    urls: List<String>,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    var failedCount by remember(urls) { mutableIntStateOf(0) }
+    if (failedCount < urls.size) {
+        AsyncImage(
+            model = urls[failedCount],
+            contentDescription = label,
+            contentScale = ContentScale.Crop,
+            modifier = modifier.clip(CircleShape).background(C.Surface),
+            onError = { failedCount += 1 }
         )
-        commodityIcons[s]?.let { return listOf(it) }
-        
-        val indexIcons = mapOf(
-            "US30" to "https://cdn-icons-png.flaticon.com/512/2933/2933255.png",
-            "US500" to "https://cdn-icons-png.flaticon.com/512/2933/2933256.png",
-            "USTEC" to "https://cdn-icons-png.flaticon.com/512/2933/2933257.png"
-        )
-        indexIcons[s]?.let { return listOf(it) }
-        return listOf("$STOCK_BASE$s?format=png")
+    } else {
+        Box(
+            modifier = modifier
+                .clip(CircleShape)
+                .background(C.SurfaceRaised)
+                .border(1.dp, C.Cyan.copy(alpha = 0.55f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                label.take(2),
+                color = C.Cyan,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.ExtraBold,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
@@ -205,7 +284,7 @@ object NotificationManager {
 }
 
 // ============================================================
-// الأصوات (تم إرجاعها بعد حذفها بالخطأ)
+// الأصوات
 // ============================================================
 object TradeSounds {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -394,7 +473,7 @@ private fun priceDecimals(step: Double): Int {
 private fun niceTimeStep(rawMinutes: Double): Long = longArrayOf(1, 2, 5, 10, 15, 20, 30, 60, 120, 240).firstOrNull { it.toDouble() >= rawMinutes } ?: 240L
 
 // ============================================================
-// نموذج الصفقة والمتجر (مع إضافة السعر الحي)
+// نموذج الصفقة والمتجر
 // ============================================================
 data class OpenTrade(
     val id: Long = System.currentTimeMillis(), val symbol: String, val direction: Int,
@@ -403,7 +482,7 @@ data class OpenTrade(
 
 object TradeStore {
     val currentSymbol = MutableStateFlow("EURUSD")
-    val livePrice = MutableStateFlow(0f) // لحفظ السعر الحي لاستخدامه في فتح الصفقات
+    val livePrice = MutableStateFlow(0f)
     val openTrades = mutableStateListOf<OpenTrade>()
     val closedTrades = mutableStateListOf<Pair<OpenTrade, Boolean>>()
 }
@@ -413,7 +492,25 @@ object TradeStore {
 // ============================================================
 @Composable
 fun TradingHomeScreen() {
+    val context = LocalContext.current
     var pickerOpen by remember { mutableStateOf(false) }
+
+    // عند فتح التطبيق: استرجاع آخر زوج محفوظ، والتأكد أنه من الأزواج النشطة
+    LaunchedEffect(Unit) {
+        val saved = PairSession.load(context)
+        val live = BiquoteApi.symbols(liveOnly = true)
+        TradeStore.currentSymbol.value = when {
+            saved != null && live.contains(saved) -> saved   // آخر زوج + لا يزال نشطاً
+            live.isNotEmpty() -> live.first()                 // أول زوج نشط متاح
+            saved != null -> saved                            // لا إنترنت: آخر زوج محفوظ
+            else -> TradeStore.currentSymbol.value
+        }
+    }
+    // حفظ الزوج تلقائياً عند أي تغيير
+    LaunchedEffect(Unit) {
+        snapshotFlow { TradeStore.currentSymbol.value }.collect { PairSession.save(context, it) }
+    }
+
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().background(C.BG)) {
             TopBar()
@@ -472,8 +569,8 @@ fun PairHeader(modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
             Row(Modifier.clip(RoundedCornerShape(22.dp)).background(C.Surface).clickable { onClick() }.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 val icons = IconProvider.getPairIcons(sym)
                 Box(Modifier.width(34.dp).height(22.dp)) {
-                    if (icons.isNotEmpty()) AsyncImage(model = icons[0], contentDescription = null, modifier = Modifier.size(22.dp).clip(CircleShape).align(Alignment.CenterStart))
-                    if (icons.size > 1) AsyncImage(model = icons[1], contentDescription = null, modifier = Modifier.size(22.dp).clip(CircleShape).align(Alignment.CenterEnd).border(1.5.dp, C.Surface, CircleShape))
+                    if (icons.isNotEmpty()) CurrencyIcon(urls = icons[0], label = sym, modifier = Modifier.size(22.dp).align(Alignment.CenterStart))
+                    if (icons.size > 1) CurrencyIcon(urls = icons[1], label = sym.drop(3), modifier = Modifier.size(22.dp).align(Alignment.CenterEnd).border(1.5.dp, C.Surface, CircleShape))
                 }
                 Spacer(Modifier.width(8.dp))
                 Text("${SymCatalog.pretty(sym)} OTC", color = C.TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
@@ -591,7 +688,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
             val tick = BiquoteApi.tick(sym)
             if (tick != null && tick > 0) {
                 livePrice = tick.toFloat()
-                TradeStore.livePrice.value = livePrice // تحديث السعر الحي للمتجر
+                TradeStore.livePrice.value = livePrice
             }
             val lastBars = BiquoteApi.ohlc(sym, "1m", 2)
             if (lastBars.isNotEmpty()) {
@@ -777,14 +874,19 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
                 Text(fmt(displayPrice), color = C.TextSecondary, fontSize = 11.sp)
                 Text("$clockText UTC+3", color = C.TextSecondary, fontSize = 11.sp)
             }
-            OpenTradeProgressBars(Modifier.align(Alignment.BottomStart).padding(12.dp))
+            // تم حذف OpenTradeProgressBars من هنا نهائياً
         }
     }
 }
 
+// ============================================================
+// شريط الإشعار العلوي — بنفس ترتيب الصورة بالضبط:
+// السعر ← "سعر فتح المداولة:" ← الزوج (OTC) ← زر ✕
+// أصغر قليلاً ومتناسق وبلون أخضر نظامي
+// ============================================================
 @Composable
 fun TopNotificationOverlay(modifier: Modifier = Modifier) {
-    Column(modifier = modifier.fillMaxWidth().padding(top = 90.dp, start = 12.dp, end = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = modifier.fillMaxWidth().padding(top = 90.dp, start = 12.dp, end = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         NotificationManager.notifications.forEach { notif ->
             key(notif.id) {
                 AnimatedVisibility(
@@ -801,49 +903,50 @@ fun TopNotificationOverlay(modifier: Modifier = Modifier) {
 
 @Composable
 fun TradeNotificationCard(notif: TradeNotification) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFF2EBD85)).padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "سعر فتح الصفقة: ${notif.price}  ${notif.symbol} (OTC)",
-            color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)
-        )
-        Spacer(Modifier.width(8.dp))
-        IconButton(onClick = { NotificationManager.notifications.removeAll { it.id == notif.id } }, modifier = Modifier.size(24.dp)) {
-            Box(modifier = Modifier.size(22.dp).clip(CircleShape).background(Color(0xFF3D3D3D)), contentAlignment = Alignment.Center) {
-                Text("✕", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@Composable
-fun OpenTradeProgressBars(modifier: Modifier = Modifier) {
-    val trades = TradeStore.openTrades
-    if (trades.isEmpty()) return
-    var tick by remember { mutableStateOf(0L) }
-    LaunchedEffect(Unit) { while (true) { tick = System.currentTimeMillis(); delay(100L) } }
-    Column(modifier.width(200.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        trades.forEach { tr ->
-            val duration = (tr.expiresAt - tr.openedAt).coerceAtLeast(1L)
-            val elapsed = (tick - tr.openedAt).coerceIn(0L, duration)
-            val progress = (elapsed.toFloat() / duration).coerceIn(0f, 1f)
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFF1D2131)).padding(10.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("${SymCatalog.pretty(tr.symbol)}  ${if (tr.direction > 0) "شراء" else "بيع"}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    val remain = ((tr.expiresAt - tick) / 1000L).coerceAtLeast(0L)
-                    Text(String.format(Locale.US, "%02d:%02d", remain / 60, remain % 60), color = C.TextSecondary, fontSize = 11.sp)
-                }
-                Spacer(Modifier.height(6.dp))
-                Box(Modifier.fillMaxWidth().height(9.dp).clip(RoundedCornerShape(8.dp)).background(C.BarBg)) {
-                    Box(Modifier.fillMaxWidth(progress).fillMaxHeight().clip(RoundedCornerShape(8.dp)).background(C.BarOpenGreen))
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(6.dp))
+                .background(C.NotifyGreen)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // السعر أولاً (يسار) كما في الصورة
+            Text(
+                text = notif.price,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "سعر فتح المداولة: ${SymCatalog.pretty(notif.symbol)} (OTC)",
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(6.dp))
+            IconButton(
+                onClick = { NotificationManager.notifications.removeAll { it.id == notif.id } },
+                modifier = Modifier.size(20.dp)
+            ) {
+                Box(
+                    modifier = Modifier.size(18.dp).clip(CircleShape).background(Color(0xFF3D3D3D)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("✕", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
     }
 }
 
+// ============================================================
+// صفحة اختيار الأزواج — بألوان التطبيق وبدون حواف جانبية
+// ============================================================
 @Composable
 fun PairPickerSheet(onDismiss: () -> Unit) {
     val tabs = listOf("الجميع", "فوركس", "عملات رقمية", "سلع", "مؤشرات", "أسهم")
@@ -880,42 +983,46 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
 
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).clickable(onClick = onDismiss)) {
         Box(
-            Modifier.fillMaxWidth(0.88f).fillMaxHeight().align(Alignment.CenterStart)
-                .background(C.PkBg).border(1.dp, C.PkBd, RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp))
+            Modifier
+                .fillMaxWidth(0.88f)
+                .fillMaxHeight()
+                .align(Alignment.CenterStart)
+                .clip(RoundedCornerShape(topEnd = 18.dp, bottomEnd = 18.dp))
+                .background(C.PkBg) // بدون أي حواف جانبية
                 .clickable(enabled = false, onClick = {})
         ) {
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("اختر الأصل", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                    Text("✕", color = Color.White, fontSize = 20.sp, modifier = Modifier.clickable(onClick = onDismiss).padding(6.dp))
+                    Text("اختر الأصل", color = C.TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                    Text("✕", color = C.TextPrimary, fontSize = 20.sp, modifier = Modifier.clickable(onClick = onDismiss).padding(6.dp))
                 }
 
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     tabs.forEachIndexed { i, t ->
                         val on = i == selectedTab
                         Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (on) C.PkTabOn else C.PkTab).clickable { selectedTab = i }.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                            Text(t, color = if (on) Color.White else Color(0xFFB0B0C0), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text(t, color = if (on) C.BG else C.TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                         }
                     }
                 }
 
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.height(40.dp).widthIn(min = 56.dp).clip(RoundedCornerShape(10.dp)).background(C.PkTab).border(1.dp, C.PkBd, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.height(40.dp).widthIn(min = 56.dp).clip(RoundedCornerShape(10.dp)).background(C.PkSurface).border(1.dp, C.Divider, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("★", color = C.PkStarOn, fontSize = 15.sp); Spacer(Modifier.width(6.dp))
-                        Text("${favorites.size}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("${favorites.size}", color = C.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
-                    Row(Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(10.dp)).background(C.PkTab).border(1.dp, C.PkBd, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(10.dp)).background(C.PkSurface).border(1.dp, C.Divider, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         BasicTextField(
                             value = query, onValueChange = { query = it }, modifier = Modifier.weight(1f),
-                            textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
-                            decorationBox = { inner -> if (query.isEmpty()) Text("بحث...", color = Color(0xFF808090), fontSize = 13.sp); inner() }
+                            textStyle = androidx.compose.ui.text.TextStyle(color = C.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
+                            decorationBox = { inner -> if (query.isEmpty()) Text("بحث...", color = C.TextSecondary, fontSize = 13.sp); inner() }
                         )
-                        Text("🔍", color = Color.White, fontSize = 15.sp)
+                        Text("🔍", color = C.TextPrimary, fontSize = 15.sp)
                     }
                 }
 
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(tabs[selectedTab], color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(tabs[selectedTab], color = C.TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Text("${filtered.size} أصل", color = C.PkPct, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
 
@@ -926,22 +1033,24 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
                         items(filtered) { c ->
                             val icons = IconProvider.getPairIcons(c)
                             val isConnected = connectedMap[c] ?: false
-                            Row(Modifier.fillMaxWidth().clickable(enabled = isConnected) { TradeStore.currentSymbol.value = c; onDismiss() }
-                                .padding(horizontal = 14.dp, vertical = 10.dp).alpha(if (isConnected) 1f else 0.4f),
+                            Row(
+                                Modifier.fillMaxWidth().clickable(enabled = isConnected) { TradeStore.currentSymbol.value = c; onDismiss() }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp).alpha(if (isConnected) 1f else 0.4f),
                                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 val fav = favorites.contains(c)
                                 Text(if (fav) "★" else "☆", color = C.PkStarOn, fontSize = 22.sp, modifier = Modifier.clickable(enabled = isConnected) { if (fav) favorites.remove(c) else favorites.add(c) })
                                 Box(Modifier.width(46.dp).height(30.dp)) {
-                                    if (icons.isNotEmpty()) AsyncImage(model = icons[0], contentDescription = null, modifier = Modifier.size(30.dp).clip(CircleShape).align(Alignment.CenterStart))
-                                    if (icons.size > 1) AsyncImage(model = icons[1], contentDescription = null, modifier = Modifier.size(30.dp).clip(CircleShape).align(Alignment.CenterEnd).border(1.5.dp, C.PkBg, CircleShape))
+                                    if (icons.isNotEmpty()) CurrencyIcon(urls = icons[0], label = c, modifier = Modifier.size(30.dp).align(Alignment.CenterStart))
+                                    if (icons.size > 1) CurrencyIcon(urls = icons[1], label = c.drop(3), modifier = Modifier.size(30.dp).align(Alignment.CenterEnd).border(1.5.dp, C.PkBg, CircleShape))
                                 }
                                 Column(Modifier.weight(1f)) {
-                                    Text(SymCatalog.pretty(c), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                    Text(SymCatalog.pretty(c), color = C.TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                     if (!isConnected) Text("غير متصل", color = C.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 }
                                 Text("+${SymCatalog.payout(c)}%", color = C.PkPct, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                             }
+                            Box(Modifier.fillMaxWidth().padding(start = 70.dp).height(0.5.dp).background(C.Divider.copy(alpha = 0.4f)))
                         }
                     }
                 }
@@ -950,6 +1059,9 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
     }
 }
 
+// ============================================================
+// لوحة التداول
+// ============================================================
 @Composable
 fun TradePanel() {
     Column(Modifier.fillMaxWidth().background(C.BG)) {
@@ -1010,7 +1122,6 @@ fun TradeButtons() {
     }
 }
 
-// إصلاح الخطأ هنا: استخدام السعر الحي الحقيقي بدلاً من الرقم الثابت
 private fun openTrade(direction: Int, symbol: String, payout: Int) {
     val now = System.currentTimeMillis()
     val currentPrice = TradeStore.livePrice.value
@@ -1035,6 +1146,9 @@ private fun TradeButton(label: String, color: Color, payout: Int, modifier: Modi
     }
 }
 
+// ============================================================
+// شريط التنقل السفلي
+// ============================================================
 @Composable
 fun BottomNavBar() {
     var selected by remember { mutableStateOf(2) }
@@ -1062,6 +1176,9 @@ fun BottomItem(label: String, selected: Boolean, onClick: () -> Unit, icon: @Com
     }
 }
 
+// ============================================================
+// الأيقونات المرسومة
+// ============================================================
 @Composable
 fun DownArrow(modifier: Modifier = Modifier, color: Color = C.TextSecondary) {
     Canvas(modifier) { val path = Path().apply { moveTo(0f, 0f); lineTo(size.width, 0f); lineTo(size.width / 2f, size.height); close() }; drawPath(path, color) }
@@ -1103,22 +1220,6 @@ fun DollarIcon(modifier: Modifier = Modifier, color: Color = C.Cyan) {
         drawLine(color, Offset(cx, cy - s * 1.4f), Offset(cx, cy - s), stroke, cap = StrokeCap.Round)
         drawLine(color, Offset(cx, cy + s), Offset(cx, cy + s * 1.4f), stroke, cap = StrokeCap.Round)
     }
-}
-
-@Composable
-fun FlagAE(modifier: Modifier = Modifier) {
-    Canvas(modifier.clip(CircleShape)) {
-        val w = size.width; val h = size.height
-        drawRect(Color(0xFF00732F), size = Size(w, h / 3f))
-        drawRect(Color.White, Offset(0f, h / 3f), Size(w, h / 3f))
-        drawRect(Color(0xFF151515), Offset(0f, 2f * h / 3f), Size(w, h / 3f))
-        drawRect(Color.Red, size = Size(w * 0.28f, h))
-    }
-}
-
-@Composable
-fun FlagCN(modifier: Modifier = Modifier) {
-    Canvas(modifier.clip(CircleShape)) { drawRect(Color(0xFFDE2910)); drawCircle(Color(0xFFFFDE00), size.minDimension * 0.16f, Offset(size.width * 0.32f, size.height * 0.34f)) }
 }
 
 @Composable
