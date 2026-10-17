@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -180,7 +181,6 @@ object BiquoteApi {
 }
 
 object SymCatalog {
-    // ✅ قوائم ثابتة شاملة
     val FX_SYMBOLS = listOf(
         "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD",
         "EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "CADJPY", "CHFJPY", "NZDJPY",
@@ -557,7 +557,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
     var secondsLeft by remember { mutableStateOf(60) }
     var clockText by remember { mutableStateOf(clockNow()) }
     var inertia by remember { mutableStateOf(0.0) }
-    var isLoading by remember { mutableStateOf(true) } // ✅ حالة تحميل
+    var isLoading by remember { mutableStateOf(true) }
 
     val density = LocalDensity.current
     val axisTextPx = with(density) { 9.sp.toPx() }
@@ -684,7 +684,6 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
         }
     }
 
-    // ✅ حل جذري لمشكلة عدم ظهور الشموع عند أول فتح
     LaunchedEffect(sym) {
         isLoading = true
         candles.clear()
@@ -693,7 +692,6 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
         followLive = true
         inertia = 0.0
 
-        // محاولة جلب البيانات مع إعادة المحاولة حتى النجاح
         var success = false
         while (!success) {
             val initialBars = BiquoteApi.ohlc(sym, "1m", 300)
@@ -708,7 +706,7 @@ fun LiveCandlestickChart(modifier: Modifier = Modifier, onOpenPairPicker: () -> 
                 success = true
                 isLoading = false
             } else {
-                delay(1500L) // انتظار قبل إعادة المحاولة
+                delay(1500L)
             }
         }
 
@@ -1032,7 +1030,6 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
     var isCheckingConnection by remember { mutableStateOf(true) }
     val favorites = remember { mutableStateListOf<String>() }
 
-    // ✅ فحص حالة الاتصال بشكل متوازي
     LaunchedEffect(Unit) {
         val allSymbols = SymCatalog.FX_SYMBOLS + SymCatalog.CRYPTO_SYMBOLS + SymCatalog.COMMODITY_SYMBOLS
         val results = mutableMapOf<String, Boolean>()
@@ -1058,13 +1055,13 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
             else -> false
         }
         catOk && (query.isBlank() || it.contains(query.uppercase()))
-    }.sortedWith(compareBy({ !(connectedMap[it] ?: false) }, { it })) // ✅ الفرز: المتصل أولاً
+    }.sortedWith(compareBy({ !(connectedMap[it] ?: false) }, { it }))
 
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f))
         .clickable(onClick = onDismiss)) {
         Box(
             Modifier.fillMaxWidth(0.80f).fillMaxHeight()
-                .align(Alignment.CenterStart) // ✅ الفتح من اليسار
+                .align(Alignment.CenterStart)
                 .background(C.PkBg)
                 .border(1.dp, C.PkBd, RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp))
                 .clickable(enabled = false, onClick = {})
@@ -1150,7 +1147,7 @@ fun PairPickerSheet(onDismiss: () -> Unit) {
                                     }
                                 }
                                 .padding(horizontal = 12.dp, vertical = 9.dp)
-                                .alpha(if (isConnected) 1f else 0.5f), // تعتيم غير المتصل
+                                .alpha(if (isConnected) 1f else 0.5f),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(9.dp)
                             ) {
