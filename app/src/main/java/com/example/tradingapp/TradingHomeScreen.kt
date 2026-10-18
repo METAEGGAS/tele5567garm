@@ -1,0 +1,3106 @@
+@file:Suppress("FunctionName", "unused")
+package com.example.tradingapp
+
+import android.content.Context
+import android.graphics.Typeface
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
+import android.view.ViewGroup
+import android.webkit.WebView
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.*
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.*
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
+import coil.compose.AsyncImage
+import coil.ImageLoader
+import coil.decode.SvgDecoder
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.io.File
+import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.*
+import kotlin.random.Random
+import org.json.JSONArray
+import org.json.JSONObject
+import android.graphics.Paint as NativePaint
+
+const val AVATAR_URL = "https://i.ibb.co/Z68jNfbd/IMG-20250906-195228-439.jpg"
+const val AVATAR_FRAME_URL = "https://i.ibb.co/5xvxC8Kw/file-00000000d4f882439f813f969679659f.png"
+const val CHART_BG_URL = "https://i.ibb.co/zWHWPv92/file-0000000090c48211944cf52560e3482a.png"
+const val GIFT_ICON_URL = "https://cdn-icons-png.flaticon.com/128/18546/18546266.png"
+
+object C {
+    val BG=Color(0xFF141126); val Surface=Color(0xFF24203D); val SurfaceRaised=Color(0xFF30284F)
+    val Cyan=Color(0xFF58D9F5); val Green=Color(0xFF39FF14); val Red=Color(0xFFFF1A1A)
+    val Blue=Cyan; val Yellow=Color(0xFFFFD34D); val TextPrimary=Color(0xFFF5F2FF)
+    val TextSecondary=Color(0xFFA9A5C6); val Divider=Color(0xFF3D355A); val Grid=Color(0xFF67558D)
+    val PriceTag=Cyan; val PkBg=BG; val PkSurface=Surface; val PkTab=Surface; val PkTabOn=Cyan
+    val PkStarOn=Color(0xFFFFD700); val PkPct=Green; val NotifyGreen=Color(0xFF0EA751)
+    val BarBg=Color(0xFF344766); val BarOpenGreen=Color(0xFF00E676); val ChartBg=Color(0xFF3C3861)
+}
+private object Ref {
+    val Background=Color(0xFF2B2659); val Border=Color(0xFF223252)
+    val Menu=Color(0xFF141A2B); val Row=Color(0xFF0F1524)
+    val Muted=Color(0xFFC7D5EF); val Green=Color(0xFF2EBD85)
+    val TimeButton=Color(0xFF3E434D); val TimeOn=Color(0xFF007AFF)
+    val Entrance=object:Easing {
+        // CSS cubic-bezier(.2,1.1,.35,1), with overshoot retained.
+        override fun transform(fraction:Float):Float {
+            val x=fraction.coerceIn(0f,1f); var lo=0f; var hi=1f
+            repeat(22) { val t=(lo+hi)/2; val u=1-t
+                if (3*u*u*t*.2f+3*u*t*t*.35f+t*t*t<x) lo=t else hi=t }
+            val t=(lo+hi)/2; val u=1-t
+            return 3*u*u*t*1.1f+3*u*t*t+t*t*t
+        }
+    }
+    val CssEase=CubicBezierEasing(.25f,.1f,.25f,1f)
+    const val NotifyDelay=1500L
+    const val NotifyRemove=400L
+    const val ResultDuration=4500L
+}
+private const val MINUTE_MS=60_000L
+private const val MIN_PRICE_SPAN=0.00001
+private const val LIVE_CANDLE_FRACTION=.55
+private const val MINBW=2f
+private const val PAD=6f
+private const val PINCH_AMPLIFY=4.0
+private const val ZOOM_SMOOTH=.22f
+private const val PAN_GAIN=1.65
+private const val INERTIA_FRICTION=3.2
+private const val MIN_VISIBLE_BARS_LIMIT=10.0
+private const val MAX_VISIBLE_BARS_LIMIT=120.0
+private const val DV_ALPHA=.20f
+private val ids=AtomicLong(System.currentTimeMillis())
+private fun nextId()=ids.incrementAndGet()
+private fun barPosition(time:Long,origin:Long,intervalMs:Long=MINUTE_MS)=(time-origin).toDouble()/intervalMs
+
+data class Candle(val open:Float,val high:Float,val low:Float,val close:Float,val time:Long=0L)
+fun clockNow():String=SimpleDateFormat("HH:mm:ss",Locale.US).apply { timeZone=TimeZone.getTimeZone("GMT+3") }.format(Date())
+fun fmt(price:Float)=String.format(Locale.US,"%.5f",price)
+private fun priceText(price:Double,decimals:Int)=String.format(Locale.US,"%.${decimals}f",price)
+private fun candleTimeText(time:Long,intervalMs:Long=MINUTE_MS)=SimpleDateFormat(if(intervalMs<MINUTE_MS)"HH:mm:ss" else if(intervalMs>=86_400_000L)"dd/MM" else if(intervalMs>=3_600_000L)"dd/MM HH:mm" else "HH:mm",Locale.US).apply { timeZone=TimeZone.getTimeZone("GMT+3") }.format(Date(time))
+private fun remainingSeconds(openTime:Long,now:Long,intervalMs:Long=MINUTE_MS)=ceil((openTime+intervalMs-now)/1000.0).toInt().coerceIn(0,(intervalMs/1000).toInt())
+private fun money(value:Double)=String.format(Locale.US,"%,.2f",value)
+private fun shortAmount(value:Double)=if(value==floor(value)) value.toLong().toString() else value.toString()
+private fun durationMillis(text:String):Long? {
+    val parts=text.trim().split(":")
+    if(parts.size !in 1..3) return null
+    val v=parts.map { it.toLongOrNull()?.takeIf { n->n in 0..999999 } ?: return null }
+    val seconds=when(v.size) { 3->v[0]*3600+v[1]*60+v[2]; 2->v[0]*60+v[1]; else->v[0] }
+    return (seconds*1000).takeIf { it>0 }
+}
+object PairSession {
+    fun load(context:Context)=context.getSharedPreferences("trading_session",Context.MODE_PRIVATE).getString("last_symbol",null)?.uppercase(Locale.US)?.replace(Regex("[_/\\-]"),"")
+    fun save(context:Context,symbol:String) { context.getSharedPreferences("trading_session",Context.MODE_PRIVATE).edit().putString("last_symbol",symbol.uppercase(Locale.US)).apply() }
+}
+// Symbol catalog is fetched once, saved locally, then refreshed silently in the background.
+object PairCatalogStore {
+    var allSymbols by mutableStateOf<List<String>>(emptyList())
+        private set
+    var connected by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var loaded by mutableStateOf(false)
+        private set
+    private var app:Context?=null
+    private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
+    private var refreshing=false
+    fun load(context:Context) {
+        if(app==null) { app=context.applicationContext
+            val p=app!!.getSharedPreferences("pair_catalog_v1",Context.MODE_PRIVATE)
+            val savedAll=p.getString("all","")?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
+            val savedConn=p.getString("connected","")?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
+            if(savedAll.isNotEmpty()) { allSymbols=savedAll;connected=savedConn.toSet();loaded=true }
+        }
+        refresh()
+    }
+    fun refresh() {
+        if(refreshing)return;refreshing=true
+        scope.launch {
+            val all=BiquoteApi.symbols();val live=BiquoteApi.symbols(true).toSet()
+            if(all.isNotEmpty()) { allSymbols=all;if(live.isNotEmpty())connected=live;loaded=true
+                app?.getSharedPreferences("pair_catalog_v1",Context.MODE_PRIVATE)?.edit()?.putString("all",all.joinToString(","))?.putString("connected",connected.joinToString(","))?.apply()
+            }
+            refreshing=false
+        }
+    }
+}
+// Successful image downloads live in filesDir, not the evictable HTTP cache.
+// All remote artwork in this screen shares one loader and one persistent store.
+private object TradingImageStore {
+    private val locks=ConcurrentHashMap<String,Mutex>()
+    @Volatile private var loader:ImageLoader?=null
+    fun loader(context:Context):ImageLoader=loader ?: synchronized(this) {
+        loader ?: ImageLoader.Builder(context.applicationContext)
+            .components { add(SvgDecoder.Factory()) }.build().also { loader=it }
+    }
+    private fun file(context:Context,url:String):File {
+        val key=MessageDigest.getInstance("SHA-256").digest(url.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        return File(File(context.applicationContext.filesDir,"trading_images_v1"),key)
+    }
+    fun cached(context:Context,url:String):File?=file(context,url).takeIf { it.isFile&&it.length()>0L }
+    fun invalidate(context:Context,url:String) { file(context,url).delete() }
+    suspend fun download(context:Context,url:String):File?=withContext(Dispatchers.IO) {
+        locks.getOrPut(url) { Mutex() }.withLock {
+            cached(context,url)?.let { return@withLock it }
+            val target=file(context,url)
+            var connection:HttpURLConnection?=null
+            var temp:File?=null
+            try {
+                val directory=target.parentFile!!
+                if(!directory.isDirectory&&!directory.mkdirs()&&!directory.isDirectory)return@withLock null
+                val active=(URL(url).openConnection() as HttpURLConnection).apply {
+                    connectTimeout=6000;readTimeout=8000;instanceFollowRedirects=true
+                }
+                connection=active
+                if(active.responseCode !in 200..299)return@withLock null
+                val pending=File.createTempFile("image-",".part",target.parentFile)
+                temp=pending
+                active.inputStream.use { input->pending.outputStream().buffered().use { output->input.copyTo(output) } }
+                if(pending.length()==0L||!pending.renameTo(target))return@withLock null
+                target
+            } catch(cancelled:CancellationException) { throw cancelled }
+            catch(_:Exception) { null }
+            finally { temp?.delete();connection?.disconnect() }
+        }
+    }
+}
+@Composable private fun CachedTradingImage(
+    url:String,contentDescription:String?,modifier:Modifier=Modifier,
+    contentScale:ContentScale=ContentScale.Fit,onError:(()->Unit)?=null
+) {
+    val context=LocalContext.current.applicationContext
+    key(url) {
+        val initial=remember(context,url) { TradingImageStore.cached(context,url) }
+        val model by produceState<Any?>(initialValue=initial,context,url) {
+            value=initial ?: TradingImageStore.download(context,url) ?: url
+        }
+        AsyncImage(model=model,imageLoader=TradingImageStore.loader(context),
+            contentDescription=contentDescription,contentScale=contentScale,modifier=modifier,
+            onError={ TradingImageStore.invalidate(context,url);onError?.invoke() })
+    }
+}
+
+object IconProvider {
+    private val FLAGS=mapOf("EUR" to "eu","USD" to "us","GBP" to "gb","JPY" to "jp","CHF" to "ch","AUD" to "au","CAD" to "ca","NZD" to "nz","TRY" to "tr","ZAR" to "za","MXN" to "mx","SEK" to "se","NOK" to "no","SGD" to "sg","HKD" to "hk","PLN" to "pl","DKK" to "dk","HUF" to "hu","CZK" to "cz","ILS" to "il","CNY" to "cn","QAR" to "qa","SAR" to "sa","UAH" to "ua","IDR" to "id","AED" to "ae","THB" to "th","MYR" to "my","PHP" to "ph","INR" to "in","KRW" to "kr","BRL" to "br","ARS" to "ar","CLP" to "cl","COP" to "co","PEN" to "pe","RUB" to "ru")
+    private fun flags(code:String)=listOf("https://flagcdn.com/$code.svg","https://flagcdn.com/w160/$code.png","https://flagcdn.com/w80/$code.png")
+    // Deterministic random artwork for assets that have no official icon.
+    private fun randomIcon(seed:String):String {
+        var h=0;for(c in seed)h=h*31+c.code
+        val style=listOf("identicon","shapes","bottts-neutral","rings")[abs(h)%4]
+        return "https://api.dicebear.com/9.x/$style/png?seed=${URLEncoder.encode(seed,"UTF-8")}"
+    }
+    fun getPairIcons(symbol:String):List<List<String>> {
+        val s=symbol.uppercase(Locale.US).replace(Regex("[_/\\-]"),"")
+        if(s.length==6) { val a=FLAGS[s.take(3)]; val b=FLAGS[s.drop(3)]; if(a!=null&&b!=null) return listOf(flags(a)+randomIcon(s.take(3)),flags(b)+randomIcon(s.drop(3))) }
+        val id=mapOf("XAUUSD" to 2933245,"XAGUSD" to 2933253,"USOIL" to 2933251,"UKOIL" to 2933251,"NGAS" to 2933254,"US30" to 2933255,"US500" to 2933256,"USTEC" to 2933257)[s]
+        if(id!=null) return listOf(listOf("https://cdn-icons-png.flaticon.com/512/2933/$id.png"))
+        if(s.endsWith("USDT")||s.endsWith("USD")&&s.length>3) {
+            val coin=s.removeSuffix(if(s.endsWith("USDT")) "USDT" else "USD").lowercase(Locale.US)
+            return listOf(listOf("https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/svg/color/$coin.svg","https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/128/color/$coin.png",randomIcon(s)))
+        }
+        return listOf(listOf("https://assets.parqet.com/logos/symbol/$s?format=png",randomIcon(s)))
+    }
+}
+@Composable fun CurrencyIcon(urls:List<String>,label:String,modifier:Modifier=Modifier) {
+    val context=LocalContext.current.applicationContext
+    // A previously successful fallback is tried locally before any remote URL.
+    val candidates=remember(context,urls) { urls.sortedBy { TradingImageStore.cached(context,it)==null } }
+    var failed by remember(candidates) { mutableIntStateOf(0) }
+    if(failed<candidates.size) CachedTradingImage(url=candidates[failed],contentDescription=label,contentScale=ContentScale.Crop,modifier=modifier.clip(CircleShape).background(C.Surface),onError={failed++})
+    else Box(modifier.clip(CircleShape).background(C.SurfaceRaised).border(1.dp,C.Cyan.copy(alpha=.55f),CircleShape),contentAlignment=Alignment.Center) { Text(label.take(2),color=C.Cyan,fontSize=9.sp,fontWeight=FontWeight.ExtraBold) }
+}
+
+private data class ChartTick(val price:Double,val time:Long)
+private fun sourceTimestamp(raw:Any?):Long {
+    val t=when(raw) { is Number->raw.toLong();is String->raw.toLongOrNull() ?: runCatching { java.time.Instant.parse(raw).toEpochMilli() }.getOrDefault(0L);else->0L }
+    return if(t in 1..9_999_999_999L)t*1000 else t
+}
+private fun chartFrameMillis(frame:String):Long=when(frame.firstOrNull()) {
+    'S'->(frame.drop(1).toLongOrNull() ?: 5L)*1000
+    'M'->(frame.drop(1).toLongOrNull() ?: 1L)*MINUTE_MS
+    'H'->(frame.drop(1).toLongOrNull() ?: 1L)*3_600_000L
+    'D'->(frame.drop(1).toLongOrNull() ?: 1L)*86_400_000L
+    else->MINUTE_MS
+}
+private fun chartSourceInterval(frame:String)=when(frame) {
+    "M5","M10"->"5m";"M15"->"15m";"M30"->"30m";"H1"->"1h";"H4"->"4h";"D1"->"1d";else->"1m"
+}
+private fun aggregateChartBars(bars:List<Candle>,intervalMs:Long):List<Candle> =
+    bars.filter { it.time>0&&it.open.isFinite()&&it.high.isFinite()&&it.low.isFinite()&&it.close.isFinite()&&it.low>0&&it.high>=maxOf(it.open,it.close)&&it.low<=minOf(it.open,it.close) }
+        .sortedBy { it.time }.distinctBy { it.time }.groupBy { it.time/intervalMs*intervalMs }.map { (time,group)->
+            Candle(group.first().open,group.maxOf { it.high },group.minOf { it.low },group.last().close,time)
+        }.sortedBy { it.time }
+private fun chartBarsFromTicks(ticks:List<ChartTick>,intervalMs:Long):List<Candle> =
+    ticks.filter { it.time>0&&it.price.isFinite()&&it.price>0 }.sortedBy { it.time }
+        .groupBy { it.time/intervalMs*intervalMs }.map { (time,group)->
+            Candle(group.first().price.toFloat(),group.maxOf { it.price }.toFloat(),group.minOf { it.price }.toFloat(),group.last().price.toFloat(),time)
+        }.sortedBy { it.time }
+private fun heikinAshi(bars:List<Candle>):List<Candle> {
+    var previousOpen=0f;var previousClose=0f
+    return bars.mapIndexed { index,c->
+        val close=(c.open+c.high+c.low+c.close)/4f
+        val open=if(index==0)(c.open+c.close)/2f else (previousOpen+previousClose)/2f
+        previousOpen=open;previousClose=close
+        Candle(open,maxOf(c.high,open,close),minOf(c.low,open,close),close,c.time)
+    }
+}
+private object ChartSettings {
+    var frame by mutableStateOf("M1")
+    var chartType by mutableStateOf("شموع")
+    var countdownEnabled by mutableStateOf(true)
+    var autoScrollEnabled by mutableStateOf(true)
+}
+
+object BiquoteApi {
+    private fun get(path:String,params:List<Pair<String,String>> = emptyList()):String? {
+        val qs=if(params.isEmpty()) "" else "?"+params.joinToString("&") { "${it.first}=${URLEncoder.encode(it.second,"UTF-8")}" }
+        var c:HttpURLConnection?=null
+        return try { c=(URL("https://biquote.io$path$qs").openConnection() as HttpURLConnection).apply { connectTimeout=6000; readTimeout=6000; requestMethod="GET" }
+            if(c.responseCode in 200..299) c.inputStream.bufferedReader().use { it.readText() } else null
+        } catch(_:Exception) { null } finally { c?.disconnect() }
+    }
+    suspend fun tick(symbol:String):Double?=withContext(Dispatchers.IO) {
+        val txt=get("/api/${symbol.uppercase(Locale.US)}",listOf("allowStale" to "false")) ?: return@withContext null
+        try { JSONObject(txt).optDouble("mid",Double.NaN).takeIf { it.isFinite()&&it>0 } } catch(_:Exception) { null }
+    }
+    suspend fun ohlc(symbol:String,interval:String="1m",limit:Int=300):List<Candle> = withContext(Dispatchers.IO) {
+        val txt=get("/api/${symbol.uppercase(Locale.US)}/ohlc",listOf("interval" to interval,"limit" to "$limit")) ?: return@withContext emptyList()
+        try { val a=JSONObject(txt).optJSONArray("bars") ?: return@withContext emptyList()
+            (0 until a.length()).mapNotNull { i->
+                val b=a.optJSONObject(i) ?: return@mapNotNull null
+                val raw=b.opt("openTime") ?: b.opt("time") ?: b.opt("t")
+                var t=when(raw) { is Number->raw.toLong(); is String->raw.toLongOrNull() ?: runCatching { java.time.Instant.parse(raw).toEpochMilli() }.getOrDefault(0); else->0 }
+                if(t in 1..9999999999L) t*=1000
+                Candle(b.optDouble("open",b.optDouble("o")).toFloat(),b.optDouble("high",b.optDouble("h")).toFloat(),b.optDouble("low",b.optDouble("l")).toFloat(),b.optDouble("close",b.optDouble("c")).toFloat(),t)
+            }.sortedBy { it.time }
+        } catch(_:Exception) { emptyList() }
+    }
+    private fun parseChartTick(json:JSONObject):ChartTick? {
+        val price=json.optDouble("mid",Double.NaN)
+        val time=sourceTimestamp(json.opt("timestamp") ?: json.opt("lastQuoteAt"))
+        return if(price.isFinite()&&price>0&&time>0)ChartTick(price,time) else null
+    }
+    private suspend fun chartTickHistory(symbol:String):List<ChartTick> = withContext(Dispatchers.IO) {
+        val txt=get("/api/${symbol.uppercase(Locale.US)}/history",listOf("count" to "1000")) ?: return@withContext emptyList()
+        try { val a=JSONArray(txt);(0 until a.length()).mapNotNull { i->a.optJSONObject(i)?.let { parseChartTick(it) } }.sortedBy { it.time } }
+        catch(_:Exception) { emptyList() }
+    }
+    internal suspend fun chartHistory(symbol:String,frame:String,recent:Boolean=false):List<Candle> {
+        val ms=chartFrameMillis(frame)
+        if(ms<MINUTE_MS) {
+            val ticks=chartTickHistory(symbol)
+            val bars=chartBarsFromTicks(ticks,ms)
+            // The history limit may start inside a bucket; do not label that
+            // truncated first bucket as a complete historical candle.
+            return if(ticks.isNotEmpty()&&bars.isNotEmpty()&&ticks.first().time>bars.first().time)bars.drop(1) else bars
+        }
+        val base=chartSourceInterval(frame)
+        val baseMs=when(base) { "5m"->300_000L;"15m"->900_000L;"30m"->1_800_000L;"1h"->3_600_000L;"4h"->14_400_000L;"1d"->86_400_000L;else->MINUTE_MS }
+        val factor=(ms/baseMs).toInt().coerceAtLeast(1)
+        val source=ohlc(symbol,base,if(recent)maxOf(4,factor*3) else minOf(1000,300*factor))
+        val bars=aggregateChartBars(source,ms)
+        return if(source.isNotEmpty()&&bars.isNotEmpty()&&source.first().time>bars.first().time)bars.drop(1) else bars
+    }
+    private suspend fun sourceChartTick(symbol:String):ChartTick? = withContext(Dispatchers.IO) {
+        val txt=get("/api/${symbol.uppercase(Locale.US)}",listOf("allowStale" to "false")) ?: return@withContext null
+        try {
+            val j=JSONObject(txt)
+            if(j.optBoolean("stale",false)||j.optString("marketState")=="closed"||j.optDouble("quoteAgeSeconds",0.0)>15.0)return@withContext null
+            parseChartTick(j)
+        } catch(_:Exception) { null }
+    }
+    // Keep tick timestamps so repeated REST snapshots cannot manufacture new candles.
+    internal suspend fun updateChartQuote(symbol:String,onTick:(Double,Long)->Unit) {
+        sourceChartTick(symbol)?.let { onTick(it.price,it.time) }
+    }
+    suspend fun symbols(liveOnly:Boolean=false):List<String> = withContext(Dispatchers.IO) {
+        val txt=get("/api/symbols",listOf("liveOnly" to "$liveOnly")) ?: return@withContext emptyList()
+        try { val a=JSONArray(txt); (0 until a.length()).mapNotNull { i->
+            val s=when(val v=a.opt(i)) { is String->v; is JSONObject->v.optString("name",v.optString("symbol","")); else->"" }
+            s.takeIf { it.isNotBlank() }?.uppercase(Locale.US)?.replace(Regex("[_/\\-]"),"")
+        }.distinct() } catch(_:Exception) { emptyList() }
+    }
+}
+object SymCatalog {
+    private val forex="EUR USD GBP JPY CHF AUD CAD NZD TRY ZAR MXN SEK NOK SGD HKD PLN DKK HUF CZK ILS CNY QAR SAR UAH IDR THB MYR PHP INR KRW BRL ARS CLP COP PEN RUB AED".split(" ").toSet()
+    private val crypto="BTC ETH SOL XRP BNB ADA DOGE DOT MATIC AVAX LINK LTC TRX ATOM ETC XLM ALGO VET FIL NEAR APT ARB OP INJ SUI SEI TIA TON PEPE SHIB".split(" ")
+    private val commodity="XAU XAG XPT XPD USOIL UKOIL WTI BRENT NGAS".split(" ")
+    fun isForex(s:String)=s.length==6&&forex.any { s.startsWith(it) }
+    fun isCrypto(s:String)=!isForex(s)&&crypto.any { s.startsWith(it) }
+    fun isCommodity(s:String)=!isForex(s)&&!isCrypto(s)&&commodity.any { s.startsWith(it) }
+    fun isIndex(s:String)=s in setOf("US30","US500","USTEC","UK100","GER40","FRA40","JP225")
+    fun isStock(s:String)=Regex("^[A-Z]{1,5}$").matches(s)&&!isForex(s)&&!isCrypto(s)&&!isCommodity(s)&&!isIndex(s)
+    fun pretty(s:String)=if(s.length==6) "${s.take(3)}/${s.drop(3)}" else s
+    fun payout(s:String):Int { var h=0L; for(c in s) h=(h*31+c.code) and 0xFFFFFFFFL; return 80+(h%16).toInt() }
+}
+
+// Local simulation only: no deposit, withdrawal or order is sent to a broker.
+// Display currency of the balance boxes: USD and TRY only.
+// Rate: 1 USD = 49.55 TRY (mid-market, 2026-10-18).
+object CurrencyStore {
+    const val USD="USD"; const val TRY="TRY"
+    var selected by mutableStateOf(USD)
+    const val USD_PER_TRY=1.0/49.55
+    fun toggle() { selected=if(selected==USD)TRY else USD }
+    fun display(usd:Double,currency:String=selected)=if(currency==TRY) String.format(Locale.US,"%,.2f",usd/USD_PER_TRY) else money(usd)
+}
+object AccountStore {
+    var selected by mutableStateOf("real")
+        private set
+    var real by mutableDoubleStateOf(.39)
+        private set
+    var demo by mutableDoubleStateOf(50000.0)
+        private set
+    private var app:Context?=null
+    fun load(context:Context) { if(app!=null) return; app=context.applicationContext
+        val p=app!!.getSharedPreferences("qt-reference-accounts-v1",Context.MODE_PRIVATE)
+        selected=p.getString("selected","real").let { if(it=="demo") "demo" else "real" }
+        real=p.getString("real","0.39")?.toDoubleOrNull()?.takeIf { it.isFinite()&&it>=0 } ?: .39
+        demo=p.getString("demo","50000")?.toDoubleOrNull()?.takeIf { it.isFinite()&&it>=0 } ?: 50000.0
+    }
+    fun balance(account:String=selected)=if(account=="demo") demo else real
+    private fun setBalance(account:String,value:Double) { if(account=="demo") demo=value.coerceAtLeast(0.0) else real=value.coerceAtLeast(0.0); save() }
+    fun select(value:String) { selected=if(value=="demo") "demo" else "real"; save() }
+    fun debit(account:String,value:Double)=setBalance(account,balance(account)-value)
+    fun credit(account:String,value:Double)=setBalance(account,balance(account)+value)
+    private fun save() { app?.getSharedPreferences("qt-reference-accounts-v1",Context.MODE_PRIVATE)?.edit()?.putString("selected",selected)?.putString("real",real.toString())?.putString("demo",demo.toString())?.apply() }
+}
+private fun normalizedTradeAmount(text:String):String {
+    val clean=text.trim()
+    val value=clean.toDoubleOrNull()
+    return if(!Regex("[0-9]+(?:\\.[0-9]*)?").matches(clean)||value==null||!value.isFinite()||value<1.0) "1" else clean
+}
+object TradeSettings {
+    var duration by mutableStateOf("00:01:00")
+    private var amountState by mutableStateOf("1")
+    var amount:String
+        get()=amountState
+        set(value) { amountState=normalizedTradeAmount(value) }
+}
+private object InsufficientBalanceState {
+    var account by mutableStateOf<String?>(null)
+}
+data class OpenTrade(val id:Long=nextId(),val symbol:String,val direction:Int,val entry:Float,val amount:Double,val openedAt:Long,val expiresAt:Long,val payoutPct:Int,val account:String=AccountStore.selected,val candleTime:Long=openedAt/MINUTE_MS*MINUTE_MS,val exactEntry:Double=entry.toDouble())
+data class TradeResult(val trade:OpenTrade,val close:Double,val profit:Double,val closedAt:Long,val visibleUntil:Long=closedAt+Ref.ResultDuration)
+data class Quote(val price:Double,val receivedAt:Long)
+object TradeStore {
+    val currentSymbol=MutableStateFlow("EURUSD"); val livePrice=MutableStateFlow(0f)
+    val quotes=mutableStateMapOf<String,Quote>()
+    val openTrades=mutableStateListOf<OpenTrade>(); val closedTrades=mutableStateListOf<Pair<OpenTrade,Boolean>>()
+    val results=mutableStateListOf<TradeResult>(); val history=mutableStateListOf<TradeResult>()
+    fun quote(symbol:String,value:Double) { if(value.isFinite()&&value>0) { quotes[symbol]=Quote(value,System.currentTimeMillis()); if(currentSymbol.value==symbol) livePrice.value=value.toFloat() } }
+}
+
+data class TradeNotification(val id:Long,val symbol:String,val price:String,val createdAt:Long=System.currentTimeMillis()) { var visible by mutableStateOf(false); var closing by mutableStateOf(false) }
+object NotificationManager {
+    val notifications=mutableStateListOf<TradeNotification>()
+    private val waiting=ArrayDeque<Pair<String,String>>()
+    private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
+    fun show(symbol:String,price:String) { waiting.addLast(symbol to price); runQueue() }
+    private fun runQueue() { while(notifications.size<3&&waiting.isNotEmpty()) { val(s,p)=waiting.removeFirst(); val n=TradeNotification(nextId(),s,p); notifications.add(n)
+        scope.launch { delay(Ref.NotifyDelay); dismiss(n.id) }
+    } }
+    fun dismiss(id:Long) { val n=notifications.firstOrNull { it.id==id } ?: return; if(n.closing)return
+        n.closing=true; n.visible=false
+        scope.launch { delay(Ref.NotifyRemove); notifications.remove(n); runQueue() }
+    }
+}
+object TradeMessage {
+    var text by mutableStateOf("")
+        private set
+    private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate); private var job:Job?=null
+    fun show(message:String) { text=message; job?.cancel(); job=scope.launch { delay(2300); text="" } }
+}
+object TradeSounds {
+    private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default); private const val SR=44100
+    private fun playTones(tones:List<Triple<Float,Float,Pair<Float,String>>>) { scope.launch {
+        val total=tones.maxOf { (it.second+it.third.first*1000).toInt() }+60
+        val buf=ShortArray(SR*total/1000)
+        for((freq,start,dw) in tones) { val(dur,wave)=dw; val begin=(start/1000*SR).toInt()
+            for(i in 0 until (dur*SR).toInt()) { val pos=begin+i; if(pos>=buf.size)break
+                val t=i.toDouble()/SR
+                // A quiet sine tap with a smooth attack/release avoids the sharp opening click.
+                // Other trade-result sounds keep their original envelopes.
+                val env=if(wave=="soft") .48*sin(PI*(t/dur).coerceIn(0.0,1.0)).pow(2.0)*exp(-t*10.0) else .9.pow(i/(SR*.08))
+                val x=2*PI*freq*t
+                val s=when(wave) { "square"->if(sin(x)>=0)1.0 else -1.0; "sawtooth"->2*(t*freq-floor(.5+t*freq)); "triangle"->2/PI*asin(sin(x)); else->sin(x) }
+                buf[pos]=(buf[pos]+(s*env*.18*Short.MAX_VALUE).toInt()).coerceIn(-32768,32767).toShort()
+            }
+        }
+        var track:AudioTrack?=null
+        try { track=AudioTrack(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build(),AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(SR).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build(),buf.size*2,AudioTrack.MODE_STATIC,0)
+            track.write(buf,0,buf.size); track.play(); delay(total+100L)
+        } catch(_:Exception) { } finally { track?.release() }
+    } }
+    fun open()=playTones(listOf(Triple(540f,0f,.10f to "soft"),Triple(810f,20f,.09f to "soft")))
+    fun win()=playTones(listOf(Triple(784f,0f,.28f to "sine"),Triple(1046f,90f,.28f to "sine"),Triple(1318f,180f,.28f to "sine"),Triple(1568f,270f,.40f to "sine")))
+    fun lose()=playTones(listOf(Triple(392f,0f,.30f to "sawtooth"),Triple(294f,120f,.30f to "sawtooth"),Triple(196f,240f,.30f to "sawtooth")))
+}
+private fun openTrade(direction:Int,symbol:String,payout:Int) {
+    TradeSettings.amount=TradeSettings.amount
+    val amount=TradeSettings.amount.toDoubleOrNull()
+    if(amount==null||!amount.isFinite()||amount<1.0) { TradeMessage.show("الحد الأدنى للصفقة 1 $"); return }
+    val duration=durationMillis(TradeSettings.duration)
+    if(duration==null) { TradeMessage.show("أدخل زمناً صحيحاً"); return }
+    if(amount>AccountStore.balance()) { InsufficientBalanceState.account=AccountStore.selected; return }
+    val now=System.currentTimeMillis(); val quote=TradeStore.quotes[symbol]
+    if(quote==null||now-quote.receivedAt>15000) { TradeMessage.show("انتظر وصول سعر حديث لهذا الزوج"); return }
+    AccountStore.debit(AccountStore.selected,amount)
+    TradeStore.openTrades.add(OpenTrade(symbol=symbol,direction=direction,entry=quote.price.toFloat(),amount=amount,openedAt=now,expiresAt=now+duration,payoutPct=payout,exactEntry=quote.price))
+    TradeSounds.open()
+    val decimals=if(symbol.contains("JPY"))3 else if(symbol=="XAUUSD")2 else 5
+    NotificationManager.show(symbol,priceText(quote.price,decimals))
+}
+@Composable private fun TradeSettlementLoop() {
+    // A quote for the selected pair is NEVER used to settle another pair.
+    LaunchedEffect(Unit) {
+        while(isActive) {
+            val now=System.currentTimeMillis()
+            val symbols=TradeStore.openTrades.map { it.symbol }.distinct()
+            supervisorScope { symbols.map { symbol->async {
+                val cached=TradeStore.quotes[symbol]
+                if(symbol!=TradeStore.currentSymbol.value||cached==null||now-cached.receivedAt>3000) {
+                    BiquoteApi.tick(symbol)?.let { TradeStore.quote(symbol,it) }
+                }
+            } }.awaitAll() }
+            for(tr in TradeStore.openTrades.toList()) {
+                if(tr.expiresAt>System.currentTimeMillis())continue
+                val q=TradeStore.quotes[tr.symbol] ?: continue
+                // Wait for a quote received after expiry; do not fabricate a closing price.
+                if(q.receivedAt<tr.expiresAt)continue
+                val entry=tr.exactEntry; val win=if(tr.direction>0) q.price>entry else q.price<entry
+                val tie=abs(q.price-entry)<1e-10
+                val profit=if(tie)0.0 else if(win)tr.amount*tr.payoutPct/100 else -tr.amount
+                val result=TradeResult(tr,q.price,profit,System.currentTimeMillis())
+                TradeStore.openTrades.remove(tr); TradeStore.closedTrades.add(tr to (win&&!tie))
+                TradeStore.results.add(result); TradeStore.history.add(result)
+                if(tie)AccountStore.credit(tr.account,tr.amount) else if(win)AccountStore.credit(tr.account,tr.amount+profit)
+                if(win&&!tie)TradeSounds.win() else TradeSounds.lose()
+            }
+            TradeStore.results.removeAll { it.visibleUntil<=System.currentTimeMillis() }
+            delay(200)
+        }
+    }
+}
+
+@Composable fun TradingHomeScreen() {
+    val context=LocalContext.current
+    var pickerOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        AccountStore.load(context)
+        val saved=PairSession.load(context); val live=BiquoteApi.symbols(true)
+        TradeStore.currentSymbol.value=when { saved!=null&&saved in live->saved; live.isNotEmpty()->live.first(); saved!=null->saved; else->TradeStore.currentSymbol.value }
+        TradeStore.currentSymbol.collect { PairSession.save(context,it) }
+    }
+    IndicatorPreferences()
+    TradeSettlementLoop()
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().background(C.BG)) {
+            TopBar()
+            Box(Modifier.fillMaxWidth().height(1.dp).background(C.Divider))
+            LiveCandlestickChart(Modifier.weight(1f).fillMaxWidth()) { pickerOpen=true }
+            TradePanel()
+            ExtraIndicatorPanes()
+            BottomNavBar()
+        }
+        val message=TradeMessage.text
+        if(message.isNotEmpty()) Box(Modifier.align(Alignment.TopCenter).padding(top=110.dp,start=18.dp,end=18.dp).shadow(12.dp,RoundedCornerShape(10.dp)).background(Color(0xFF202638),RoundedCornerShape(10.dp)).border(1.dp,Color(0xFFF05B67),RoundedCornerShape(10.dp)).padding(horizontal=18.dp,vertical=13.dp)) { Text(message,color=Color.White,fontSize=14.sp,fontWeight=FontWeight.SemiBold,textAlign=TextAlign.Center) }
+    }
+    if(pickerOpen)PairPickerSheet { pickerOpen=false }
+    InsufficientBalanceDialog()
+    if(HistoryOverlay.open)TradeHistoryPage()
+}
+
+@Composable fun TopBar() {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Row(Modifier.fillMaxWidth().background(C.BG).padding(horizontal=12.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
+            Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(C.Yellow),contentAlignment=Alignment.Center) { WalletIcon(Modifier.size(26.dp),Color(0xFF312740)) }
+            Spacer(Modifier.width(8.dp))
+            BalanceAnchor()
+            Spacer(Modifier.weight(1f))
+            Box {
+                CachedTradingImage(url=GIFT_ICON_URL,contentDescription="هدية",contentScale=ContentScale.Fit,modifier=Modifier.size(36.dp))
+                Box(Modifier.align(Alignment.TopEnd).offset(3.dp,(-3).dp).size(14.dp).clip(CircleShape).background(C.BG).border(1.dp,C.Divider,CircleShape)) { Canvas(Modifier.fillMaxSize()) {
+                    val m=size.minDimension*.22f; val cx=size.width/2; val cy=size.height/2
+                    drawLine(Color.White,Offset(cx-m,cy-m),Offset(cx+m,cy+m),1.dp.toPx(),StrokeCap.Round)
+                    drawLine(Color.White,Offset(cx+m,cy-m),Offset(cx-m,cy+m),1.dp.toPx(),StrokeCap.Round)
+                } }
+            }
+            Spacer(Modifier.width(10.dp))
+            Box(Modifier.size(52.dp),contentAlignment=Alignment.Center) {
+                CachedTradingImage(url=AVATAR_URL,contentDescription="الصورة الشخصية",contentScale=ContentScale.Crop,modifier=Modifier.size(36.dp).clip(CircleShape).background(C.Surface))
+                CachedTradingImage(url=AVATAR_FRAME_URL,contentDescription=null,contentScale=ContentScale.Fit,modifier=Modifier.size(52.dp))
+            }
+        }
+    }
+}
+private class ReferencePopupPosition(private val above:Boolean,private val density:Float):PopupPositionProvider {
+    override fun calculatePosition(anchorBounds:IntRect,windowSize:IntSize,layoutDirection:LayoutDirection,popupContentSize:IntSize):IntOffset {
+        fun dp(n:Int)=(n*density).roundToInt()
+        val w=popupContentSize.width; val h=popupContentSize.height
+        val x=(anchorBounds.right-w).coerceIn(dp(8),(windowSize.width-w-dp(8)).coerceAtLeast(dp(8)))
+        val desired=if(above)anchorBounds.top-h-dp(9) else anchorBounds.bottom+dp(8)
+        val y=if(above&&desired<dp(6)) min(anchorBounds.bottom+dp(9),windowSize.height-h-dp(6)) else desired
+        return IntOffset(x,y.coerceIn(dp(6),(windowSize.height-h-dp(6)).coerceAtLeast(dp(6))))
+    }
+}
+@Composable private fun BalanceAnchor() {
+    var expanded by remember { mutableStateOf(false) }
+    val density=LocalDensity.current; val config=LocalConfiguration.current
+    Box {
+        Row(Modifier.clip(RoundedCornerShape(12.dp)).background(C.Surface).clickable { expanded=!expanded }.padding(horizontal=14.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically) {
+            Column {
+                Row(verticalAlignment=Alignment.CenterVertically) {
+                    Text(if(AccountStore.selected=="demo")"QT Demo" else "QT Real",color=C.TextSecondary,fontSize=10.sp); Spacer(Modifier.width(6.dp))
+                    Text("حلال",color=C.Green,fontSize=10.sp,modifier=Modifier.alpha(0f)); Spacer(Modifier.width(6.dp)); Text(CurrencyStore.selected,color=C.TextSecondary,fontSize=10.sp)
+                }
+                Text(CurrencyStore.display(AccountStore.balance()),color=C.TextPrimary,fontSize=20.sp,fontWeight=FontWeight.Bold)
+            }
+            Spacer(Modifier.width(10.dp)); DownArrow(Modifier.size(10.dp))
+        }
+        if(expanded)Popup(popupPositionProvider=remember(density.density) { ReferencePopupPosition(false,density.density) },onDismissRequest={expanded=false},properties=PopupProperties(focusable=true)) {
+            val width=min(248f,config.screenWidthDp*.78f).dp
+            Column(Modifier.width(width).shadow(20.dp,RoundedCornerShape(12.dp)).background(Ref.Menu,RoundedCornerShape(12.dp)).border(1.dp,Ref.Border,RoundedCornerShape(12.dp)).padding(10.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                AccountRow("real") { AccountStore.select("real"); expanded=false }
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF00A63E)).clickable { TradeMessage.show("لشحن الحساب غير متاح للتنفيذ في هذه النسخة"); expanded=false },verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.Center) {
+                        ReferenceGlyph("wallet",Modifier.size(18.dp)); Spacer(Modifier.width(7.dp)); Text("لشحن الحساب",color=Color.White,fontSize=12.sp,fontWeight=FontWeight.Bold)
+                    }
+                    for(kind in listOf("download","dollar"))Box(Modifier.size(46.dp,40.dp).clip(RoundedCornerShape(8.dp)).border(1.dp,Color(0xFF2B6CB0),RoundedCornerShape(8.dp)).clickable { TradeMessage.show("هذه الخدمة غير متاحة للتنفيذ في هذه النسخة"); expanded=false },contentAlignment=Alignment.Center) { ReferenceGlyph(kind,Modifier.size(20.dp)) }
+                }
+                AccountRow("demo") { AccountStore.select("demo"); expanded=false }
+                Box(Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(10.dp)).background(Ref.Row).border(1.dp,Ref.Border,RoundedCornerShape(10.dp)).clickable { expanded=false; TradeMessage.show("الملف الشخصي غير متاح للتنفيذ في هذه النسخة") },contentAlignment=Alignment.Center) { Text("الملف الشخصي »",color=Ref.Muted,fontSize=12.sp,fontWeight=FontWeight.Bold) }
+            }
+        }
+    }
+}
+@Composable private fun AccountRow(account:String,onClick:()->Unit) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Ref.Row).border(1.dp,if(AccountStore.selected==account)Ref.Green else Ref.Border,RoundedCornerShape(10.dp)).clickable(onClick=onClick).padding(10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        ReferenceGlyph(if(account=="demo")"demo" else "coins",Modifier.size(22.dp),Ref.Muted)
+        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) { Text(if(account=="demo")"QT Demo" else "QT Real",color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Bold); Text(CurrencyStore.display(AccountStore.balance(account))+" "+CurrencyStore.selected,color=Ref.Muted,fontSize=12.sp) }
+        if(account=="real")Box(Modifier.size(48.dp,25.dp).clip(RoundedCornerShape(8.dp)).clickable { CurrencyStore.toggle() }) { Canvas(Modifier.fillMaxSize()) {
+            drawRoundRect(Color(0xFF3A5B8C),size=size,cornerRadius=CornerRadius(8.dp.toPx()),style=Stroke(1.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(),3.dp.toPx()))))
+            val p=NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=android.graphics.Color.WHITE; textSize=11.dp.toPx(); textAlign=NativePaint.Align.CENTER; typeface=Typeface.DEFAULT_BOLD }
+            drawContext.canvas.nativeCanvas.drawText(CurrencyStore.selected,size.width/2,size.height/2-(p.ascent()+p.descent())/2,p)
+        } }
+    }
+}
+
+private fun mergeCandle(list:MutableList<Candle>,incoming:Candle,bulk:Boolean=false):Boolean {
+    val c=incoming.close
+    if(!c.isFinite()||c<=0||incoming.time<=0)return false
+    var o=incoming.open.takeIf { it.isFinite()&&it>0 } ?: c
+    var h=incoming.high.takeIf { it.isFinite()&&it>0 } ?: max(o,c)
+    var l=incoming.low.takeIf { it.isFinite()&&it>0 } ?: min(o,c)
+    h=maxOf(h,o,c); l=minOf(l,o,c)
+    val t=incoming.time
+    if(list.isEmpty()) { list.add(Candle(o,h,l,c,t)); return true }
+    var lo=0; var hi=list.lastIndex; var exact=-1; var insert=list.size
+    while(lo<=hi) { val mid=(lo+hi) ushr 1; val mt=list[mid].time
+        when { mt==t->{exact=mid;break}; mt<t->lo=mid+1; else->{insert=mid;hi=mid-1} }
+    }
+    if(exact>=0) { val e=list[exact]; list[exact]=Candle(if(bulk)o else e.open,max(e.high,h),min(e.low,l),c,t); return false }
+    if(insert>=list.size)list.add(Candle(o,h,l,c,t))
+    else list.add(insert,Candle(o,h,l,c,t))
+    return true
+}
+private data class ChartViewport(val visibleBars:Double,val anchorBar:Double,val anchorFraction:Double,val centerPrice:Double,val priceSpan:Double) {
+    val centerBar get()=anchorBar+(.5-anchorFraction)*visibleBars
+    val minPrice get()=centerPrice-priceSpan/2
+    val maxPrice get()=centerPrice+priceSpan/2
+    fun fractionFor(bar:Double)=anchorFraction+(bar-anchorBar)/visibleBars
+    fun reanchor(bar:Double)=copy(anchorBar=bar,anchorFraction=fractionFor(bar))
+}
+private fun initialViewport(candles:List<Candle>,origin:Long,intervalMs:Long=MINUTE_MS):ChartViewport {
+    if(candles.isEmpty())return ChartViewport(60.0,0.0,LIVE_CANDLE_FRACTION,1.0,MIN_PRICE_SPAN)
+    val a=candles.takeLast(min(60,candles.size)); val low=a.minOf { it.low.toDouble() }; val high=a.maxOf { it.high.toDouble() }
+    return ChartViewport(60.0,barPosition(candles.last().time,origin,intervalMs),LIVE_CANDLE_FRACTION,(low+high)/2,((high-low)/.70*1.04).coerceAtLeast(MIN_PRICE_SPAN))
+}
+// Do not allow panning into future space beyond the initial 55% live-candle position.
+// History remains scrollable in both directions up to this live boundary.
+private fun boundedChartCenter(view:ChartViewport,desired:Double,first:Double,last:Double):Double {
+    val liveCenter=last+(.5-LIVE_CANDLE_FRACTION)*view.visibleBars
+    val historyCenter=min(first+view.visibleBars/2-1,liveCenter)
+    return desired.coerceIn(historyCenter,liveCenter)
+}
+private fun ChartViewport.atLiveBoundary(last:Double)=
+    abs(centerBar-(last+(.5-LIVE_CANDLE_FRACTION)*visibleBars))<.000001
+private fun verticalTarget(view:ChartViewport,candles:List<Candle>,origin:Long,intervalMs:Long=MINUTE_MS):Pair<Double,Double> {
+    if(candles.isEmpty())return view.centerPrice to view.priceSpan
+    val rendered=if(ChartSettings.chartType=="هيكين آشي")heikinAshi(candles) else candles
+    val visible=rendered.filter { abs(barPosition(it.time,origin,intervalMs)-view.centerBar)<=view.visibleBars/2+.6 }
+    if(visible.isEmpty())return view.centerPrice to view.priceSpan
+    val low=visible.minOf { it.low.toDouble() }; val high=visible.maxOf { it.high.toDouble() }
+    return (high+low)/2 to ((high-low)/.70*1.04).coerceAtLeast(MIN_PRICE_SPAN)
+}
+private fun nicePriceStep(raw:Double):Double {
+    if(!raw.isFinite()||raw<=0)return .001
+    val m=10.0.pow(floor(log10(raw))); val n=raw/m
+    return (when { n<=1->1.0;n<=2->2.0;n<=2.5->2.5;n<=5->5.0;else->10.0 })*m
+}
+private fun priceDecimals(step:Double):Int {
+    for(d in 5..8) { val s=step*10.0.pow(d.toDouble()); if(abs(s-round(s))<.000001)return d }
+    return 8
+}
+private fun niceTimeStep(raw:Double)=longArrayOf(1,2,5,10,15,20,30,60,120,240).firstOrNull { it>=raw } ?: 240L
+
+@Composable fun PairHeader(modifier:Modifier=Modifier,onClick:()->Unit={}) {
+    val sym by TradeStore.currentSymbol.collectAsState()
+    var menuOpen by remember { mutableStateOf(false) }
+    var chartStyleOpen by remember { mutableStateOf(false) }
+    var indicatorsOpen by remember { mutableStateOf(false) }
+    var drawingsOpen by remember { mutableStateOf(false) }
+    var selectedTool by remember { mutableStateOf("temperature") }
+    val density=LocalDensity.current
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Box(modifier) {
+            Row(verticalAlignment=Alignment.CenterVertically) {
+                Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(C.Surface).clickable { menuOpen=!menuOpen },contentAlignment=Alignment.Center) {
+                    if(menuOpen)ReferenceGlyph("close",Modifier.size(25.dp),Color(0xFF9CB8CC)) else DotsIcon(Modifier.size(18.dp))
+                }
+                Spacer(Modifier.width(8.dp))
+                Row(Modifier.height(44.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).clickable(onClick=onClick).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
+                    val icons=IconProvider.getPairIcons(sym)
+                    Box(Modifier.width(34.dp).height(24.dp)) {
+                        if(icons.isNotEmpty())CurrencyIcon(icons[0],sym,Modifier.size(24.dp).align(Alignment.CenterStart))
+                        if(icons.size>1)CurrencyIcon(icons[1],sym.drop(3),Modifier.size(24.dp).align(Alignment.CenterEnd).border(1.dp,C.Surface,CircleShape))
+                    }
+                    Spacer(Modifier.width(8.dp));Text("${SymCatalog.pretty(sym)} OTC",color=C.TextPrimary,fontSize=15.sp,fontWeight=FontWeight.SemiBold)
+                    Spacer(Modifier.width(8.dp));DownArrow(Modifier.size(9.dp),Color.White)
+                }
+            }
+            if(menuOpen)Popup(popupPositionProvider=remember(density.density) { object:PopupPositionProvider {
+                override fun calculatePosition(anchorBounds:IntRect,windowSize:IntSize,layoutDirection:LayoutDirection,popupContentSize:IntSize):IntOffset {
+                    val margin=(8*density.density).roundToInt()
+                    val x=anchorBounds.left.coerceIn(margin,(windowSize.width-popupContentSize.width-margin).coerceAtLeast(margin))
+                    val y=anchorBounds.bottom+(8*density.density).roundToInt()
+                    return IntOffset(x,y.coerceIn(margin,(windowSize.height-popupContentSize.height-margin).coerceAtLeast(margin)))
+                }
+            } },onDismissRequest={menuOpen=false},properties=PopupProperties(focusable=true,clippingEnabled=false)) {
+                Column(Modifier.background(C.Surface).padding(5.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                    Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                        ReferenceToolTile("candles",badge=ChartSettings.frame) { selectedTool="candles";menuOpen=false;chartStyleOpen=true }
+                        ReferenceToolTile("settings",checked=IndicatorSettings.acceleratorEnabled||ExtraIndicators.active.isNotEmpty()) { selectedTool="settings";menuOpen=false;indicatorsOpen=true }
+                    }
+                    ReferenceToolTile("drawing",checked=selectedTool=="drawing") { selectedTool="drawing";menuOpen=false;drawingsOpen=true }
+                }
+            }
+        }
+    }
+    if(chartStyleOpen)ChartStyleDialog { chartStyleOpen=false }
+    if(indicatorsOpen)IndicatorsDialog { indicatorsOpen=false }
+    if(drawingsOpen)DrawingsDialog { drawingsOpen=false }
+}
+@Composable private fun ReferenceToolTile(kind:String,modifier:Modifier=Modifier,badge:String?=null,checked:Boolean=false,onClick:()->Unit) {
+    Box(modifier.size(40.dp).clickable(onClick=onClick)) {
+        ReferenceGlyph(kind,Modifier.size(23.dp).align(Alignment.Center),Color(0xFF9CB8CC))
+        if(badge!=null||checked)Box(Modifier.align(Alignment.TopEnd).size(if(badge!=null)20.dp else 15.dp).clip(CircleShape).background(C.Cyan),contentAlignment=Alignment.Center) {
+            if(badge!=null)Text(badge,color=C.BG,fontSize=8.sp,maxLines=1) else ReferenceGlyph("check",Modifier.size(10.dp),C.BG)
+        }
+    }
+}
+
+private val ChartTimeframes=listOf("S5","S10","S15","S30","M1","M2","M3","M5","M10","M15","M30","H1","H4","D1")
+private val ChartTypeNames=listOf("رسم بياني","شموع","أشرطة","هيكين آشي")
+@Composable private fun PlatformSwitch(checked:Boolean,onToggle:()->Unit) {
+    Box(Modifier.width(40.dp).height(22.dp).clip(RoundedCornerShape(11.dp)).background(if(checked)Color(0xFF2E9DDB) else C.SurfaceRaised).border(1.dp,if(checked)C.Cyan else C.Divider,RoundedCornerShape(11.dp)).clickable(onClick=onToggle),contentAlignment=if(checked)Alignment.CenterEnd else Alignment.CenterStart) {
+        Box(Modifier.padding(horizontal=3.dp).size(14.dp).clip(CircleShape).background(if(checked)Color(0xFFBEE7FB) else C.TextSecondary))
+    }
+}
+private object ChartMenuColors {
+    val Panel=Color(0xFF1B1F2B);val Tile=Color(0xFF25253D);val Selected=Color(0xFF354961)
+    val Header=Color(0xFF191F2B);val Icon=Color(0xFFA7C5D8);val Separator=Color(0xFF191D2C)
+}
+@Composable private fun ChartTypeGlyph(kind:String,modifier:Modifier=Modifier,color:Color=ChartMenuColors.Icon) { Canvas(modifier) {
+    val w=size.width;val h=size.height;val stroke=min(w,h)*.045f
+    drawLine(color,Offset(w*.12f,h*.90f),Offset(w*.88f,h*.90f),stroke,StrokeCap.Round)
+    when(kind) {
+        "رسم بياني"->{
+            val line=Path().apply { moveTo(w*.12f,h*.55f);lineTo(w*.27f,h*.37f);lineTo(w*.40f,h*.51f);lineTo(w*.57f,h*.25f);lineTo(w*.70f,h*.38f);lineTo(w*.88f,h*.12f) }
+            drawPath(line,color,style=Stroke(stroke,cap=StrokeCap.Round,join=StrokeJoin.Round))
+            val area=Path().apply { moveTo(w*.12f,h*.68f);lineTo(w*.27f,h*.49f);lineTo(w*.40f,h*.63f);lineTo(w*.57f,h*.38f);lineTo(w*.70f,h*.51f);lineTo(w*.88f,h*.26f);lineTo(w*.88f,h*.80f);lineTo(w*.12f,h*.80f);close() }
+            drawPath(area,color)
+        }
+        "أشرطة"->for((i,x) in listOf(.24f,.50f,.76f).withIndex()) {
+            val top=h*listOf(.23f,.36f,.12f)[i];val bottom=h*listOf(.71f,.77f,.70f)[i]
+            drawLine(color,Offset(w*x,top),Offset(w*x,bottom),stroke,StrokeCap.Butt)
+            drawLine(color,Offset(w*x-w*.10f,top+h*.14f),Offset(w*x,top+h*.14f),stroke,StrokeCap.Butt)
+            drawLine(color,Offset(w*x,bottom-h*.14f),Offset(w*x+w*.10f,bottom-h*.14f),stroke,StrokeCap.Butt)
+        }
+        else->{
+            val heikin=kind=="هيكين آشي"
+            for((i,x) in listOf(.24f,.52f,.80f).withIndex()) {
+                val top=h*(if(heikin)listOf(.12f,.27f,.38f)[i] else listOf(.38f,.30f,.15f)[i])
+                val body=h*(if(heikin).32f else listOf(.25f,.22f,.45f)[i])
+                drawLine(color,Offset(w*x,top-h*.09f),Offset(w*x,top+body+h*.16f),stroke*.8f,StrokeCap.Round)
+                drawRoundRect(color,Offset(w*(x-.08f),top),Size(w*.16f,body),CornerRadius(w*.013f))
+            }
+        }
+    }
+} }
+@Composable private fun ChartStyleDialog(onDismiss:()->Unit) {
+    var tab by remember { mutableIntStateOf(1) } // Always open chart types first.
+    val frame=ChartSettings.frame
+    val screenHeight=LocalConfiguration.current.screenHeightDp
+    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            Column(Modifier.widthIn(max=460.dp).fillMaxWidth(.90f).heightIn(max=(screenHeight*.88f).dp).background(ChartMenuColors.Panel).verticalScroll(rememberScrollState())) {
+                Row(Modifier.fillMaxWidth().height(40.dp).background(ChartMenuColors.Header)) {
+                    Box(Modifier.weight(1f).fillMaxHeight().background(if(tab==1)ChartMenuColors.Tile.copy(alpha=.45f) else Color.Transparent).clickable { tab=1 },contentAlignment=Alignment.Center) {
+                        Text("أنواع الرسوم البيانية",color=C.TextPrimary,fontSize=14.sp,textAlign=TextAlign.Center)
+                    }
+                    Box(Modifier.weight(1f).fillMaxHeight().background(if(tab==0)ChartMenuColors.Tile.copy(alpha=.45f) else Color.Transparent).clickable { tab=0 },contentAlignment=Alignment.Center) {
+                        Text("الأطر الزمنية ($frame)",color=C.TextPrimary,fontSize=14.sp,textAlign=TextAlign.Center,style=TextStyle(textDirection=TextDirection.Rtl))
+                    }
+                }
+                if(tab==0)Column(Modifier.fillMaxWidth().heightIn(min=(screenHeight*.41f).dp),verticalArrangement=Arrangement.spacedBy(2.dp)) {
+                    ChartTimeframes.chunked(5).forEach { row->
+                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(2.dp)) {
+                            row.forEach { f->Box(Modifier.weight(1f).aspectRatio(1.25f).background(if(f==frame)ChartMenuColors.Selected else ChartMenuColors.Tile).clickable { ChartSettings.frame=f },contentAlignment=Alignment.Center) {
+                                Text(f,color=if(f==frame)Color.White else ChartMenuColors.Icon,fontSize=15.sp)
+                            } }
+                            repeat(5-row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                } else {
+                    Column(verticalArrangement=Arrangement.spacedBy(2.dp)) {
+                        ChartTypeNames.chunked(2).forEach { row->
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(2.dp)) {
+                                row.forEach { name->
+                                    Column(Modifier.weight(1f).aspectRatio(1.60f).background(if(name==ChartSettings.chartType)ChartMenuColors.Selected else ChartMenuColors.Tile).clickable { ChartSettings.chartType=name },horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center) {
+                                        ChartTypeGlyph(name,Modifier.size(62.dp,54.dp))
+                                        Spacer(Modifier.height(12.dp));Text(name,color=C.TextPrimary,fontSize=14.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Column(Modifier.fillMaxWidth().padding(horizontal=30.dp,vertical=18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment=Alignment.CenterVertically) { PlatformSwitch(ChartSettings.countdownEnabled) { ChartSettings.countdownEnabled=!ChartSettings.countdownEnabled };Spacer(Modifier.width(14.dp));Text("تمكين عداد الوقت",color=C.TextPrimary,fontSize=13.sp) }
+                        Row(verticalAlignment=Alignment.CenterVertically) { PlatformSwitch(ChartSettings.autoScrollEnabled) { ChartSettings.autoScrollEnabled=!ChartSettings.autoScrollEnabled };Spacer(Modifier.width(14.dp));Text("تمكين التمرير التلقائي",color=C.TextPrimary,fontSize=13.sp) }
+                    }
+                    Box(Modifier.fillMaxWidth().height(76.dp).background(ChartMenuColors.Header).padding(horizontal=30.dp),contentAlignment=Alignment.CenterStart) {
+                        Text("ألوان شمعة مخصصة",color=ChartMenuColors.Icon,fontSize=14.sp,style=TextStyle(textDecoration=TextDecoration.Underline),modifier=Modifier.clickable { TradeMessage.show("ألوان الشموع المخصصة غير متاحة في هذه النسخة") })
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+// Indicator UI is deliberately isolated from trading, accounts and the chart feed.
+private val IndicatorNames=listOf(
+    "Accelerator Oscillator","ADX","Alligator","Aroon","Average True Range",
+    "Awesome Oscillator","Bears Power","Bollinger Bands","Bollinger Bands Width",
+    "Bulls Power","CCI","Donchian Channel","DeMarker","Envelopes","Fractal",
+    "Fractal Chaos Bands","مؤشر إيشيموكو كينكو هيو","Keltner Channel","MACD","Momentum",
+    "Moving Average","OsMA","Parabolic SAR","RSI","Rate of Change","Schaff Trend Cycle",
+    "Stochastic Oscillator","SuperTrend","Volume","مؤشر الدوامة","مؤشر ويليامز %R","ZigZag"
+)
+private data class IndicatorChartSnapshot(
+    val bars:List<Candle>,val viewport:ChartViewport,val origin:Long,
+    val intervalMs:Long,val symbol:String,val frame:String
+)
+private object IndicatorSettings {
+    var acceleratorEnabled by mutableStateOf(false)
+    var fastPeriod by mutableIntStateOf(5)
+    var slowPeriod by mutableIntStateOf(34)
+    var signalPeriod by mutableIntStateOf(5)
+    var snapshot by mutableStateOf<IndicatorChartSnapshot?>(null)
+    val favorites=mutableStateMapOf<String,Boolean>()
+}
+@Composable private fun IndicatorStar(selected:Boolean,onClick:()->Unit) {
+    Canvas(Modifier.size(25.dp).clickable(onClick=onClick).padding(4.dp)) {
+        val path=Path()
+        for(i in 0 until 10) {
+            val angle=-PI/2+i*PI/5
+            val radius=size.minDimension*(if(i%2==0).48f else .22f)
+            val x=size.width/2+cos(angle).toFloat()*radius
+            val y=size.height/2+sin(angle).toFloat()*radius
+            if(i==0)path.moveTo(x,y) else path.lineTo(x,y)
+        }
+        path.close()
+        val gold=Color(0xFFFFA51D)
+        if(selected)drawPath(path,gold)
+        else drawPath(path,gold,style=Stroke(1.25.dp.toPx(),join=StrokeJoin.Round))
+    }
+}
+@Composable private fun IndicatorsDialog(onDismiss:()->Unit) {
+    val config=LocalConfiguration.current
+    val scroll=rememberScrollState()
+    val shape=RoundedCornerShape(12.dp)
+    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            Column(Modifier.fillMaxWidth(.89f).height((config.screenHeightDp*.71f).dp)
+                .clip(shape).background(Color(0xFF222E43)).border(1.dp,Color(0xFF38485E),shape)) {
+                Row(Modifier.fillMaxWidth().height(53.dp).padding(start=21.dp,end=12.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Text("المؤشرات",color=Color(0xFFF1F4F8),fontSize=14.sp,style=TextStyle(textDirection=TextDirection.Rtl),modifier=Modifier.weight(1f))
+                    Box(Modifier.size(34.dp).clickable(onClick=onDismiss),contentAlignment=Alignment.Center) {
+                        ReferenceGlyph("close",Modifier.size(23.dp),Color(0xFFA8C0D2))
+                    }
+                }
+                Box(Modifier.fillMaxWidth().weight(1f).padding(bottom=2.dp)) {
+                    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(start=13.dp,end=17.dp,bottom=12.dp)) {
+                        IndicatorNames.forEach { name->
+                            Row(Modifier.fillMaxWidth().height(25.dp),verticalAlignment=Alignment.CenterVertically) {
+                                IndicatorStar(IndicatorSettings.favorites[name]==true) {
+                                    IndicatorSettings.favorites[name]=IndicatorSettings.favorites[name]!=true
+                                }
+                                Text(name,color=Color(0xFFF1F4F8),fontSize=15.sp,maxLines=1,
+                                    overflow=TextOverflow.Ellipsis,
+                                    style=TextStyle(textDirection=TextDirection.Content),
+                                    modifier=Modifier.weight(1f).fillMaxHeight().clickable {
+                                        if(name=="Accelerator Oscillator") {
+                                            IndicatorSettings.acceleratorEnabled=true
+                                            onDismiss()
+                                        } else if(ExtraIndicators.enable(name)) {
+                                            onDismiss()
+                                        } else {
+                                            TradeMessage.show(if(name=="Volume")"لم يُفعّل Volume: بيانات الشموع الحالية لا تحتوي حجم تداول حقيقي" else "تُرك $name دون تفعيل؛ لم تُضف له حسابات غير متحقق منها")
+                                            onDismiss()
+                                        }
+                                    }.wrapContentHeight(Alignment.CenterVertically).padding(start=6.dp))
+                            }
+                        }
+                    }
+                    Canvas(Modifier.align(Alignment.CenterEnd).width(7.dp).fillMaxHeight().padding(end=2.dp,top=0.dp,bottom=0.dp)) {
+                        val total=scroll.maxValue.toFloat()+size.height
+                        if(scroll.maxValue>0&&total>0) {
+                            val thumb=(size.height*size.height/total).coerceIn(22.dp.toPx(),size.height)
+                            val top=(size.height-thumb)*scroll.value/scroll.maxValue.toFloat()
+                            drawRoundRect(Color(0xFF7F8999),Offset(0f,top),Size(size.width,thumb),CornerRadius(size.width/2))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+// AC = AO - SMA(AO, signal); AO = SMA(median, fast) - SMA(median, slow).
+// Warm-up values stay NaN: insufficient history is never replaced with invented data.
+private fun acceleratorValues(bars:List<Candle>,fast:Int,slow:Int,signal:Int):DoubleArray {
+    require(fast>0&&slow>0&&signal>0)
+    val n=bars.size
+    val medianPrefix=DoubleArray(n+1)
+    for(i in bars.indices)medianPrefix[i+1]=medianPrefix[i]+(bars[i].high.toDouble()+bars[i].low.toDouble())/2.0
+    val start=max(fast,slow)-1
+    val ao=DoubleArray(n) { Double.NaN }
+    val ac=DoubleArray(n) { Double.NaN }
+    var signalSum=0.0
+    for(i in start until n) {
+        ao[i]=(medianPrefix[i+1]-medianPrefix[i+1-fast])/fast-(medianPrefix[i+1]-medianPrefix[i+1-slow])/slow
+        signalSum+=ao[i]
+        if(i-start>=signal)signalSum-=ao[i-signal]
+        if(i-start+1>=signal)ac[i]=ao[i]-signalSum/signal
+    }
+    return ac
+}
+@Composable private fun AcceleratorOscillatorPane() {
+    val symbol by TradeStore.currentSymbol.collectAsState()
+    val snapshot=IndicatorSettings.snapshot?.takeIf { it.symbol==symbol&&it.frame==ChartSettings.frame }
+    val fast=IndicatorSettings.fastPeriod;val slow=IndicatorSettings.slowPeriod;val signal=IndicatorSettings.signalPeriod
+    val values=remember(snapshot?.bars,fast,slow,signal) { acceleratorValues(snapshot?.bars ?: emptyList(),fast,slow,signal) }
+    var expanded by remember { mutableStateOf(true) }
+    var settingsOpen by remember { mutableStateOf(false) }
+    val paneHeight=(LocalConfiguration.current.screenHeightDp*.145f).coerceIn(88f,132f).dp
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Box(Modifier.fillMaxWidth().height(if(expanded)paneHeight else 28.dp).clip(RoundedCornerShape(0.dp)).background(Color(0xFF1D2332))) {
+            CachedTradingImage(url=CHART_BG_URL,contentDescription=null,contentScale=ContentScale.Crop,modifier=Modifier.matchParentSize())
+            Box(Modifier.matchParentSize().background(Color(0xFF1D2332).copy(alpha=.88f)))
+            Canvas(Modifier.fillMaxSize()) {
+                val w=size.width;val h=size.height
+                drawLine(Color(0xFF3C6686).copy(alpha=.7f),Offset.Zero,Offset(w,0f),1.dp.toPx())
+                if(!expanded)return@Canvas
+                val data=snapshot ?: return@Canvas
+                val view=data.viewport
+                fun xFor(time:Long)=(view.fractionFor((time-data.origin).toDouble()/data.intervalMs)*w).toFloat()
+                val visible=data.bars.indices.filter { values[it].isFinite()&&xFor(data.bars[it].time) in -16f..(w+16f) }
+                val top=19.dp.toPx();val bottom=h-10.dp.toPx()
+                if(bottom<=top)return@Canvas
+                val minValue=visible.minOfOrNull { values[it] } ?: 0.0
+                val maxValue=visible.maxOfOrNull { values[it] } ?: 0.0
+                val range=max(maxValue-minValue,1e-9)
+                val upper=max(0.0,maxValue)+range*.08
+                val lower=min(0.0,minValue)-range*.08
+                fun yFor(v:Double)=(top+(upper-v)/(upper-lower)*(bottom-top)).toFloat()
+                val zero=yFor(0.0)
+                val grid=Color(0xFF4A5774).copy(alpha=.36f)
+                val columns=(w/64.dp.toPx()).toInt().coerceAtLeast(2)
+                val timeStep=niceTimeStep(view.visibleBars/columns)
+                val om=data.origin/data.intervalMs
+                val first=ceil((view.centerBar-view.visibleBars/2+om)/timeStep).toLong()
+                val last=floor((view.centerBar+view.visibleBars/2+om)/timeStep).toLong()
+                if(last>=first&&last-first<1000)for(t in first..last) {
+                    val x=(view.fractionFor((t*timeStep-om).toDouble())*w).toFloat()
+                    drawLine(grid,Offset(x,0f),Offset(x,h),1.dp.toPx())
+                }
+                for(y in listOf(top,zero,bottom))drawLine(grid,Offset(0f,y),Offset(w,y),1.dp.toPx())
+                val spacing=w/view.visibleBars.toFloat()
+                val width=(spacing*.64f).coerceAtLeast(.5f)
+                clipRect(0f,top,w,bottom) {
+                    for(i in visible) {
+                        val value=values[i];val y=yFor(value)
+                        val previous=if(i>0)values[i-1] else Double.NaN
+                        val color=if(!previous.isFinite()||value>=previous)Color(0xFF80BF00) else Color(0xFFFF1717)
+                        if(abs(y-zero)>.05f)drawRect(color,Offset(xFor(data.bars[i].time)-width/2,min(y,zero)),Size(width,abs(y-zero)))
+                    }
+                }
+                val paint=NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply {
+                    color=Color(0xFF8D98AB).toArgb();textSize=10.sp.toPx();textAlign=NativePaint.Align.RIGHT
+                }
+                val magnitude=max(abs(upper),abs(lower))
+                val decimals=if(magnitude<1.0)ceil(-log10(magnitude.coerceAtLeast(1e-12))).toInt().plus(1).coerceIn(2,8) else 2
+                fun label(v:Double)=if(v==0.0)"0" else String.format(Locale.US,"% .${decimals}f",v).trim()
+                for((v,y) in listOf(upper to top,0.0 to zero,lower to bottom)) {
+                    drawContext.canvas.nativeCanvas.drawText(label(v),w-5.dp.toPx(),(y-(paint.ascent()+paint.descent())/2).coerceIn(11.dp.toPx(),h-2.dp.toPx()),paint)
+                }
+            }
+            Row(Modifier.align(Alignment.TopStart).height(27.dp).padding(start=5.dp),verticalAlignment=Alignment.CenterVertically) {
+                Box(Modifier.size(21.dp,26.dp).clickable { expanded=!expanded },contentAlignment=Alignment.Center) {
+                    Canvas(Modifier.size(9.dp,6.dp)) {
+                        val p=Path().apply {
+                            if(expanded) { moveTo(0f,0f);lineTo(size.width,0f);lineTo(size.width/2,size.height) }
+                            else { moveTo(0f,0f);lineTo(0f,size.height);lineTo(size.width,size.height/2) }
+                            close()
+                        }
+                        drawPath(p,Color(0xFF9AB4CB))
+                    }
+                }
+                Text("Accelerator Oscillator $fast $slow $signal",color=Color(0xFFF2F3F6),fontSize=12.sp,maxLines=1)
+                Box(Modifier.size(27.dp).clickable { settingsOpen=true },contentAlignment=Alignment.Center) {
+                    Canvas(Modifier.size(13.dp)) {
+                        val stroke=2.dp.toPx();val color=Color(0xFF8FAAC4)
+                        drawLine(color,Offset(size.width*.18f,size.height*.78f),Offset(size.width*.75f,size.height*.21f),stroke*2,StrokeCap.Butt)
+                        drawLine(color,Offset(size.width*.79f,size.height*.16f),Offset(size.width*.91f,size.height*.28f),stroke,StrokeCap.Butt)
+                        drawLine(color,Offset(size.width*.05f,size.height*.95f),Offset(size.width*.19f,size.height*.80f),stroke,StrokeCap.Round)
+                    }
+                }
+            }
+            if(expanded&&(snapshot==null||values.none { it.isFinite() }))Text("بانتظار بيانات كافية للمؤشر",color=Color(0xFF8D98AB),fontSize=10.sp,modifier=Modifier.align(Alignment.Center))
+        }
+    }
+    if(settingsOpen)AcceleratorSettingsDialog { settingsOpen=false }
+}
+@Composable private fun AcceleratorSettingsDialog(onDismiss:()->Unit) {
+    var fast by remember { mutableStateOf(IndicatorSettings.fastPeriod.toString()) }
+    var slow by remember { mutableStateOf(IndicatorSettings.slowPeriod.toString()) }
+    var signal by remember { mutableStateOf(IndicatorSettings.signalPeriod.toString()) }
+    val valid=listOf(fast,slow,signal).all { (it.toIntOrNull() ?: 0) in 1..500 }
+    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            Column(Modifier.fillMaxWidth(.89f).background(Color(0xFF222E43),RoundedCornerShape(12.dp)).padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Text("Accelerator Oscillator",color=Color.White,fontSize=17.sp,modifier=Modifier.weight(1f))
+                    Box(Modifier.size(28.dp).clickable(onClick=onDismiss),contentAlignment=Alignment.Center) { ReferenceGlyph("close",Modifier.size(20.dp),Color(0xFFA8C0D2)) }
+                }
+                @Composable fun PeriodRow(label:String,value:String,onChange:(String)->Unit) {
+                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                        Text(label,color=Color(0xFFC4D1E1),fontSize=14.sp,modifier=Modifier.weight(1f))
+                        BasicTextField(value=value,onValueChange={ if(it.length<=3&&it.all { c->c in '0'..'9' })onChange(it) },singleLine=true,
+                            keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number),textStyle=TextStyle(color=Color.White,fontSize=15.sp,textAlign=TextAlign.Center),
+                            modifier=Modifier.width(72.dp).background(Color(0xFF171E2C),RoundedCornerShape(6.dp)).padding(10.dp))
+                    }
+                }
+                PeriodRow("الفترة السريعة",fast) { fast=it }
+                PeriodRow("الفترة البطيئة",slow) { slow=it }
+                PeriodRow("فترة الإشارة",signal) { signal=it }
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.weight(1f).height(40.dp).background(Color(0xFF943B49),RoundedCornerShape(7.dp)).clickable { IndicatorSettings.acceleratorEnabled=false;IndicatorSettings.snapshot=null;onDismiss() },contentAlignment=Alignment.Center) { Text("إزالة المؤشر",color=Color.White,fontSize=14.sp) }
+                    Box(Modifier.weight(1f).height(40.dp).background(if(valid)Color(0xFF23884D) else Color(0xFF465163),RoundedCornerShape(7.dp)).clickable(enabled=valid) {
+                        IndicatorSettings.fastPeriod=fast.toInt();IndicatorSettings.slowPeriod=slow.toInt();IndicatorSettings.signalPeriod=signal.toInt();onDismiss()
+                    },contentAlignment=Alignment.Center) { Text("حفظ",color=Color.White,fontSize=14.sp) }
+                }
+            }
+        }
+    }
+}
+
+// Indicator extension: all calculations use the chart's unmodified OHLC feed.
+// NaN is a warm-up / unavailable value, never a fabricated zero.
+private data class IndicatorInput(val label:String,val initial:Double,val min:Double=1.0,val max:Double=500.0,val integer:Boolean=true)
+private data class IndicatorDefinition(val name:String,val overlay:Boolean,val inputs:List<IndicatorInput>,val lines:List<String>,val colors:List<Long>,val histogram:Boolean=false,val lower:Double?=null,val upper:Double?=null)
+private data class IndicatorLineStyle(val color:Long,val width:Float=1f,val enabled:Boolean=true)
+private data class IndicatorConfig(val values:List<Double>,val styles:List<IndicatorLineStyle>,val visible:Boolean=true)
+private data class IndicatorSeries(val name:String,val values:DoubleArray,val shift:Int=0,val histogram:Boolean=false,val dots:Boolean=false)
+private val IndicatorPalette=listOf(0xFF2962FFL,0xFFFF6D00L,0xFF00E8C6L,0xFFFFCE00L,0xFF80BF00L,0xFFFF3030L,0xFFFFFFFFL,0xFFB66CFFL)
+private val ExtraIndicatorDefinitions:List<IndicatorDefinition> = run {
+    fun period(label:String="الفترة",n:Int=14)=IndicatorInput(label,n.toDouble())
+    fun factor(label:String,n:Double)=IndicatorInput(label,n,.01,100.0,false)
+    fun def(name:String,overlay:Boolean=false,inputs:List<IndicatorInput> = listOf(period()),lines:List<String> = listOf(name),colors:List<Long> = lines.indices.map { IndicatorPalette[it%IndicatorPalette.size] },histogram:Boolean=false,lower:Double?=null,upper:Double?=null)=IndicatorDefinition(name,overlay,inputs,lines,colors,histogram,lower,upper)
+    listOf(
+        def("ADX",inputs=listOf(period("تسوية ADX"),period("طول DI")),lines=listOf("adx","plusDI","minusDI"),colors=listOf(0xFFEA6800L,0xFF00E8C6L,0xFFFFCE00L)),
+        def("Alligator",true,listOf(period("الفترة الفكية",13),IndicatorInput("التحول الفكي",8.0,0.0),period("فترة الأسنان",8),IndicatorInput("التحول السني",5.0,0.0),period("فترة الشفاه",5),IndicatorInput("التحول الشفي",3.0,0.0)),listOf("Jaw","Teeth","Lips"),listOf(0xFF2962FFL,0xFFEA6800L,0xFF80BF00L)),
+        def("Aroon",inputs=listOf(period(n=25)),lines=listOf("Aroon Up","Aroon Down"),colors=listOf(0xFF2962FFL,0xFFFF3030L),lower=0.0,upper=100.0),
+        def("Average True Range"),
+        def("Awesome Oscillator",inputs=listOf(period("فترة قصيرة",5),period("فترة طويلة",34)),lines=listOf("Growing","Falling"),colors=listOf(0xFF80BF00L,0xFFFF1717L),histogram=true),
+        def("Bears Power",inputs=listOf(period(n=13)),histogram=true),
+        def("Bollinger Bands",true,listOf(period(n=20),factor("الانحراف المعياري",2.0)),listOf("Basis","Upper","Lower")),
+        def("Bollinger Bands Width",inputs=listOf(period(n=20),factor("الانحراف المعياري",2.0))),
+        def("Bulls Power",inputs=listOf(period(n=13)),histogram=true),
+        def("CCI",inputs=listOf(period(n=20))),
+        def("Donchian Channel",true,listOf(period(n=20)),listOf("Middle","Upper","Lower")),
+        def("DeMarker",lower=0.0,upper=1.0),
+        def("Envelopes",true,listOf(period(n=14),factor("الانحراف %",.1)),listOf("Basis","Upper","Lower")),
+        def("Fractal",true,listOf(IndicatorInput("شموع على كل جانب",2.0,1.0,20.0)),listOf("High","Low")),
+        def("مؤشر إيشيموكو كينكو هيو",true,listOf(period("خط التحويل",9),period("الخط الأساسي",26),period("الفترة B",52),IndicatorInput("الإزاحة",26.0,0.0)),listOf("Tenkan","Kijun","Senkou A","Senkou B","Chikou"),listOf(0xFF2962FFL,0xFFFF3030L,0xFF00E8C6L,0xFFEA6800L,0xFFB66CFFL)),
+        def("Keltner Channel",true,listOf(period("فترة EMA",20),period("فترة ATR",10),factor("المضاعف",2.0)),listOf("Basis","Upper","Lower")),
+        def("MACD",inputs=listOf(period("فترة سريعة",12),period("فترة بطيئة",26),period("فترة الإشارة",9)),lines=listOf("MACD","Signal","Histogram")),
+        def("Momentum",inputs=listOf(period(n=10))),
+        def("Moving Average",true,listOf(period(n=14),IndicatorInput("الطريقة: 0 SMA، 1 EMA، 2 SMMA، 3 WMA",0.0,0.0,3.0)),listOf("MA")),
+        def("OsMA",inputs=listOf(period("فترة سريعة",12),period("فترة بطيئة",26),period("فترة الإشارة",9)),histogram=true),
+        def("Parabolic SAR",true,listOf(factor("خطوة التسارع",.02),factor("أقصى تسارع",.2)),listOf("SAR")),
+        def("RSI",lower=0.0,upper=100.0),
+        def("Rate of Change",inputs=listOf(period(n=12))),
+        def("Stochastic Oscillator",inputs=listOf(period("فترة %K",14),period("تنعيم %K",3),period("فترة %D",3)),lines=listOf("%K","%D"),lower=0.0,upper=100.0),
+        def("SuperTrend",true,listOf(period("فترة ATR",10),factor("المضاعف",3.0)),listOf("Up","Down"),listOf(0xFF00C878L,0xFFFF3030L)),
+        def("مؤشر الدوامة",inputs=listOf(period(n=14)),lines=listOf("VI+","VI-")),
+        def("مؤشر ويليامز %R",lower=-100.0,upper=0.0)
+    )
+}
+private fun IndicatorDefinition.defaults()=IndicatorConfig(inputs.map { it.initial },colors.map { IndicatorLineStyle(it) })
+private object ExtraIndicators {
+    val active=mutableStateMapOf<String,IndicatorConfig>()
+    fun definition(name:String)=ExtraIndicatorDefinitions.firstOrNull { it.name==name }
+    fun enable(name:String):Boolean {
+        val definition=definition(name) ?: return false
+        active[name]=(active[name] ?: definition.defaults()).copy(visible=true)
+        return true
+    }
+}
+@Composable private fun IndicatorPreferences() {
+    val context=LocalContext.current.applicationContext
+    LaunchedEffect(context) {
+        val prefs=context.getSharedPreferences("chart_indicators_v1",Context.MODE_PRIVATE)
+        try {
+            val root=JSONObject(prefs.getString("settings","{}") ?: "{}")
+            ExtraIndicatorDefinitions.forEach { definition->
+                val saved=root.optJSONObject(definition.name) ?: return@forEach
+                val values=saved.optJSONArray("values")
+                val styles=saved.optJSONArray("styles")
+                val v=definition.inputs.mapIndexed { i,input->values?.optDouble(i,input.initial)?.takeIf { it.isFinite()&&it in input.min..input.max&&(!input.integer||it==floor(it)) } ?: input.initial }
+                val s=definition.colors.mapIndexed { i,color->val item=styles?.optJSONObject(i);IndicatorLineStyle(item?.optLong("color",color) ?: color,(item?.optDouble("width",1.0) ?: 1.0).toFloat().takeIf { it.isFinite()&&it in 1f..4f } ?: 1f,item?.optBoolean("enabled",true) ?: true) }
+                if(validIndicatorInputs(definition,v))ExtraIndicators.active[definition.name]=IndicatorConfig(v,s,saved.optBoolean("visible",true))
+            }
+        } catch(_:Exception) { /* A damaged indicator preference never interrupts trading. */ }
+        snapshotFlow { ExtraIndicators.active.toMap() }.collect { settings->
+            val root=JSONObject()
+            settings.forEach { (name,config)->
+                val styles=JSONArray();config.styles.forEach { styles.put(JSONObject().put("color",it.color).put("width",it.width.toDouble()).put("enabled",it.enabled)) }
+                root.put(name,JSONObject().put("values",JSONArray(config.values)).put("styles",styles).put("visible",config.visible))
+            }
+            prefs.edit().putString("settings",root.toString()).apply()
+        }
+    }
+}
+private fun validIndicatorInputs(d:IndicatorDefinition,v:List<Double>):Boolean {
+    if(v.size!=d.inputs.size||v.indices.any { !v[it].isFinite()||v[it] !in d.inputs[it].min..d.inputs[it].max||(d.inputs[it].integer&&v[it]!=floor(v[it])) })return false
+    return when(d.name) {
+        "Awesome Oscillator","MACD","OsMA"->v[0]<v[1]
+        "Parabolic SAR"->v[0]<=v[1]
+        else->true
+    }
+}
+// Pure numerical kernels, independent of Compose and trading state.
+private object IndicatorMath {
+    fun average(x:DoubleArray,p:Int,kind:Int=0):DoubleArray {
+        require(p>0)
+        val out=DoubleArray(x.size) { Double.NaN };var sum=0.0;var count=0;var prev=Double.NaN
+        for(i in x.indices) {
+            if(!x[i].isFinite()) { sum=0.0;count=0;prev=Double.NaN;continue }
+            count++;sum+=x[i]
+            if(kind==0||kind==3) {
+                if(count>p)sum-=x[i-p]
+                if(count>=p)out[i]=if(kind==0)sum/p else {
+                    var weighted=0.0;for(k in 0 until p)weighted+=x[i-p+1+k]*(k+1);weighted/(p.toDouble()*(p+1)/2)
+                }
+            } else {
+                if(count==p)prev=sum/p
+                else if(count>p)prev+=(x[i]-prev)*(if(kind==1)2.0/(p+1) else 1.0/p)
+                if(count>=p)out[i]=prev
+            }
+        }
+        return out
+    }
+    fun diff(a:DoubleArray,b:DoubleArray)=DoubleArray(a.size) { a[it]-b[it] }
+    fun tr(b:List<Candle>)=DoubleArray(b.size) { i->
+        val hi=b[i].high.toDouble();val lo=b[i].low.toDouble()
+        if(i==0)hi-lo else max(hi-lo,max(abs(hi-b[i-1].close),abs(lo-b[i-1].close)))
+    }
+    fun extreme(x:DoubleArray,p:Int,high:Boolean):DoubleArray {
+        val out=DoubleArray(x.size) { Double.NaN }
+        for(i in p-1 until x.size) { var v=x[i-p+1];for(j in i-p+2..i)v=if(high)max(v,x[j]) else min(v,x[j]);out[i]=v }
+        return out
+    }
+    fun rangePosition(x:DoubleArray,hi:DoubleArray,lo:DoubleArray,p:Int):DoubleArray {
+        val h=extreme(hi,p,true);val l=extreme(lo,p,false)
+        return DoubleArray(x.size) { if(!h[it].isFinite())Double.NaN else if(h[it]==l[it])50.0 else 100*(x[it]-l[it])/(h[it]-l[it]) }
+    }
+    fun sar(b:List<Candle>,step:Double,limit:Double):DoubleArray {
+        val out=DoubleArray(b.size) { Double.NaN };if(b.size<2)return out
+        var up=b[1].close>=b[0].close;var af=step
+        var ep=if(up)max(b[0].high,b[1].high).toDouble() else min(b[0].low,b[1].low).toDouble()
+        var value=if(up)b[0].low.toDouble() else b[0].high.toDouble();out[1]=value
+        for(i in 2 until b.size) {
+            value+=af*(ep-value)
+            if(up) {
+                value=min(value,min(b[i-1].low,b[i-2].low).toDouble())
+                if(b[i].low<value) { up=false;value=ep;ep=b[i].low.toDouble();af=step }
+                else if(b[i].high>ep) { ep=b[i].high.toDouble();af=min(limit,af+step) }
+            } else {
+                value=max(value,max(b[i-1].high,b[i-2].high).toDouble())
+                if(b[i].high>value) { up=true;value=ep;ep=b[i].high.toDouble();af=step }
+                else if(b[i].low<ep) { ep=b[i].low.toDouble();af=min(limit,af+step) }
+            }
+            out[i]=value
+        }
+        return out
+    }
+    fun calculate(d:IndicatorDefinition,cfg:IndicatorConfig,b:List<Candle>):List<IndicatorSeries> {
+        val n=b.size;val v=cfg.values
+        fun p(i:Int=0)=v[i].toInt()
+        val close=DoubleArray(n) { b[it].close.toDouble() };val high=DoubleArray(n) { b[it].high.toDouble() };val low=DoubleArray(n) { b[it].low.toDouble() }
+        val median=DoubleArray(n) { (high[it]+low[it])/2 };val typical=DoubleArray(n) { (high[it]+low[it]+close[it])/3 }
+        fun line(i:Int,x:DoubleArray,shift:Int=0,histogram:Boolean=d.histogram,dots:Boolean=false)=IndicatorSeries(d.lines[i],x,shift,histogram,dots)
+        fun one(x:DoubleArray)=listOf(line(0,x))
+        fun atr(period:Int)=average(tr(b),period,2)
+        fun mid(period:Int):DoubleArray { val hi=extreme(high,period,true);val lo=extreme(low,period,false);return DoubleArray(n) { (hi[it]+lo[it])/2 } }
+        return when(d.name) {
+            "ADX"->{
+                val plus=DoubleArray(n) { Double.NaN };val minus=DoubleArray(n) { Double.NaN };val ranges=tr(b)
+                if(n>0)ranges[0]=Double.NaN
+                for(i in 1 until n) { val u=high[i]-high[i-1];val down=low[i-1]-low[i];plus[i]=if(u>down&&u>0)u else 0.0;minus[i]=if(down>u&&down>0)down else 0.0 }
+                val r=average(ranges,p(1),2);val a=average(plus,p(1),2);val z=average(minus,p(1),2)
+                val diP=DoubleArray(n) { if(!r[it].isFinite())Double.NaN else if(r[it]==0.0)0.0 else 100*a[it]/r[it] }
+                val diM=DoubleArray(n) { if(!r[it].isFinite())Double.NaN else if(r[it]==0.0)0.0 else 100*z[it]/r[it] }
+                val dx=DoubleArray(n) { val sum=diP[it]+diM[it];if(!sum.isFinite())Double.NaN else if(sum==0.0)0.0 else 100*abs(diP[it]-diM[it])/sum }
+                listOf(line(0,average(dx,p(),2)),line(1,diP),line(2,diM))
+            }
+            "Alligator"->listOf(line(0,average(median,p(0),2),p(1)),line(1,average(median,p(2),2),p(3)),line(2,average(median,p(4),2),p(5)))
+            "Aroon"->{
+                val up=DoubleArray(n) { Double.NaN };val down=up.copyOf()
+                for(i in p() until n) { var h=i-p();var l=h;for(j in i-p()+1..i) { if(high[j]>=high[h])h=j;if(low[j]<=low[l])l=j };up[i]=100.0*(p()-(i-h))/p();down[i]=100.0*(p()-(i-l))/p() }
+                listOf(line(0,up),line(1,down))
+            }
+            "Average True Range"->one(atr(p()))
+            "Awesome Oscillator"->one(diff(average(median,p()),average(median,p(1))))
+            "Bears Power"->one(diff(low,average(close,p(),1)))
+            "Bulls Power"->one(diff(high,average(close,p(),1)))
+            "Bollinger Bands","Bollinger Bands Width"->{
+                val mean=average(close,p());val dev=DoubleArray(n) { Double.NaN }
+                for(i in p()-1 until n) { var sum=0.0;for(j in i-p()+1..i)sum+=(close[j]-mean[i]).pow(2);dev[i]=sqrt(sum/p())*v[1] }
+                if(d.name=="Bollinger Bands Width")one(DoubleArray(n) { if(mean[it]==0.0)Double.NaN else 200*dev[it]/mean[it] })
+                else listOf(line(0,mean),line(1,DoubleArray(n) { mean[it]+dev[it] }),line(2,DoubleArray(n) { mean[it]-dev[it] }))
+            }
+            "CCI"->{
+                val mean=average(typical,p());val out=DoubleArray(n) { Double.NaN }
+                for(i in p()-1 until n) { var dev=0.0;for(j in i-p()+1..i)dev+=abs(typical[j]-mean[i]);dev/=p();out[i]=if(dev==0.0)0.0 else (typical[i]-mean[i])/(.015*dev) };one(out)
+            }
+            "Donchian Channel"->{ val hi=extreme(high,p(),true);val lo=extreme(low,p(),false);listOf(line(0,DoubleArray(n) { (hi[it]+lo[it])/2 }),line(1,hi),line(2,lo)) }
+            "DeMarker"->{
+                val up=DoubleArray(n) { if(it==0)Double.NaN else max(0.0,high[it]-high[it-1]) };val down=DoubleArray(n) { if(it==0)Double.NaN else max(0.0,low[it-1]-low[it]) }
+                val a=average(up,p());val z=average(down,p());one(DoubleArray(n) { val sum=a[it]+z[it];if(sum==0.0).5 else a[it]/sum })
+            }
+            "Envelopes"->{ val mean=average(close,p());listOf(line(0,mean),line(1,DoubleArray(n) { mean[it]*(1+v[1]/100) }),line(2,DoubleArray(n) { mean[it]*(1-v[1]/100) })) }
+            "Fractal"->{
+                val hi=DoubleArray(n) { Double.NaN };val lo=hi.copyOf();val radius=p()
+                // Require closed bars on both sides; the forming last bar never confirms a pivot.
+                for(i in radius until n-radius-1) {
+                    var up=true;var down=true
+                    for(j in i-radius..i+radius)if(j!=i) { if(high[j]>=high[i])up=false;if(low[j]<=low[i])down=false }
+                    if(up)hi[i]=high[i];if(down)lo[i]=low[i]
+                }
+                listOf(line(0,hi,dots=true),line(1,lo,dots=true))
+            }
+            "مؤشر إيشيموكو كينكو هيو"->{ val a=mid(p());val z=mid(p(1));listOf(line(0,a),line(1,z),line(2,DoubleArray(n) { (a[it]+z[it])/2 },p(3)),line(3,mid(p(2)),p(3)),line(4,close,-p(3))) }
+            "Keltner Channel"->{ val mean=average(close,p(),1);val range=atr(p(1));listOf(line(0,mean),line(1,DoubleArray(n) { mean[it]+range[it]*v[2] }),line(2,DoubleArray(n) { mean[it]-range[it]*v[2] })) }
+            "MACD","OsMA"->{
+                val macd=diff(average(close,p(),1),average(close,p(1),1));val signal=average(macd,p(2),1);val hist=diff(macd,signal)
+                if(d.name=="OsMA")one(hist) else listOf(line(0,macd),line(1,signal),line(2,hist,histogram=true))
+            }
+            "Momentum","Rate of Change"->one(DoubleArray(n) { if(it<p()||close[it-p()]==0.0)Double.NaN else if(d.name=="Momentum")100*close[it]/close[it-p()] else 100*(close[it]/close[it-p()]-1) })
+            "Moving Average"->one(average(close,p(),p(1)))
+            "Parabolic SAR"->listOf(line(0,sar(b,v[0],v[1]),dots=true))
+            "RSI"->{
+                val up=DoubleArray(n) { if(it==0)Double.NaN else max(0.0,close[it]-close[it-1]) };val down=DoubleArray(n) { if(it==0)Double.NaN else max(0.0,close[it-1]-close[it]) }
+                val gain=average(up,p(),2);val loss=average(down,p(),2)
+                one(DoubleArray(n) { if(!gain[it].isFinite())Double.NaN else if(loss[it]==0.0) { if(gain[it]==0.0)50.0 else 100.0 } else 100-100/(1+gain[it]/loss[it]) })
+            }
+            "Stochastic Oscillator"->{ val k=average(rangePosition(close,high,low,p()),p(1));listOf(line(0,k),line(1,average(k,p(2)))) }
+            "SuperTrend"->{
+                val range=atr(p());val up=DoubleArray(n) { Double.NaN };val down=up.copyOf()
+                var upper=Double.NaN;var lower=Double.NaN;var bullish=false;var started=false
+                for(i in b.indices) {
+                    if(!range[i].isFinite())continue
+                    val bu=median[i]+v[1]*range[i];val bl=median[i]-v[1]*range[i]
+                    if(!started) { upper=bu;lower=bl;started=true;bullish=false }
+                    else { val oldUpper=upper;val oldLower=lower
+                        upper=if(bu<oldUpper||close[i-1]>oldUpper)bu else oldUpper
+                        lower=if(bl>oldLower||close[i-1]<oldLower)bl else oldLower
+                        bullish=if(bullish)close[i]>=lower else close[i]>upper
+                    }
+                    if(bullish)up[i]=lower else down[i]=upper
+                }
+                listOf(line(0,up),line(1,down))
+            }
+            "مؤشر الدوامة"->{
+                val plus=DoubleArray(n) { if(it==0)Double.NaN else abs(high[it]-low[it-1]) };val minus=DoubleArray(n) { if(it==0)Double.NaN else abs(low[it]-high[it-1]) }
+                val r=tr(b);if(n>0)r[0]=Double.NaN
+                val a=average(plus,p());val z=average(minus,p());val tr=average(r,p())
+                listOf(line(0,DoubleArray(n) { if(tr[it]==0.0)0.0 else a[it]/tr[it] }),line(1,DoubleArray(n) { if(tr[it]==0.0)0.0 else z[it]/tr[it] }))
+            }
+            "مؤشر ويليامز %R"->{ val k=rangePosition(close,high,low,p());one(DoubleArray(n) { k[it]-100 }) }
+            else->emptyList()
+        }
+    }
+}
+
+@Composable private fun ExtraIndicatorPanes() {
+    val panes=ExtraIndicators.active.toMap().filter { (name,cfg)->cfg.visible&&ExtraIndicators.definition(name)?.overlay==false }
+    if(!IndicatorSettings.acceleratorEnabled&&panes.isEmpty())return
+    // A scrollable bounded group keeps the trade panel and main chart usable with many indicators.
+    Column(Modifier.fillMaxWidth().heightIn(max=(LocalConfiguration.current.screenHeightDp*.28f).dp).verticalScroll(rememberScrollState())) {
+        if(IndicatorSettings.acceleratorEnabled)AcceleratorOscillatorPane()
+        panes.forEach { (name,cfg)->key(name) { ExtraIndicatorPane(ExtraIndicators.definition(name)!!,cfg) } }
+    }
+}
+@Composable private fun ExtraIndicatorHeading(d:IndicatorDefinition,cfg:IndicatorConfig,expanded:Boolean,onExpand:()->Unit,onSettings:()->Unit) {
+    Row(Modifier.height(27.dp).padding(start=6.dp),verticalAlignment=Alignment.CenterVertically) {
+        Text(if(expanded)"▾" else "▸",color=Color(0xFF9AB4CB),modifier=Modifier.width(20.dp).clickable(onClick=onExpand),fontSize=15.sp)
+        val periods=d.inputs.indices.filter { d.inputs[it].integer&&!(d.name=="Alligator"&&it%2==1)&&!(d.name=="Moving Average"&&it==1) }.joinToString(" ") { cfg.values[it].toInt().toString() }
+        Text("${d.name} $periods",color=Color(0xFFF2F3F6),fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.weight(1f,false))
+        Box(Modifier.size(27.dp).clickable(onClick=onSettings),contentAlignment=Alignment.Center) { Text("✎",color=Color(0xFF9AB4CB),fontSize=19.sp) }
+    }
+}
+@Composable private fun ExtraIndicatorPane(d:IndicatorDefinition,cfg:IndicatorConfig) {
+    val symbol by TradeStore.currentSymbol.collectAsState()
+    val snapshot=IndicatorSettings.snapshot?.takeIf { it.symbol==symbol&&it.frame==ChartSettings.frame }
+    val series=remember(d,cfg.values,snapshot?.bars) { IndicatorMath.calculate(d,cfg,snapshot?.bars ?: emptyList()) }
+    var expanded by remember { mutableStateOf(true) };var settings by remember { mutableStateOf(false) }
+    val height=(LocalConfiguration.current.screenHeightDp*.145f).coerceIn(88f,132f).dp
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Box(Modifier.fillMaxWidth().height(if(expanded)height else 28.dp).background(Color(0xFF1D2332))) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawLine(Color(0xFF3C6686),Offset.Zero,Offset(size.width,0f),1.dp.toPx())
+                if(expanded&&snapshot!=null)drawIndicatorPane(d,cfg,series,snapshot)
+            }
+            ExtraIndicatorHeading(d,cfg,expanded,{ expanded=!expanded },{ settings=true })
+            if(expanded&&(snapshot==null||series.all { s->s.values.none { it.isFinite() } }))Text("بانتظار بيانات كافية للمؤشر",color=Color(0xFF8D98AB),fontSize=10.sp,modifier=Modifier.align(Alignment.Center))
+        }
+    }
+    if(settings)ExtraIndicatorDialog(d) { settings=false }
+}
+private fun DrawScope.drawIndicatorPane(d:IndicatorDefinition,cfg:IndicatorConfig,series:List<IndicatorSeries>,data:IndicatorChartSnapshot) {
+    val w=size.width;val h=size.height;val top=28.dp.toPx();val bottom=h-18.dp.toPx();if(bottom<=top)return
+    fun xFor(index:Int,shift:Int=0):Float { val time=data.bars.getOrNull(index)?.time ?: return Float.NaN;return (data.viewport.fractionFor((time-data.origin).toDouble()/data.intervalMs+shift)*w).toFloat() }
+    val finite=series.flatMapIndexed { index,s->if(!(if(d.name=="Awesome Oscillator")cfg.styles.any { it.enabled } else cfg.styles.getOrNull(index)?.enabled==true))emptyList() else s.values.indices.filter { s.values[it].isFinite()&&xFor(it,s.shift) in -20f..w+20f }.map { s.values[it] } }
+    var low=d.lower ?: finite.minOrNull() ?: 0.0;var high=d.upper ?: finite.maxOrNull() ?: 1.0
+    if(series.any { it.histogram }) { low=min(low,0.0);high=max(high,0.0) }
+    if(d.lower==null&&d.upper==null) { val margin=max(high-low,max(abs(high)*.01,1e-9))*.08;low-=margin;high+=margin }
+    if(high<=low)high=low+1.0
+    fun yFor(v:Double)=(top+(high-v)/(high-low)*(bottom-top)).toFloat()
+    val grid=Color(0xFF4A5774).copy(alpha=.4f)
+    val timeStep=niceTimeStep(data.viewport.visibleBars/(w/64.dp.toPx()).toInt().coerceAtLeast(2));val om=data.origin/data.intervalMs
+    val first=ceil((data.viewport.centerBar-data.viewport.visibleBars/2+om)/timeStep).toLong();val last=floor((data.viewport.centerBar+data.viewport.visibleBars/2+om)/timeStep).toLong()
+    val timePaint=NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=Color(0xFF8D98AB).toArgb();textSize=9.sp.toPx();textAlign=NativePaint.Align.CENTER }
+    if(last>=first&&last-first<1000)for(t in first..last) { val x=(data.viewport.fractionFor((t*timeStep-om).toDouble())*w).toFloat();drawLine(grid,Offset(x,0f),Offset(x,h),1.dp.toPx());if(x>20.dp.toPx()&&x<w-25.dp.toPx())drawContext.canvas.nativeCanvas.drawText(candleTimeText(t*timeStep*data.intervalMs,data.intervalMs),x,h-3.dp.toPx(),timePaint) }
+    val levels=if(d.name=="Aroon")listOf(0.0,30.0,50.0,70.0,100.0) else listOf(low,(low+high)/2,high)
+    val paint=NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=Color(0xFF8D98AB).toArgb();textSize=9.sp.toPx();textAlign=NativePaint.Align.RIGHT }
+    val magnitude=max(abs(low),abs(high));val decimals=if(magnitude<1)ceil(-log10(magnitude.coerceAtLeast(1e-12))).toInt().plus(1).coerceIn(2,8) else 2
+    levels.forEach { value->val y=yFor(value);drawLine(grid,Offset(0f,y),Offset(w,y),1.dp.toPx()) }
+    clipRect(0f,top,w,bottom) {
+        series.forEachIndexed { index,s->
+            val style=cfg.styles.getOrNull(index) ?: return@forEachIndexed
+            if(!style.enabled&&d.name!="Awesome Oscillator")return@forEachIndexed
+            val color=Color(style.color);val path=Path();var started=false
+            for(i in s.values.indices) {
+                val value=s.values[i];val x=xFor(i,s.shift)
+                if(!value.isFinite()) { started=false;continue }
+                val y=yFor(value)
+                if(s.histogram) {
+                    var barStyle=style
+                    if(d.name=="Awesome Oscillator")barStyle=cfg.styles[if(i==0||!s.values[i-1].isFinite()||value>=s.values[i-1])0 else 1]
+                    if(!barStyle.enabled||x !in -20f..w+20f)continue
+                    val zero=yFor(0.0);val width=(w/data.viewport.visibleBars.toFloat()*(.55f+.1f*barStyle.width).coerceAtMost(.95f)).coerceAtLeast(.5f)
+                    drawRect(Color(barStyle.color),Offset(x-width/2,min(y,zero)),Size(width,abs(y-zero)))
+                } else if(!started) { path.moveTo(x,y);started=true } else path.lineTo(x,y)
+            }
+            if(!s.histogram)drawPath(path,color,style=Stroke(style.width.dp.toPx(),cap=StrokeCap.Round,join=StrokeJoin.Round))
+        }
+    }
+    levels.forEach { value->val text=if(value==0.0)"0" else String.format(Locale.US,"%.${decimals}f",value);val y=yFor(value);drawContext.canvas.nativeCanvas.drawText(text,w-4.dp.toPx(),(y-(paint.ascent()+paint.descent())/2).coerceIn(top,bottom),paint) }
+}
+@Composable private fun ExtraIndicatorOverlayHeadings(modifier:Modifier=Modifier) {
+    var editing by remember { mutableStateOf<String?>(null) }
+    val overlays=ExtraIndicators.active.toMap().filter { (name,cfg)->cfg.visible&&ExtraIndicators.definition(name)?.overlay==true }
+    if(overlays.isNotEmpty())Column(modifier.widthIn(max=330.dp).heightIn(max=108.dp).verticalScroll(rememberScrollState()).background(Color(0xFF1D2332).copy(alpha=.35f))) {
+        overlays.forEach { (name,cfg)->key(name) { val d=ExtraIndicators.definition(name)!!;ExtraIndicatorHeading(d,cfg,true,{ editing=name },{ editing=name }) } }
+    }
+    editing?.let { name->ExtraIndicators.definition(name)?.let { d->ExtraIndicatorDialog(d) { editing=null } } }
+}
+private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport,origin:Long,intervalMs:Long,overlays:List<Pair<IndicatorConfig,List<IndicatorSeries>>>) {
+    fun xFor(index:Int,shift:Int):Float { val time=bars.getOrNull(index)?.time ?: return Float.NaN;return (view.fractionFor((time-origin).toDouble()/intervalMs+shift)*size.width).toFloat() }
+    fun yFor(value:Double)=((view.maxPrice-value)/view.priceSpan*size.height).toFloat()
+    clipRect(0f,0f,size.width,size.height) {
+        overlays.forEach { (cfg,series)->
+            // Ichimoku: fill between the shifted Senkou spans, never between unrelated lines.
+            if(series.size==5&&series[2].name=="Senkou A"&&cfg.styles[2].enabled&&cfg.styles[3].enabled) {
+                val a=series[2];val b=series[3]
+                for(i in 1 until bars.size)if(a.values[i-1].isFinite()&&a.values[i].isFinite()&&b.values[i-1].isFinite()&&b.values[i].isFinite()) {
+                    val x0=xFor(i-1,a.shift);val x1=xFor(i,a.shift)
+                    if(x1<0||x0>size.width)continue
+                    val area=Path().apply { moveTo(x0,yFor(a.values[i-1]));lineTo(x1,yFor(a.values[i]));lineTo(x1,yFor(b.values[i]));lineTo(x0,yFor(b.values[i-1]));close() }
+                    drawPath(area,Color(if(a.values[i]>=b.values[i])cfg.styles[2].color else cfg.styles[3].color).copy(alpha=.12f))
+                }
+            }
+            series.forEachIndexed { line,s->
+                val style=cfg.styles.getOrNull(line) ?: return@forEachIndexed
+                if(!style.enabled)return@forEachIndexed
+                val color=Color(style.color);val path=Path();var started=false
+                for(i in s.values.indices) {
+                    val v=s.values[i];if(!v.isFinite()) { started=false;continue }
+                    val x=xFor(i,s.shift);val y=yFor(v)
+                    if(s.dots) { if(x in -10f..size.width+10f)drawCircle(color,(style.width+1).dp.toPx(),Offset(x,y)) }
+                    else if(!started) { path.moveTo(x,y);started=true } else path.lineTo(x,y)
+                }
+                if(!s.dots)drawPath(path,color,style=Stroke(style.width.dp.toPx(),cap=StrokeCap.Round,join=StrokeJoin.Round))
+            }
+        }
+    }
+}
+
+@Composable private fun ExtraIndicatorDialog(d:IndicatorDefinition,onDismiss:()->Unit) {
+    val current=ExtraIndicators.active[d.name] ?: return
+    val values=remember(d.name) { mutableStateListOf<String>().apply { addAll(current.values.map { if(it==floor(it))it.toInt().toString() else it.toString() }) } }
+    val styles=remember(d.name) { mutableStateListOf<IndicatorLineStyle>().apply { addAll(current.styles) } }
+    var tab by remember { mutableIntStateOf(1) };var paletteFor by remember { mutableIntStateOf(-1) }
+    val parsed=values.map { it.toDoubleOrNull() ?: Double.NaN };val valid=validIndicatorInputs(d,parsed)
+    val border=Color(0xFF424C60);val panel=Color(0xFF202839);val blue=Color(0xFF299EE6)
+    val config=LocalConfiguration.current
+    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            Column(Modifier.fillMaxWidth(.89f).heightIn(max=(config.screenHeightDp*.85f).dp).background(panel,RoundedCornerShape(12.dp)).border(1.dp,border,RoundedCornerShape(12.dp)).padding(20.dp)) {
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Text(d.name,color=Color.White,fontSize=18.sp,modifier=Modifier.weight(1f),maxLines=2)
+                    Box(Modifier.size(30.dp).clickable(onClick=onDismiss),contentAlignment=Alignment.Center) { ReferenceGlyph("close",Modifier.size(24.dp),Color(0xFFA8C0D2)) }
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement=Arrangement.spacedBy(14.dp)) {
+                    listOf("أساليب","المدخلات").forEachIndexed { index,label->
+                        val shape=RoundedCornerShape(12.dp)
+                        Box(Modifier.width(98.dp).height(34.dp).background(if(tab==index)Color(0xFF30455E) else Color(0xFF181F30),shape).border(1.dp,if(tab==index)blue else border,shape).clickable { tab=index;paletteFor=-1 },contentAlignment=Alignment.Center) { Text(label,color=Color.White,fontSize=14.sp) }
+                    }
+                }
+                Spacer(Modifier.height(22.dp))
+                Column(Modifier.fillMaxWidth().weight(1f,false).heightIn(min=120.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    if(tab==1)d.inputs.forEachIndexed { index,input->
+                        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                            Text(input.label,color=Color.White,fontSize=14.sp,style=TextStyle(textDirection=TextDirection.Rtl),modifier=Modifier.weight(1f).padding(end=12.dp))
+                            BasicTextField(value=values[index],onValueChange={ text->
+                                val normalized=buildString { text.forEach { c->append(when(c) { in '٠'..'٩'->'0'+(c-'٠');in '۰'..'۹'->'0'+(c-'۰');'٫',','->'.';else->c }) } }
+                                if(normalized.length<=9&&normalized.all { it in '0'..'9'||(!input.integer&&it=='.') }&&normalized.count { it=='.' }<=1)values[index]=normalized
+                            },singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=if(input.integer)KeyboardType.Number else KeyboardType.Decimal),textStyle=TextStyle(color=Color(0xFFB5C5D9),fontSize=15.sp),modifier=Modifier.width(112.dp).background(Color(0xFF0F1D32),RoundedCornerShape(5.dp)).border(1.dp,border,RoundedCornerShape(5.dp)).padding(12.dp))
+                        }
+                    } else styles.forEachIndexed { index,style->
+                        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                            Box(Modifier.size(25.dp).background(if(style.enabled)Color(0xFF626D7D) else Color(0xFF182133),RoundedCornerShape(3.dp)).clickable { styles[index]=style.copy(enabled=!style.enabled) },contentAlignment=Alignment.Center) { if(style.enabled)Text("✓",color=Color.White,fontSize=21.sp,fontWeight=FontWeight.Bold) }
+                            Text(d.lines[index],color=Color.White,fontSize=15.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.weight(1f).padding(horizontal=8.dp))
+                            Row(Modifier.height(38.dp).background(Color(0xFF161D29),RoundedCornerShape(4.dp)).border(1.dp,border,RoundedCornerShape(4.dp)).padding(4.dp),verticalAlignment=Alignment.CenterVertically) {
+                                Box(Modifier.size(29.dp).background(Color(style.color),RoundedCornerShape(3.dp)).clickable { paletteFor=if(paletteFor==index)-1 else index })
+                                Box(Modifier.width(48.dp).fillMaxHeight().clickable { styles[index]=style.copy(width=if(style.width>=4f)1f else style.width+1f) },contentAlignment=Alignment.Center) { Text("${style.width.toInt()}px",color=Color.White,fontSize=14.sp) }
+                            }
+                        }
+                        if(paletteFor==index)Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) { IndicatorPalette.forEach { color->Box(Modifier.size(25.dp).background(Color(color),RoundedCornerShape(3.dp)).border(if(style.color==color)2.dp else 0.dp,Color.White,RoundedCornerShape(3.dp)).clickable { styles[index]=styles[index].copy(color=color);paletteFor=-1 }) } }
+                    }
+                    if(tab==1&&!valid)Text("تحقق من القيم: فترات صحيحة، والفترة القصيرة أقل من الطويلة؛ خطوة SAR لا تتجاوز الحد الأقصى.",color=Color(0xFFFF9393),fontSize=11.sp)
+                }
+                Spacer(Modifier.height(24.dp))
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
+                    @Composable fun Action(text:String,enabled:Boolean=true,onClick:()->Unit) {
+                        Box(Modifier.width(if(text=="حفظ")67.dp else 48.dp).height(40.dp).background(if(text=="حفظ")Color(0xFF102E32) else Color(0xFF212338),RoundedCornerShape(4.dp)).border(1.dp,if(text=="حفظ")Color(0xFF075D50) else border.copy(alpha=.35f),RoundedCornerShape(4.dp)).alpha(if(enabled)1f else .45f).clickable(enabled=enabled,onClick=onClick),contentAlignment=Alignment.Center) { Text(text,color=Color.White,fontSize=16.sp) }
+                    }
+                    Action("حذف") { ExtraIndicators.active.remove(d.name);onDismiss() }
+                    Action(if(current.visible)"◉" else "○") { ExtraIndicators.active[d.name]=(ExtraIndicators.active[d.name] ?: current).copy(visible=!current.visible) }
+                    Action("حفظ",valid) { ExtraIndicators.active[d.name]=IndicatorConfig(parsed,styles.toList(),(ExtraIndicators.active[d.name] ?: current).visible);onDismiss() }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable fun LiveCandlestickChart(modifier:Modifier=Modifier,onOpenPairPicker:()->Unit) {
+    ChartDrawingPreferences()
+    val sym by TradeStore.currentSymbol.collectAsState()
+    val frame=ChartSettings.frame
+    val intervalMs=chartFrameMillis(frame)
+    val chartType=ChartSettings.chartType
+    val autoScrollEnabled by rememberUpdatedState(ChartSettings.autoScrollEnabled)
+    fun barPosition(time:Long,origin:Long)=(time-origin).toDouble()/intervalMs
+    val candles=remember { mutableStateListOf<Candle>() }
+    var displayCandle by remember { mutableStateOf<Candle?>(null) }
+    var livePrice by remember { mutableFloatStateOf(0f) }
+    var origin by remember { mutableLongStateOf(0L) }
+    var viewport by remember { mutableStateOf(ChartViewport(60.0,0.0,LIVE_CANDLE_FRACTION,1.0,MIN_PRICE_SPAN)) }
+    var bsTarget by remember { mutableDoubleStateOf(60.0) }
+    var followLive by remember { mutableStateOf(true) }
+    var interacting by remember { mutableStateOf(false) }
+    var chartSize by remember { mutableStateOf(IntSize.Zero) }
+    var secondsLeft by remember { mutableIntStateOf(60) }
+    var clockText by remember { mutableStateOf(clockNow()) }
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var inertia by remember { mutableDoubleStateOf(0.0) }
+    var isLoading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf(false) }
+    var retryKey by remember { mutableIntStateOf(0) }
+    var everLoaded by remember { mutableStateOf(false) }
+    val resultHits=remember { mutableListOf<Pair<Long,Rect>>() }
+    val density=LocalDensity.current
+    val axisTextPx=with(density) { 9.sp.toPx() }; val tagTextPx=with(density) { 10.sp.toPx() }
+    val axisPaint=remember(axisTextPx) { NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=Color.White.toArgb();textSize=axisTextPx;textAlign=NativePaint.Align.RIGHT;typeface=Typeface.DEFAULT } }
+    val timePaint=remember(axisTextPx) { NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=C.TextSecondary.toArgb();textSize=axisTextPx;textAlign=NativePaint.Align.CENTER } }
+    val tagPaint=remember(tagTextPx) { NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=C.BG.toArgb();textSize=tagTextPx;textAlign=NativePaint.Align.CENTER;typeface=Typeface.DEFAULT_BOLD } }
+    val detailPaint=remember(axisTextPx) { NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=C.Cyan.toArgb();textSize=axisTextPx;textAlign=NativePaint.Align.CENTER } }
+    fun ppw()=(chartSize.width-6f-PAD).coerceAtLeast(1f)
+    fun clampVisible(v:Double):Double {
+        val perMin=((ppw()/(max(3f,16f*3.704f)+8f))*.9f).toDouble()
+        val perMax=(ppw()/(max(3f,16f*.207f)+8f)).toDouble()
+        val minBars=ppw()/perMax; val maxBars=ppw()/perMin
+        val lower=max(MIN_VISIBLE_BARS_LIMIT,minBars); val upper=min(MAX_VISIBLE_BARS_LIMIT,maxBars).coerceAtLeast(lower)
+        return v.coerceIn(lower,upper)
+    }
+    fun beginPinch() {
+        if(candles.isEmpty())return
+        val view=viewport; val live=barPosition(candles.last().time,origin)
+        val pivot=if(view.fractionFor(live) in 0.0..1.0)live else candles.minByOrNull { abs(barPosition(it.time,origin)-view.centerBar) }?.let { barPosition(it.time,origin) } ?: view.centerBar
+        viewport=view.reanchor(pivot); inertia=0.0
+    }
+    fun zoomOnly(factor:Double) {
+        if(!factor.isFinite()||factor<=0)return
+        val amp=if(factor>=1)1+(factor-1)*PINCH_AMPLIFY else 1/(1+(1/factor-1)*PINCH_AMPLIFY)
+        val view=viewport; val next=clampVisible(view.visibleBars/amp)
+        var zoomed=view.copy(visibleBars=next)
+        if(candles.isNotEmpty()) {
+            val first=barPosition(candles.first().time,origin); val last=barPosition(candles.last().time,origin)
+            val center=boundedChartCenter(zoomed,zoomed.centerBar,first,last)
+            if(abs(center-zoomed.centerBar)>1e-9)zoomed=zoomed.copy(anchorBar=center,anchorFraction=.5)
+            followLive=zoomed.atLiveBoundary(last)
+        }
+        viewport=zoomed; bsTarget=next
+        val(center,span)=verticalTarget(viewport,candles,origin,intervalMs); viewport=viewport.copy(centerPrice=center,priceSpan=span)
+    }
+    fun panOnly(dx:Float) {
+        val width=chartSize.width.toDouble()
+        if(width<=1||!dx.isFinite()||dx==0f||candles.isEmpty())return
+        val view=viewport; val desired=view.centerBar-dx*PAN_GAIN/width*view.visibleBars
+        val first=barPosition(candles.first().time,origin); val last=barPosition(candles.last().time,origin)
+        val center=boundedChartCenter(view,desired,first,last)
+        val next=view.copy(anchorBar=center,anchorFraction=.5); val(pc,span)=verticalTarget(next,candles,origin,intervalMs)
+        viewport=next.copy(centerPrice=pc,priceSpan=span)
+        followLive=next.atLiveBoundary(last)
+    }
+    val onBegin by rememberUpdatedState<()->Unit>({interacting=true;inertia=0.0})
+    val onEnd by rememberUpdatedState<()->Unit>({interacting=false})
+    val onPinchStart by rememberUpdatedState<()->Unit>({beginPinch()})
+    val onZoom by rememberUpdatedState<(Double)->Unit>({zoomOnly(it)})
+    val onPan by rememberUpdatedState<(Float)->Unit>({ dx->panOnly(dx) })
+    // Velocity is bars/second, independent of pointer-event frequency and display refresh rate.
+    val onFling by rememberUpdatedState<(Float)->Unit>({ velocity->
+        if(chartSize.width>1&&candles.isNotEmpty()&&velocity.isFinite()) {
+            inertia=-velocity.coerceIn(-12000f,12000f)*PAN_GAIN/chartSize.width*viewport.visibleBars
+        }
+    })
+
+    // The original chart pan/zoom callbacks remain intact. Only a hit on an
+    // unlocked drawing captures a single-finger drag; pinch always zooms the chart.
+    val drawingObjects=ChartDrawings.visible(sym,frame)
+    val onDrawingHit by rememberUpdatedState<(Offset)->DrawingHit?>({ position->
+        if(isLoading||loadError||chartSize.width<=1||chartSize.height<=1)null
+        else drawingHit(position,DrawingProjection(viewport,origin,intervalMs,chartSize.width.toFloat(),chartSize.height.toFloat()),ChartDrawings.visible(sym,frame),18*density.density)
+    })
+    val onDrawingDragStart by rememberUpdatedState<(DrawingHit?)->DrawingDrag?>({ hit->
+        val d=hit?.id?.let { ChartDrawings.objects[it] }
+        if(d!=null)ChartDrawings.selected=d.id
+        if(d==null||d.locked)null else DrawingDrag(d,hit!!.handle,DrawingProjection(viewport,origin,intervalMs,chartSize.width.toFloat(),chartSize.height.toFloat()))
+    })
+    val onDrawingMove by rememberUpdatedState<(DrawingDrag,Offset)->Unit>({ drag,delta->
+        if(ChartDrawings.objects.containsKey(drag.original.id))ChartDrawings.objects[drag.original.id]=drag.moved(delta,candles)
+    })
+    val onDrawingRestore by rememberUpdatedState<(DrawingDrag)->Unit>({ drag->
+        if(ChartDrawings.objects.containsKey(drag.original.id))ChartDrawings.objects[drag.original.id]=drag.original
+    })
+    val onChartTap by rememberUpdatedState<(Offset,DrawingHit?,Boolean)->Unit>({ position,hit,edit->
+        val result=resultHits.asReversed().firstOrNull { it.second.contains(position) }
+        if(result!=null)TradeStore.results.removeAll { it.trade.id==result.first }
+        else if(hit!=null&&ChartDrawings.objects.containsKey(hit.id)) {
+            ChartDrawings.selected=hit.id
+            if(edit)ChartDrawings.editing=hit.id
+        } else ChartDrawings.selected=null
+    })
+    val drawingRequest=ChartDrawings.pending
+    LaunchedEffect(drawingRequest?.id,sym,frame,isLoading,loadError,chartSize) {
+        val request=ChartDrawings.pending ?: return@LaunchedEffect
+        if(request.symbol!=sym) { ChartDrawings.pending=null;return@LaunchedEffect }
+        if(loadError) {
+            ChartDrawings.pending=null;TradeMessage.show("تعذر إضافة الرسم حتى تحميل بيانات الشارت");return@LaunchedEffect
+        }
+        if(!isLoading&&candles.isNotEmpty()&&chartSize.width>1&&chartSize.height>1) {
+            val d=createChartDrawing(request,DrawingProjection(viewport,origin,intervalMs,chartSize.width.toFloat(),chartSize.height.toFloat()))
+            ChartDrawings.objects[d.id]=d;ChartDrawings.selected=d.id;ChartDrawings.pending=null
+        }
+    }
+    LaunchedEffect(sym,frame) { ChartDrawings.selected=null;ChartDrawings.editing=null }
+
+    LaunchedEffect(intervalMs) {
+        var last=withFrameNanos { it }
+        while(isActive) {
+            val ns=withFrameNanos { it };val dt=((ns-last)/1_000_000_000.0).coerceIn(0.0,.05);last=ns
+            val view=viewport;val diff=bsTarget-view.visibleBars
+            val blend=1.0-(1.0-ZOOM_SMOOTH).pow(dt*60.0)
+            if(abs(diff)>.003)viewport=view.copy(visibleBars=view.visibleBars+diff*blend) else if(view.visibleBars!=bsTarget)viewport=view.copy(visibleBars=bsTarget)
+            if(candles.isNotEmpty()) {
+                val vp=viewport;val first=barPosition(candles.first().time,origin);val live=barPosition(candles.last().time,origin)
+                val center=boundedChartCenter(vp,vp.centerBar,first,live)
+                if(abs(center-vp.centerBar)>1e-9) {
+                    viewport=vp.copy(anchorBar=center,anchorFraction=.5);inertia=0.0
+                    followLive=viewport.atLiveBoundary(live)
+                }
+                // Receiving a new bar must not cancel follow mode while the next
+                // network request is suspended; only gestures/clamping change it.
+            }
+            if(!interacting&&candles.isNotEmpty()&&abs(inertia)>0.0) {
+                val vp=viewport;val decay=exp(-INERTIA_FRICTION*dt)
+                val desired=vp.centerBar+inertia*(1.0-decay)/INERTIA_FRICTION
+                val first=barPosition(candles.first().time,origin);val live=barPosition(candles.last().time,origin)
+                val center=boundedChartCenter(vp,desired,first,live)
+                val next=vp.copy(anchorBar=center,anchorFraction=.5);val(pc,span)=verticalTarget(next,candles,origin,intervalMs)
+                viewport=next.copy(centerPrice=pc,priceSpan=span)
+                inertia=if(abs(center-desired)>1e-9)0.0 else inertia*decay
+                if(abs(inertia)*chartSize.width/vp.visibleBars<5.0)inertia=0.0
+                followLive=next.atLiveBoundary(live)
+            }
+        }
+    }
+    LaunchedEffect(ChartSettings.autoScrollEnabled) {
+        if(ChartSettings.autoScrollEnabled&&candles.isNotEmpty()) {
+            followLive=true;inertia=0.0
+            val v=viewport.copy(anchorBar=barPosition(candles.last().time,origin),anchorFraction=LIVE_CANDLE_FRACTION)
+            val(center,span)=verticalTarget(v,candles,origin,intervalMs)
+            viewport=v.copy(centerPrice=center,priceSpan=span)
+        }
+    }
+    LaunchedEffect(chartType) {
+        if(candles.isNotEmpty()) {
+            val(center,span)=verticalTarget(viewport,candles,origin,intervalMs)
+            viewport=viewport.copy(centerPrice=center,priceSpan=span)
+        }
+    }
+    LaunchedEffect(sym,frame,retryKey) {
+        val started=System.currentTimeMillis();val initial=!everLoaded
+        isLoading=true;loadError=false;candles.clear();displayCandle=null;livePrice=0f;TradeStore.livePrice.value=0f;followLive=true;inertia=0.0
+        var success=false
+        repeat(10) {
+            if(!success) {
+                val bars=BiquoteApi.chartHistory(sym,frame)
+                if(bars.isNotEmpty()) {
+                    origin=bars.first().time;for(b in bars)mergeCandle(candles,b,true)
+                    while(candles.size>1500)candles.removeAt(0)
+                    if(candles.isNotEmpty()) {
+                        viewport=initialViewport(candles,origin,intervalMs);bsTarget=viewport.visibleBars;livePrice=candles.last().close
+                        displayCandle=candles.last();success=true
+                        // Historical OHLC is not represented as a fresh live quote.
+                        BiquoteApi.updateChartQuote(sym) { price,_->TradeStore.quote(sym,price);livePrice=price.toFloat() }
+                    }
+                } else delay(1500)
+            }
+        }
+        if(initial)delay((2150-(System.currentTimeMillis()-started)).coerceAtLeast(0))
+        isLoading=false
+        if(!success) { loadError=true;return@LaunchedEffect }
+        everLoaded=true
+        var newestTickTime=0L
+        var lastRefresh=System.currentTimeMillis()
+        while(isActive) {
+            delay(1000)
+            val refreshEvery=if(intervalMs<MINUTE_MS)3000L else 5000L
+            // History is merged before the newest quote so an older server bar cannot
+            // replace the latest close. For seconds, never subdivide a minute candle.
+            if(System.currentTimeMillis()-lastRefresh>=refreshEvery) {
+                val lastBars=BiquoteApi.chartHistory(sym,frame,true)
+                for(b in lastBars) {
+                    val existing=candles.firstOrNull { it.time==b.time }
+                    if(existing!=null&&newestTickTime>=b.time&&newestTickTime<b.time+intervalMs)
+                        mergeCandle(candles,b.copy(close=existing.close),true)
+                    else mergeCandle(candles,b,true)
+                }
+                lastRefresh=System.currentTimeMillis()
+            }
+            BiquoteApi.updateChartQuote(sym) { price,tickTime->
+                if(tickTime>=newestTickTime) {
+                    livePrice=price.toFloat();TradeStore.quote(sym,price)
+                    val bucket=tickTime/intervalMs*intervalMs
+                    val lastC=candles.lastOrNull()
+                    if(lastC==null||bucket>=lastC.time) {
+                        val existing=lastC?.takeIf { it.time==bucket }
+                        mergeCandle(candles,if(existing!=null)existing.copy(high=max(existing.high,livePrice),low=min(existing.low,livePrice),close=livePrice) else Candle(livePrice,livePrice,livePrice,livePrice,bucket))
+                    }
+                    newestTickTime=tickTime
+                }
+            }
+            while(candles.size>1500)candles.removeAt(0)
+            if(autoScrollEnabled&&followLive&&!interacting&&candles.isNotEmpty()) {
+                val live=barPosition(candles.last().time,origin)
+                val v=viewport.copy(anchorBar=live,anchorFraction=LIVE_CANDLE_FRACTION)
+                val(pc,span)=verticalTarget(v,candles,origin,intervalMs);viewport=v.copy(centerPrice=pc,priceSpan=span)
+            }
+        }
+    }
+
+    LaunchedEffect(intervalMs) {
+        while(isActive) {
+            delay(16)
+            val real=candles.lastOrNull() ?: continue;val dv=displayCandle
+            displayCandle=when {
+                dv==null->real
+                dv.time!=real.time->real
+                else->{val o=dv.open+(real.open-dv.open)*DV_ALPHA;val h=dv.high+(real.high-dv.high)*DV_ALPHA;val l=dv.low+(real.low-dv.low)*DV_ALPHA;val c=dv.close+(real.close-dv.close)*DV_ALPHA
+                    val final=if(abs(real.close-c)<.0000001f)real.close else c
+                    Candle(o,maxOf(h,final,o),minOf(l,final,o),final,real.time)
+                }
+            }
+        }
+    }
+    LaunchedEffect(intervalMs) { while(isActive) { delay(100);nowMs=System.currentTimeMillis();clockText=clockNow();candles.lastOrNull()?.let { secondsLeft=remainingSeconds(it.time,nowMs,intervalMs) } } }
+    // Publish only the existing chart data; no separate feed or simulated indicator bars.
+    val indicatorBars=if(isLoading||loadError)emptyList() else candles.toList()
+    val overlayConfigs=ExtraIndicators.active.toMap().filter { (name,cfg)->cfg.visible&&ExtraIndicators.definition(name)?.overlay==true }
+    val overlaySeries=remember(indicatorBars,overlayConfigs) {
+        overlayConfigs.map { (name,cfg)->cfg to IndicatorMath.calculate(ExtraIndicators.definition(name)!!,cfg,indicatorBars) }
+    }
+    if(IndicatorSettings.acceleratorEnabled||ExtraIndicators.active.isNotEmpty()) {
+        val indicatorSnapshot=IndicatorChartSnapshot(indicatorBars,viewport,origin,intervalMs,sym,frame)
+        SideEffect { IndicatorSettings.snapshot=indicatorSnapshot }
+    }
+
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Box(modifier.background(C.ChartBg)) {
+            CachedTradingImage(url=CHART_BG_URL,contentDescription=null,contentScale=ContentScale.Crop,modifier=Modifier.matchParentSize())
+            Box(Modifier.matchParentSize().background(Color.Black.copy(alpha=.25f)))
+            if(isLoading) {
+                ReferenceChartLoading(Modifier.matchParentSize(),sym+"-"+frame+"-"+retryKey,!everLoaded)
+            } else if(loadError) {
+                Column(Modifier.align(Alignment.Center).background(Ref.Background,RoundedCornerShape(12.dp)).border(1.dp,C.Red,RoundedCornerShape(12.dp)).clickable { retryKey++ }.padding(18.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+                    Text("لا توجد بيانات حقيقية",color=C.Red,fontSize=14.sp,fontWeight=FontWeight.Bold)
+                    Text("تحقق من الاتصال وتوفر بيانات هذا الفريم، ثم اضغط لإعادة المحاولة",color=C.TextSecondary,fontSize=11.sp)
+                }
+            } else Canvas(Modifier.fillMaxSize().onSizeChanged { chartSize=it }
+                .pointerInput(Unit) {
+                    var lastTapId:Long?=null;var lastTapTime=0L
+                    try { awaitEachGesture {
+                        val down=awaitFirstDown(requireUnconsumed=false);onBegin()
+                        val hit=onDrawingHit(down.position)
+                        val drawingDrag=onDrawingDragStart(hit)
+                        val tracker=VelocityTracker();tracker.addPosition(down.uptimeMillis,down.position)
+                        var pinchStarted=false;var dragging=false;var pan=Offset.Zero;var zoom=1f
+                        var drawingDelta=Offset.Zero;var lastPosition=down.position;var releasedAt=down.uptimeMillis
+                        var releaseVelocity=0f;var completed=false
+                        val slop=viewConfiguration.touchSlop
+                        try { do {
+                            val event=awaitPointerEvent();val pressed=event.changes.count { it.pressed };val stable=event.changes.count { it.pressed&&it.previousPressed }
+                            event.changes.firstOrNull { it.id==down.id }?.let {
+                                lastPosition=it.position;releasedAt=it.uptimeMillis
+                                if(!pinchStarted)tracker.addPosition(it.uptimeMillis,it.position)
+                            }
+                            if(pressed>=2) {
+                                if(!pinchStarted) {
+                                    if(drawingDrag!=null&&dragging)onDrawingRestore(drawingDrag)
+                                    pinchStarted=true;dragging=false;zoom=1f;tracker.resetTracking();onPinchStart()
+                                }
+                                if(pressed==stable) { val z=event.calculateZoom()
+                                    if(z.isFinite()&&z>0) { if(!dragging) { zoom*=z;val r=event.calculateCentroidSize(useCurrent=false);if(abs(1-zoom)*r>slop) { dragging=true;onZoom(zoom.toDouble()) } } else onZoom(z.toDouble()) }
+                                };event.changes.forEach { it.consume() }
+                            } else if(pressed==1&&stable==1&&!pinchStarted) {
+                                val movement=event.calculatePan()
+                                if(drawingDrag!=null) {
+                                    drawingDelta+=movement
+                                    if(!dragging&&drawingDelta.getDistance()>slop)dragging=true
+                                    if(dragging) { onDrawingMove(drawingDrag,drawingDelta);event.changes.forEach { it.consume() } }
+                                } else {
+                                    if(!dragging) { pan+=movement;if(abs(pan.x)>slop) { dragging=true;onPan(pan.x-if(pan.x>0)slop else -slop) } } else onPan(movement.x)
+                                    if(dragging)event.changes.forEach { it.consume() }
+                                }
+                            } else if(pinchStarted)event.changes.forEach { it.consume() }
+                            if(pressed==0) {
+                                completed=true
+                                if(dragging&&!pinchStarted&&drawingDrag==null)releaseVelocity=tracker.calculateVelocity().x
+                            }
+                        } while(event.changes.any { it.pressed }) } finally {
+                            if(!completed&&drawingDrag!=null&&!pinchStarted)onDrawingRestore(drawingDrag)
+                            onEnd()
+                        }
+                        if(completed&&!dragging&&!pinchStarted) {
+                            val doubleTap=hit!=null&&lastTapId==hit.id&&down.uptimeMillis-lastTapTime in 0L..viewConfiguration.doubleTapTimeoutMillis
+                            val longPress=releasedAt-down.uptimeMillis>=viewConfiguration.longPressTimeoutMillis
+                            onChartTap(lastPosition,hit,doubleTap||longPress)
+                            lastTapId=hit?.id;lastTapTime=if(doubleTap)0L else releasedAt
+                        }
+                        if(completed&&abs(releaseVelocity)>=80f)onFling(releaseVelocity)
+                    } } finally { onEnd() }
+                }) {
+                val w=size.width;val h=size.height
+                resultHits.clear()
+                if(w<=1||h<=1||candles.isEmpty())return@Canvas
+                val view=viewport;val dv=displayCandle;val lastIdx=candles.lastIndex
+                fun xFor(bar:Double)=(view.fractionFor(bar)*w).toFloat()
+                fun yFor(price:Double)=((view.maxPrice-price)/view.priceSpan*h).toFloat()
+                fun baseline(y:Float,p:NativePaint)=y-(p.ascent()+p.descent())/2
+                val native=drawContext.canvas.nativeCanvas
+                val rows=(h/58.dp.toPx()).toInt().coerceIn(3,12);val step=nicePriceStep(view.priceSpan/rows);val decimals=priceDecimals(step)
+                val pFirst=ceil(view.minPrice/step).toLong();val pLast=floor(view.maxPrice/step).toLong()
+                if(pLast>=pFirst&&pLast-pFirst<1000)for(t in pFirst..pLast) {
+                    val price=t*step;val y=yFor(price)
+                    drawLine(C.Grid.copy(alpha=.34f),Offset(0f,y),Offset(w,y),1.dp.toPx())
+                    if(y>=axisTextPx&&y<=h-axisTextPx/2)native.drawText(priceText(price,decimals),w-5.dp.toPx(),baseline(y,axisPaint),axisPaint)
+                }
+                val cols=(w/64.dp.toPx()).toInt().coerceAtLeast(2);val timeStep=niceTimeStep(view.visibleBars/cols)
+                val om=origin/intervalMs;val left=view.centerBar-view.visibleBars/2+om;val right=view.centerBar+view.visibleBars/2+om
+                val tFirst=ceil(left/timeStep).toLong();val tLast=floor(right/timeStep).toLong()
+                if(tLast>=tFirst&&tLast-tFirst<1000)for(t in tFirst..tLast) {
+                    val minute=t*timeStep;val x=xFor((minute-om).toDouble())
+                    drawLine(C.Grid.copy(alpha=.28f),Offset(x,0f),Offset(x,h),1.dp.toPx())
+                    val label=candleTimeText(minute*intervalMs,intervalMs);val half=timePaint.measureText(label)/2
+                    if(x-half>=0&&x+half<=w)native.drawText(label,x,baseline(h-7.dp.toPx(),timePaint),timePaint)
+                }
+                val spacing=w/view.visibleBars.toFloat();val bw=(spacing*.76f).coerceIn(min(MINBW,spacing*.95f),spacing*.95f)
+                val wick=min(1.2.dp.toPx(),bw)
+                clipRect(0f,0f,w,h) {
+                    val source=candles.mapIndexed { index,real->if(index==lastIdx&&dv!=null&&dv.time==real.time)dv else real }
+                    val rendered=if(chartType=="هيكين آشي")heikinAshi(source) else source
+                    if(chartType=="رسم بياني") {
+                        val line=Path();var began=false
+                        for(candle in rendered) {
+                            val x=xFor(barPosition(candle.time,origin));val yClose=yFor(candle.close.toDouble())
+                            if(!began) { line.moveTo(x,yClose);began=true } else line.lineTo(x,yClose)
+                        }
+                        drawPath(line,C.Cyan,style=Stroke(1.8.dp.toPx(),cap=StrokeCap.Round,join=StrokeJoin.Round))
+                    } else for(candle in rendered) {
+                        val x=xFor(barPosition(candle.time,origin))
+                        if(x+bw/2<0||x-bw/2>w)continue
+                        val col=if(candle.close>=candle.open)C.Green else C.Red
+                        val yH=yFor(candle.high.toDouble());val yL=yFor(candle.low.toDouble());val yO=yFor(candle.open.toDouble());val yC=yFor(candle.close.toDouble())
+                        drawLine(col,Offset(x,yH),Offset(x,yL),wick,StrokeCap.Butt)
+                        if(chartType=="أشرطة") {
+                            drawLine(col,Offset(x-bw/2,yO),Offset(x,yO),wick,StrokeCap.Butt)
+                            drawLine(col,Offset(x,yC),Offset(x+bw/2,yC),wick,StrokeCap.Butt)
+                        } else if(abs(yO-yC)<1.dp.toPx())drawLine(col,Offset(x-bw/2,(yO+yC)/2),Offset(x+bw/2,(yO+yC)/2),1.dp.toPx())
+                        else drawRect(col,Offset(x-bw/2,min(yO,yC)),Size(bw,abs(yO-yC)))
+                    }
+                }
+                drawIndicatorOverlays(indicatorBars,view,origin,intervalMs,overlaySeries)
+                drawChartDrawings(drawingObjects,DrawingProjection(view,origin,intervalMs,w,h))
+                val displayPrice=dv?.close ?: if(livePrice>0)livePrice else candles.last().close
+                val y=yFor(displayPrice.toDouble())
+                if(y in 0f..h&&displayPrice>0) {
+                    val dash=7.dp.toPx();val gap=5.dp.toPx();var x=0f
+                    while(x<w) { drawLine(C.Cyan.copy(alpha=.85f),Offset(x,y),Offset(min(x+dash,w),y),1.dp.toPx());x+=dash+gap }
+                    val label=priceText(displayPrice.toDouble(),decimals);val tw=tagPaint.measureText(label)+14.dp.toPx();val th=20.dp.toPx()
+                    drawRoundRect(C.PriceTag,Offset(w-tw-3.dp.toPx(),y-th/2),Size(tw,th),CornerRadius(4.dp.toPx()))
+                    native.drawText(label,w-3.dp.toPx()-tw/2,baseline(y,tagPaint),tagPaint)
+                    val candleX=xFor(barPosition(candles.last().time,origin))
+                    val countdown=String.format(Locale.US,"%02d:%02d",secondsLeft/60,secondsLeft%60)
+                    // Three full price-line dash intervals ahead of the active candle.
+                    val labelHalf=max(detailPaint.measureText(frame),detailPaint.measureText(countdown))/2
+                    val labelX=min(candleX+3f*(dash+gap),w-labelHalf-5.dp.toPx())
+                    if(ChartSettings.countdownEnabled&&candleX in 0f..w&&labelX-labelHalf>candleX+bw/2) {
+                        native.drawText(frame,labelX,y-11.dp.toPx(),detailPaint)
+                        native.drawText(countdown,labelX,y+21.dp.toPx(),detailPaint)
+                    }
+                }
+                clipRect(0f,0f,w,h) {
+                    val liveX=xFor(barPosition(candles.last().time,origin))
+                    drawReferenceTrades(sym,AccountStore.selected,nowMs,liveX,{ time->xFor(barPosition(time,origin)) },::yFor,resultHits,intervalMs)
+                }
+            }
+            PairHeader(Modifier.align(Alignment.TopStart).padding(start=4.dp,top=8.dp),onOpenPairPicker)
+            Column(Modifier.align(Alignment.TopStart).padding(start=14.dp,top=60.dp)) {
+                Text("$clockText UTC+3",color=C.TextSecondary,fontSize=11.sp)
+            }
+            ExtraIndicatorOverlayHeadings(Modifier.align(Alignment.TopStart).padding(start=14.dp,top=88.dp))
+            DrawingToolbar(sym,frame,Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start=6.dp,end=6.dp,bottom=28.dp))
+            TopNotificationOverlay(Modifier.align(Alignment.TopStart))
+        }
+    }
+    if(ChartDrawings.managerOpen)DrawingManagerDialog(sym) { ChartDrawings.managerOpen=false }
+    val editingDrawing=ChartDrawings.editing?.let { ChartDrawings.objects[it] }?.takeIf { it.symbol==sym }
+    if(editingDrawing!=null)DrawingSettingsDialog(editingDrawing) { ChartDrawings.editing=null }
+}
+
+private data class MarkerPlacement(val trade:OpenTrade,val y:Float,val dot:Float,val dotY:Float,val right:Float,val left:Float,val width:Float)
+// Trade markers are chart-anchored, never screen-anchored: every label sits on one straight
+// horizontal line at its entry price, behind its entry dot, and never ahead of the active
+// (live) candle. All positions come from xFor/yFor, so they pan and zoom with the chart.
+private fun DrawScope.drawReferenceTrades(symbol:String,account:String,now:Long,liveX:Float,xFor:(Long)->Float,yFor:(Double)->Float,hits:MutableList<Pair<Long,Rect>>,intervalMs:Long=MINUTE_MS) {
+    fun px(n:Float)=n*density
+    val w=size.width;val h=size.height;val native=drawContext.canvas.nativeCanvas
+    val amountPaint=NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { typeface=Typeface.create("Arial",Typeface.BOLD);textSize=px(10f);textAlign=NativePaint.Align.LEFT }
+    val places=mutableListOf<MarkerPlacement>()
+    val trades=TradeStore.openTrades.filter { it.symbol==symbol&&it.account==account }.sortedWith(compareBy<OpenTrade> { it.candleTime }.thenBy { it.openedAt }.thenBy { it.id })
+    if(w>0f&&h>0f)for(tr in trades) {
+        val dot=xFor(tr.openedAt/intervalMs*intervalMs)
+        val dotY=yFor(tr.exactEntry)
+        if(dotY<px(-40f)||dotY>h+px(40f))continue
+        val width=amountPaint.measureText("$"+shortAmount(tr.amount))+px(16f)
+        // The label ends behind the entry dot and never crosses ahead of the active candle.
+        val right=min(dot,liveX)-px(6f)
+        places.add(MarkerPlacement(tr,dotY,dot,dotY,right,right-width,width))
+    }
+    for(p in places) {
+        val color=if(p.trade.direction>0)Color(0xFF4CAF50) else Color(0xFFF44336)
+        // One straight horizontal line on the entry price, from the label to the dot.
+        drawLine(color.copy(alpha=.6f),Offset(p.right,p.dotY),Offset(p.dot,p.dotY),px(1f))
+        drawCircle(color,px(4f),Offset(p.dot,p.dotY));drawCircle(Color(0xFFEAFFF5),px(1.5f),Offset(p.dot,p.dotY))
+    }
+    for(p in places) {
+        val tr=p.trade;val up=tr.direction>0;val l=p.left;val y=p.y
+        val arrow=Path().apply {
+            if(up) { moveTo(l+px(3f),y-px(14f));lineTo(l+px(6.6f),y-px(8f));lineTo(l-px(.6f),y-px(8f)) }
+            else { moveTo(l+px(3f),y-px(6f));lineTo(l+px(6.6f),y-px(12f));lineTo(l-px(.6f),y-px(12f)) };close()
+        }
+        drawPath(arrow,Color.White.copy(alpha=.95f))
+        val text="$"+shortAmount(tr.amount);val aw=amountPaint.measureText(text)
+        val boxLeft=l+px(7f);val boxTop=y-px(17f)
+        val boxSize=Size(aw+px(4f),px(13f));val radius=CornerRadius(px(3.5f))
+        for(layer in 3 downTo 1) {
+            val spread=px(layer*.6f)
+            drawRoundRect(Color.Black.copy(alpha=.045f),Offset(boxLeft-spread,boxTop+px(1.5f)-spread),Size(boxSize.width+2*spread,boxSize.height+2*spread),CornerRadius(radius.x+spread))
+        }
+        val topColor=if(up)Color(0xFF327C55) else Color(0xFF913C46)
+        val bottomColor=if(up)Color(0xFF153E2B) else Color(0xFF49202A)
+        drawRoundRect(Brush.verticalGradient(listOf(topColor,bottomColor),startY=boxTop,endY=boxTop+boxSize.height),Offset(boxLeft,boxTop),boxSize,radius)
+        val outline=(if(up)Color(0xFF70C491) else Color(0xFFEA8991)).copy(alpha=.8f)
+        drawRoundRect(outline,Offset(boxLeft+px(.4f),boxTop+px(.4f)),Size(boxSize.width-px(.8f),boxSize.height-px(.8f)),CornerRadius(px(3.1f)),style=Stroke(px(.8f)))
+        drawLine(Color.White.copy(alpha=.20f),Offset(boxLeft+px(3f),boxTop+px(1.2f)),Offset(boxLeft+boxSize.width-px(3f),boxTop+px(1.2f)),px(.6f),StrokeCap.Round)
+        amountPaint.color=(if(up)Color(0xFFFFE600) else C.Red).toArgb()
+        native.drawText(text,l+px(9f),y-px(7f),amountPaint)
+        val left=ceil((tr.expiresAt-now).coerceAtLeast(0)/1000.0).toLong()
+        amountPaint.color=Color(0xFFC6D2E4).copy(alpha=.72f).toArgb()
+        native.drawText(String.format(Locale.US,"%02d:%02d",left/60,left%60),l+px(9f),y+px(8f),amountPaint)
+    }
+    val label=android.text.TextPaint(NativePaint.ANTI_ALIAS_FLAG).apply { typeface=Typeface.create("Tahoma",Typeface.NORMAL);textSize=px(9f);color=Color.White.toArgb() }
+    val labelText="النتيجة (ربح/خسارة)"
+    val labelLayout=android.text.StaticLayout.Builder.obtain(labelText,0,labelText.length,label,px(100f).toInt()).setTextDirection(android.text.TextDirectionHeuristics.RTL).setAlignment(android.text.Layout.Alignment.ALIGN_OPPOSITE).setIncludePad(false).build()
+    val profitPaint=NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { typeface=Typeface.create("Arial",Typeface.BOLD);textSize=px(15f);color=Color.White.toArgb();textAlign=NativePaint.Align.LEFT }
+    for(result in TradeStore.results) {
+        val tr=result.trade
+        if(tr.symbol!=symbol||tr.account!=account||result.visibleUntil<=now)continue
+        val y=yFor(tr.exactEntry);if(y<px(-30f)||y>h+px(30f))continue
+        val ex=min(xFor(tr.openedAt/intervalMs*intervalMs),w-px(67f));val bw=px(126f);val bh=px(48f)
+        val top=(y-px(24f)).coerceIn(px(10f),(h-px(72f)).coerceAtLeast(px(10f)))
+        val left=if(ex-px(9f)-bw>=px(6f))ex-px(9f)-bw else min(ex+px(9f),w-bw-px(8f))
+        val rightOfDot=left>ex;val win=result.profit>0
+        val color=if(win)Color(0xFF1FA348) else Color(0xFFF65850).copy(alpha=.92f)
+        drawRoundRect(color,Offset(left,top),Size(bw,bh),CornerRadius(px(9f)))
+        val tail=Path().apply { if(rightOfDot) { moveTo(left,top+px(16f));lineTo(left-px(7f),top+px(24f));lineTo(left,top+px(32f)) } else { moveTo(left+bw,top+px(16f));lineTo(left+bw+px(7f),top+px(24f));lineTo(left+bw,top+px(32f)) };close() }
+        drawPath(tail,color)
+        val qx=left+bw-px(14f);val qy=top+px(14f)
+        drawLine(Color.White.copy(alpha=.85f),Offset(qx-px(4f),qy-px(4f)),Offset(qx+px(4f),qy+px(4f)),px(1.6f))
+        drawLine(Color.White.copy(alpha=.85f),Offset(qx+px(4f),qy-px(4f)),Offset(qx-px(4f),qy+px(4f)),px(1.6f))
+        native.save();native.translate(left+px(11f),top+px(18f)-labelLayout.getLineBaseline(0));labelLayout.draw(native);native.restore()
+        val text=(if(result.profit>0)"+" else "")+String.format(Locale.US,"%.2f $",result.profit)
+        native.drawText(text,left+px(11f),top+px(38f),profitPaint)
+        drawCircle(Color.White,px(5.5f),Offset(ex,y));drawCircle(if(win)Ref.Green else Color(0xFFF6465D),px(3.1f),Offset(ex,y))
+        hits.add(tr.id to Rect(qx-px(12f),qy-px(12f),qx+px(12f),qy+px(12f)))
+    }
+}
+
+@Composable fun TopNotificationOverlay(modifier:Modifier=Modifier) {
+    Column(modifier.fillMaxWidth().padding(start=6.dp,end=6.dp,top=56.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+        NotificationManager.notifications.forEach { notif->key(notif.id) { TradeNotificationCard(notif) } }
+    }
+}
+@Composable fun TradeNotificationCard(notif:TradeNotification) {
+    val y=remember(notif.id) { Animatable(-1.4f) };val opacity=remember(notif.id) { Animatable(0f) }
+    LaunchedEffect(notif.id) { withFrameNanos { };withFrameNanos { };if(!notif.closing)notif.visible=true }
+    LaunchedEffect(notif.visible) {
+        launch { y.animateTo(if(notif.visible)0f else -1.4f,tween(380,easing=Ref.Entrance)) }
+        launch { opacity.animateTo(if(notif.visible)1f else 0f,tween(300,easing=Ref.CssEase)) }
+    }
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Row(Modifier.fillMaxWidth().height(40.dp).graphicsLayer { translationY=y.value*40.dp.toPx();alpha=opacity.value }.shadow(10.dp,RoundedCornerShape(12.dp)).background(Color(0xFF0EA751),RoundedCornerShape(12.dp)).padding(start=14.dp,end=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            Text("${notif.price} :سعر فتح المداولة ${SymCatalog.pretty(notif.symbol)}",color=Color.White,fontSize=13.sp,fontWeight=FontWeight.SemiBold,maxLines=1,overflow=TextOverflow.Ellipsis,textAlign=TextAlign.Left,modifier=Modifier.weight(1f))
+            Box(Modifier.size(22.dp).clip(CircleShape).background(Color(0xFF2B313F)).clickable { NotificationManager.dismiss(notif.id) },contentAlignment=Alignment.Center) { Text("✕",color=Color.White,fontSize=11.sp,fontWeight=FontWeight.Bold) }
+        }
+    }
+}
+
+// The preset order, colors, grid, dimensions and anchoring come from #tp / .tpc.
+private val TimeOptions=listOf("00:15","00:10","00:05","02:00","01:00","00:30","15:00","10:00","05:00","02:00:00","01:00:00","30:00")
+@Composable fun TradePanel() {
+    Column(Modifier.fillMaxWidth().background(C.BG)) {
+        Spacer(Modifier.height(6.dp));SentimentBar();Spacer(Modifier.height(8.dp));TradeInputs()
+        Spacer(Modifier.height(8.dp));TradeButtons();Spacer(Modifier.height(4.dp))
+    }
+}
+@Composable fun SentimentBar() {
+    var buy by remember { mutableIntStateOf(33) }
+    LaunchedEffect(Unit) { while(isActive) { delay(2200);buy=Random.nextInt(30,37) } }
+    Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),verticalAlignment=Alignment.CenterVertically) {
+        Text("$buy%",color=C.Green,fontSize=12.sp,fontWeight=FontWeight.Bold);Spacer(Modifier.width(8.dp))
+        BoxWithConstraints(Modifier.weight(1f).height(16.dp)) {
+            val width=maxWidth
+            Row(Modifier.fillMaxWidth().height(10.dp).align(Alignment.Center).clip(RoundedCornerShape(5.dp))) {
+                Box(Modifier.weight(buy.toFloat()).fillMaxHeight().background(C.Green));Box(Modifier.weight((100-buy).toFloat()).fillMaxHeight().background(C.Red))
+            }
+            Box(Modifier.align(Alignment.CenterStart).offset(x=width*(buy/100f)-1.25.dp).width(2.5.dp).height(16.dp).clip(RoundedCornerShape(2.dp)).background(C.Cyan))
+        }
+        Spacer(Modifier.width(8.dp));Text("${100-buy}%",color=C.Red,fontSize=12.sp,fontWeight=FontWeight.Bold)
+    }
+}
+@Composable fun TradeInputs() {
+    Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+        TimeInput(Modifier.weight(1f));AmountInput(Modifier.weight(1f))
+    }
+}
+@Composable private fun TimeInput(modifier:Modifier=Modifier) {
+    var expanded by remember { mutableStateOf(false) }
+    var manualOpen by remember { mutableStateOf(false) }
+    val density=LocalDensity.current;val config=LocalConfiguration.current
+    Column(modifier) {
+        Text("الزمن",color=C.TextSecondary,fontSize=12.sp);Spacer(Modifier.height(6.dp))
+        Box {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Box(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(10.dp)).background(C.Surface).border(1.dp,C.Divider,RoundedCornerShape(10.dp)).clickable { expanded=!expanded }) {
+                    Text(TradeSettings.duration,color=C.TextPrimary,fontSize=14.sp,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center,style=TextStyle(textDirection=TextDirection.Ltr),modifier=Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal=38.dp),maxLines=1)
+                    ReferenceGlyph("time",Modifier.align(Alignment.CenterStart).padding(start=12.dp).size(20.dp),C.Yellow)
+                }
+            }
+            if(expanded)Popup(popupPositionProvider=remember(density.density) { ReferencePopupPosition(true,density.density) },onDismissRequest={expanded=false},properties=PopupProperties(focusable=true)) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Column(Modifier.width(min(248,config.screenWidthDp-16).coerceAtLeast(1).dp).shadow(24.dp,RoundedCornerShape(14.dp)).background(Ref.Background,RoundedCornerShape(14.dp)).border(1.dp,Ref.Border,RoundedCornerShape(14.dp)).padding(9.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Column(verticalArrangement=Arrangement.spacedBy(7.dp)) {
+                            TimeOptions.chunked(3).forEach { row->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                                row.forEach { time->Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(10.dp)).background(if(time==TradeSettings.duration)Ref.TimeOn else Ref.TimeButton).clickable { TradeSettings.duration=time;expanded=false },contentAlignment=Alignment.Center) {
+                                    Text(time,color=Color.White,fontSize=14.sp,fontWeight=FontWeight.SemiBold,maxLines=1)
+                                } }
+                            } }
+                        }
+                        Box(Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(10.dp)).background(Ref.TimeButton).clickable {
+                            expanded=false;manualOpen=true
+                        },contentAlignment=Alignment.Center) { Text("ضبط يدوياً",color=Color.White,fontSize=14.sp,fontWeight=FontWeight.Bold) }
+                    }
+                }
+            }
+        }
+    }
+    if(manualOpen)ManualTradeTimeDialog { manualOpen=false }
+}
+@Composable private fun ManualTradeTimeDialog(onDismiss:()->Unit) {
+    val total=(durationMillis(TradeSettings.duration) ?: 60_000L)/1000L
+    var hours by remember { mutableStateOf((total/3600L).toString()) }
+    var minutes by remember { mutableStateOf((total/60L%60L).toString().padStart(2,'0')) }
+    var seconds by remember { mutableStateOf((total%60L).toString().padStart(2,'0')) }
+    var error by remember { mutableStateOf(false) }
+    val focus=remember { FocusRequester() }
+    val keyboard=LocalSoftwareKeyboardController.current
+    val focusManager=LocalFocusManager.current
+    fun save() {
+        val h=hours.toLongOrNull();val m=minutes.toIntOrNull();val sec=seconds.toIntOrNull()
+        if(h==null||m==null||sec==null||h !in 0L..999999L||m !in 0..59||sec !in 0..59||h*3600L+m*60L+sec<=0L) { error=true;return }
+        TradeSettings.duration=String.format(Locale.US,"%02d:%02d:%02d",h,m,sec)
+        focusManager.clearFocus();keyboard?.hide();onDismiss()
+    }
+    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Column(Modifier.padding(20.dp).widthIn(max=360.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ref.Menu).border(1.dp,Ref.Border,RoundedCornerShape(14.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+                Text("ضبط الوقت يدوياً",color=C.TextPrimary,fontSize=17.sp,fontWeight=FontWeight.Bold)
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                        ManualTimePart("ساعة",hours,{hours=it;error=false},Modifier.weight(1f),focus)
+                        ManualTimePart("دقيقة",minutes,{minutes=it;error=false},Modifier.weight(1f))
+                        ManualTimePart("ثانية",seconds,{seconds=it;error=false},Modifier.weight(1f),onDone={save()})
+                    }
+                }
+                if(error)Text("أدخل وقتاً أكبر من صفر، والدقائق والثواني من 0 إلى 59",color=C.Red,fontSize=12.sp)
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                    Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(8.dp)).background(Ref.TimeOn).clickable { save() },contentAlignment=Alignment.Center) { Text("حفظ",color=Color.White,fontWeight=FontWeight.Bold) }
+                    Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(8.dp)).background(Ref.TimeButton).clickable(onClick=onDismiss),contentAlignment=Alignment.Center) { Text("إلغاء",color=Color.White) }
+                }
+            }
+        }
+        // This editor owns its own window: focus is no longer lost to the preset popup.
+        LaunchedEffect(Unit) { withFrameNanos { };focus.requestFocus();withFrameNanos { };keyboard?.show() }
+    }
+}
+@Composable private fun ManualTimePart(label:String,value:String,onChange:(String)->Unit,modifier:Modifier=Modifier,focus:FocusRequester?=null,onDone:(()->Unit)?=null) {
+    Column(modifier,horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        Text(label,color=C.TextSecondary,fontSize=12.sp)
+        BasicTextField(value=value,onValueChange={text->if(text.length<=(if(label=="ساعة")6 else 2)&&text.all { it in '0'..'9' })onChange(text)},
+            modifier=Modifier.fillMaxWidth().height(48.dp).then(if(focus!=null)Modifier.focusRequester(focus) else Modifier),
+            singleLine=true,cursorBrush=SolidColor(C.Cyan),textStyle=TextStyle(color=C.TextPrimary,fontSize=18.sp,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center),
+            keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number,imeAction=if(onDone==null)ImeAction.Next else ImeAction.Done),
+            keyboardActions=KeyboardActions(onDone={onDone?.invoke()}),
+            decorationBox={inner->Box(Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).background(C.Surface).border(1.dp,C.Divider,RoundedCornerShape(8.dp)).padding(8.dp),contentAlignment=Alignment.Center) { inner() }})
+    }
+}
+private val DollarPrefixTransformation=VisualTransformation { text->
+    TransformedText(AnnotatedString("$"+text.text),object:OffsetMapping {
+        override fun originalToTransformed(offset:Int)=(offset+1).coerceIn(1,text.length+1)
+        override fun transformedToOriginal(offset:Int)=(offset-1).coerceIn(0,text.length)
+    })
+}
+@Composable private fun AmountInput(modifier:Modifier=Modifier) {
+    val focusManager=LocalFocusManager.current
+    Column(modifier) {
+        Text("المبلغ",color=C.TextSecondary,fontSize=12.sp);Spacer(Modifier.height(6.dp))
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            Box(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(10.dp)).background(C.Surface).border(1.dp,C.Divider,RoundedCornerShape(10.dp))) {
+                BasicTextField(TradeSettings.amount,{value->
+                    if(value.isEmpty()||Regex("[0-9]*(?:\\.[0-9]*)?").matches(value))TradeSettings.amount=value
+                },modifier=Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal=38.dp).onFocusChanged { if(!it.isFocused)TradeSettings.amount=TradeSettings.amount },singleLine=true,cursorBrush=SolidColor(C.Cyan),visualTransformation=DollarPrefixTransformation,textStyle=TextStyle(color=C.TextPrimary,fontSize=14.sp,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center,textDirection=TextDirection.Ltr),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={TradeSettings.amount=TradeSettings.amount;focusManager.clearFocus()}))
+                ReferenceGlyph("amount",Modifier.align(Alignment.CenterStart).padding(start=12.dp).size(20.dp),C.Yellow)
+            }
+        }
+    }
+}
+@Composable private fun InsufficientBalanceDialog() {
+    val account=InsufficientBalanceState.account ?: return
+    Dialog(onDismissRequest={InsufficientBalanceState.account=null},properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Column(Modifier.padding(20.dp).widthIn(max=360.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ref.Menu).border(1.dp,Ref.Border,RoundedCornerShape(14.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+                WalletIcon(Modifier.size(40.dp),C.Yellow)
+                Text("الرصيد غير كافٍ",color=C.TextPrimary,fontSize=19.sp,fontWeight=FontWeight.Bold)
+                Text("لا يوجد رصيد كافٍ لفتح هذه الصفقة في الحساب "+if(account=="demo")"التجريبي" else "الحقيقي",color=C.TextSecondary,fontSize=14.sp,textAlign=TextAlign.Center)
+                Text("الرصيد المتاح: "+money(AccountStore.balance(account))+" $",color=C.TextPrimary,fontSize=14.sp)
+                Box(Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(8.dp)).background(Ref.TimeOn).clickable { InsufficientBalanceState.account=null },contentAlignment=Alignment.Center) { Text("حسناً",color=Color.White,fontWeight=FontWeight.Bold) }
+            }
+        }
+    }
+}
+@Composable fun TradeButtons() {
+    val sym by TradeStore.currentSymbol.collectAsState();val payout=remember(sym) { SymCatalog.payout(sym) }
+    Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+        TradeButton("شراء",C.Green,payout,Modifier.weight(1f)) { openTrade(1,sym,payout) }
+        TradeButton("بيع",C.Red,payout,Modifier.weight(1f)) { openTrade(-1,sym,payout) }
+    }
+}
+@Composable private fun TradeButton(label:String,color:Color,payout:Int,modifier:Modifier=Modifier,onClick:()->Unit) {
+    Box(modifier.height(48.dp).clip(RoundedCornerShape(12.dp)).background(color).clickable(onClick=onClick),contentAlignment=Alignment.Center) {
+        Row(verticalAlignment=Alignment.CenterVertically) { Text(label,color=Color.White,fontSize=15.sp,fontWeight=FontWeight.Bold);Spacer(Modifier.width(8.dp));Text("$payout%",color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Bold) }
+    }
+}
+
+@Composable fun PairPickerSheet(onDismiss:()->Unit) {
+    val tabs=listOf("الجميع","فوركس","عملات رقمية","سلع","مؤشرات","أسهم")
+    var selectedTab by remember { mutableIntStateOf(0) };var query by remember { mutableStateOf("") }
+    val allSymbols=PairCatalogStore.allSymbols;val connected=PairCatalogStore.connected
+    val loading=!PairCatalogStore.loaded;val favorites=remember { mutableStateListOf<String>() }
+    val context=LocalContext.current
+    LaunchedEffect(Unit) { PairCatalogStore.load(context)
+        // Background monitoring: silent periodic refresh, never shows a loading indicator.
+        while(isActive) { delay(10000);PairCatalogStore.refresh() } }
+    val filtered=allSymbols.filter { s->
+        val category=when(selectedTab) { 0->true;1->SymCatalog.isForex(s);2->SymCatalog.isCrypto(s);3->SymCatalog.isCommodity(s);4->SymCatalog.isIndex(s);5->SymCatalog.isStock(s);else->false }
+        category&&(query.isBlank()||s.contains(query.uppercase(Locale.US)))
+    }.sortedWith(compareBy({it !in connected},{it}))
+    // Full-screen Popup keeps Back/outside dismissal working and prevents click-through.
+    Popup(alignment=Alignment.TopStart,onDismissRequest=onDismiss,properties=PopupProperties(focusable=true)) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=.5f)).clickable(onClick=onDismiss)) {
+            Column(Modifier.fillMaxWidth(.88f).fillMaxHeight().align(Alignment.CenterStart).clip(RoundedCornerShape(topEnd=18.dp,bottomEnd=18.dp)).background(C.PkBg).clickable(interactionSource=remember { androidx.compose.foundation.interaction.MutableInteractionSource() },indication=null,onClick={})) {
+                Row(Modifier.fillMaxWidth().padding(start=14.dp,end=14.dp,top=12.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Text("اختر الأصل",color=C.TextPrimary,fontSize=16.sp,fontWeight=FontWeight.ExtraBold,modifier=Modifier.weight(1f))
+                    Text("✕",color=C.TextPrimary,fontSize=20.sp,modifier=Modifier.clickable(onClick=onDismiss).padding(6.dp))
+                }
+                Row(Modifier.fillMaxWidth().padding(horizontal=10.dp,vertical=8.dp).horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                    tabs.forEachIndexed { i,t->Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if(i==selectedTab)C.PkTabOn else C.PkTab).clickable { selectedTab=i }.padding(horizontal=12.dp,vertical=8.dp)) { Text(t,color=if(i==selectedTab)C.BG else C.TextSecondary,fontSize=11.sp,fontWeight=FontWeight.Bold,maxLines=1) } }
+                }
+                Row(Modifier.fillMaxWidth().padding(horizontal=10.dp,vertical=4.dp),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Row(Modifier.height(40.dp).widthIn(min=56.dp).clip(RoundedCornerShape(10.dp)).background(C.PkSurface).border(1.dp,C.Divider,RoundedCornerShape(10.dp)).padding(horizontal=10.dp),verticalAlignment=Alignment.CenterVertically) { Text("★",color=C.PkStarOn,fontSize=15.sp);Spacer(Modifier.width(6.dp));Text("${favorites.size}",color=C.TextPrimary,fontSize=13.sp,fontWeight=FontWeight.Bold) }
+                    Row(Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(10.dp)).background(C.PkSurface).border(1.dp,C.Divider,RoundedCornerShape(10.dp)).padding(horizontal=10.dp),verticalAlignment=Alignment.CenterVertically) {
+                        BasicTextField(query,{query=it},modifier=Modifier.weight(1f),singleLine=true,textStyle=TextStyle(color=C.TextPrimary,fontSize=13.sp,fontWeight=FontWeight.SemiBold),decorationBox={inner->Box { if(query.isEmpty())Text("بحث...",color=C.TextSecondary,fontSize=13.sp);inner() } })
+                        Text("🔍",color=C.TextPrimary,fontSize=15.sp)
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=8.dp),horizontalArrangement=Arrangement.SpaceBetween) { Text(tabs[selectedTab],color=C.TextPrimary,fontSize=12.sp,fontWeight=FontWeight.Bold);Text("${filtered.size} أصل",color=C.PkPct,fontSize=12.sp,fontWeight=FontWeight.Bold) }
+                if(loading)Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) { ReferenceSpinner() }
+                else LazyColumn(Modifier.fillMaxSize()) {
+                    items(filtered,key={it}) { s->
+                        val icons=IconProvider.getPairIcons(s);val active=s in connected
+                        Row(Modifier.fillMaxWidth().clickable(enabled=active) { TradeStore.currentSymbol.value=s;onDismiss() }.padding(horizontal=14.dp,vertical=10.dp).alpha(if(active)1f else .4f),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                            val fav=s in favorites
+                            Text(if(fav)"★" else "☆",color=C.PkStarOn,fontSize=22.sp,modifier=Modifier.clickable(enabled=active) { if(fav)favorites.remove(s) else favorites.add(s) })
+                            Box(Modifier.width(46.dp).height(30.dp)) {
+                                if(icons.isNotEmpty())CurrencyIcon(icons[0],s,Modifier.size(30.dp).align(Alignment.CenterStart))
+                                if(icons.size>1)CurrencyIcon(icons[1],s.drop(3),Modifier.size(30.dp).align(Alignment.CenterEnd).border(1.5.dp,C.PkBg,CircleShape))
+                            }
+                            Column(Modifier.weight(1f)) { Text(SymCatalog.pretty(s),color=C.TextPrimary,fontSize=15.sp,fontWeight=FontWeight.Bold);if(!active)Text("غير متصل",color=C.Red,fontSize=10.sp,fontWeight=FontWeight.Bold) }
+                            Text("+${SymCatalog.payout(s)}%",color=C.PkPct,fontSize=13.sp,fontWeight=FontWeight.ExtraBold)
+                        }
+                        Box(Modifier.fillMaxWidth().padding(start=70.dp).height(.5.dp).background(C.Divider.copy(alpha=.4f)))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun ReferenceSpinner(modifier:Modifier=Modifier) {
+    val transition=rememberInfiniteTransition(label="reference-spinner")
+    val rotation by transition.animateFloat(0f,360f,infiniteRepeatable(tween(700,easing=LinearEasing)),label="rotation")
+    Canvas(modifier.size(24.dp).graphicsLayer { rotationZ=rotation }) {
+        val stroke=2.dp.toPx();val inset=stroke/2
+        drawCircle(Color(0xFF395782).copy(alpha=.45f),radius=(size.minDimension-stroke)/2,style=Stroke(stroke))
+        drawArc(Color(0xFF83B8FF),-135f,90f,false,Offset(inset,inset),Size(size.width-stroke,size.height-stroke),style=Stroke(stroke))
+    }
+}
+@Composable private fun ReferenceChartLoading(modifier:Modifier=Modifier,token:String,initial:Boolean) {
+    val transition=rememberInfiniteTransition(label="reference-shimmer")
+    val shimmer by transition.animateFloat(2f,-2f,infiniteRepeatable(tween(1200,easing=LinearEasing)),label="shimmer")
+    Box(modifier.background(C.ChartBg)) {
+        Canvas(Modifier.matchParentSize()) {
+            val bands=listOf(floatArrayOf(.05f,.12f,.20f,8f),floatArrayOf(.05f,.22f,.35f,8f),floatArrayOf(.10f,.35f,.15f,40f),floatArrayOf(.28f,.35f,.15f,60f),floatArrayOf(.46f,.35f,.15f,35f),floatArrayOf(.64f,.35f,.15f,55f),floatArrayOf(.05f,.70f,.90f,1f),floatArrayOf(.05f,.85f,.15f,8f),floatArrayOf(.25f,.85f,.15f,8f),floatArrayOf(.45f,.85f,.15f,8f),floatArrayOf(.65f,.85f,.15f,8f))
+            bands.forEach { b->drawRoundRect(Color(0xFF3C5A8C).copy(alpha=.18f),Offset(size.width*b[0],size.height*b[1]),Size(size.width*b[2],b[3]*density),CornerRadius(3*density)) }
+            val start=shimmer*size.width
+            drawRect(Brush.linearGradient(listOf(Color.Transparent,Color(0xFF83B8FF).copy(alpha=.08f),Color(0xFF83B8FF).copy(alpha=.15f),Color(0xFF83B8FF).copy(alpha=.08f),Color.Transparent),Offset(start,0f),Offset(start+size.width*2,size.height)))
+        }
+        if(initial)ReferenceSpinner(Modifier.align(Alignment.Center))
+        key(token) { ReferenceAnimatedLogo(Modifier.align(Alignment.Center).size(if(initial)175.dp else 120.dp)) }
+    }
+}
+@Composable private fun ReferenceAnimatedLogo(modifier:Modifier=Modifier) {
+    // Only the original inline SVG is used, not the HTML application's scripts.
+    // SMIL gradients, glow and animation timings are retained verbatim.
+    AndroidView(modifier=modifier,factory={context->WebView(context).apply {
+        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        layoutParams=ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)
+        settings.javaScriptEnabled=false;settings.blockNetworkLoads=true;settings.allowFileAccess=false;settings.allowContentAccess=false
+        isVerticalScrollBarEnabled=false;isHorizontalScrollBarEnabled=false;importantForAccessibility=android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        setOnTouchListener { _,_->true }
+        loadDataWithBaseURL(null,"<html><head><meta name='viewport' content='width=device-width,initial-scale=1'><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}body{display:grid;place-items:center}svg{display:block;width:100%;height:100%}</style></head><body>"+REFERENCE_LOADING_SVG+"</body></html>","text/html","UTF-8",null)
+    } },onReset=null,onRelease={it.stopLoading();it.destroy()})
+}
+
+
+// ====== Trade history page (ported verbatim from the reference HTML #tradeHistory) ======
+object HistoryOverlay { var open by mutableStateOf(false) }
+
+private val ThText=Color(0xFFF5F6FB)
+private val ThTabBg=Color(0xFF202230); private val ThTabBorder=Color(0xFF3B3D4B)
+private val ThTabOnBg=Color(0xFF30425F); private val ThTabOnBorder=Color(0xFF168BD0)
+private val ThAsset=Color(0xFF8C9DB9); private val ThStar=Color(0xFFE99B31)
+private val ThPct=Color(0xFF71B982); private val ThTime=Color(0xFFF6F6FB)
+private val ThAmount=Color(0xFFF4F5F8); private val ThDir=Color(0xFFFF351D)
+private val ThGain=Color(0xFF79BD87); private val ThLoss=Color(0xFFF05B67)
+private val ThEmpty=Color(0xFF929BB0); private val ThDetailBg=Color(0xFF1D2131)
+private val ThGridBg=Color(0xFF202333); private val ThBarBg=Color(0xFF344766)
+private val ThBarFill=Color(0xFF398BD0); private val ThLabel=Color(0xFFF2F3F8)
+private val ThGreen=Color(0xFF48A75C); private val ThRed=Color(0xFFF05B5B)
+
+private class ThItem(val id:Long,val symbol:String,val direction:Int,val amount:Double,val payoutPct:Int,val openedAt:Long,val expiresAt:Long,val entry:Double,val closePrice:Double,val profit:Double,val isOpen:Boolean)
+
+private fun thDigits(symbol:String)=if(symbol.contains("JPY"))3 else if(symbol=="XAUUSD")2 else 5
+private fun thPrice(value:Double,symbol:String)=if(!(value>0))"—" else String.format(Locale.US,"%.${thDigits(symbol)}f",value)
+private fun thMoney(value:Double)="$"+String.format(Locale.US,"%.2f",value)
+private fun thClock(ms:Long):String { val n=maxOf(0L,(maxOf(0L,ms)+999)/1000); return String.format(Locale.US,"%02d:%02d",n/60,n%60) }
+private fun thPointUnit(symbol:String)=if(symbol.contains("JPY"))0.001 else if(symbol=="XAUUSD")0.01 else 0.00001
+private fun thTimeOfDay(time:Long)=SimpleDateFormat("HH:mm:ss.SSS",Locale.UK).format(Date(time))
+private fun thDurationLabel(durationMs:Long):String=when {
+    durationMs%60000L==0L->"M"+(durationMs/60000L)
+    durationMs>=60000L->"${durationMs/60000L}m ${durationMs%60000L/1000L}s"
+    else->"${(durationMs+999)/1000L}s"
+}
+
+@Composable fun TradeHistoryPage() {
+    BackHandler { HistoryOverlay.open=false }
+    var tab by remember { mutableStateOf("open") }
+    var selectedId by remember { mutableStateOf<Long?>(null) }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while(true) { now=System.currentTimeMillis(); delay(250) } }
+    val account=AccountStore.selected
+    val items=if(tab=="open")
+        TradeStore.openTrades.filter { it.account==account }.map { ThItem(it.id,it.symbol,it.direction,it.amount,it.payoutPct,it.openedAt,it.expiresAt,it.exactEntry,0.0,0.0,true) }
+    else
+        TradeStore.history.filter { it.trade.account==account }.map { ThItem(it.trade.id,it.trade.symbol,it.trade.direction,it.trade.amount,it.trade.payoutPct,it.trade.openedAt,it.trade.expiresAt,it.trade.exactEntry,it.close,it.profit,false) }
+    val sorted=items.sortedByDescending { it.openedAt }
+    if(selectedId!=null&&sorted.none { it.id==selectedId })selectedId=null
+    val padH=(LocalConfiguration.current.screenWidthDp*0.051f).dp
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Box(Modifier.fillMaxSize().background(Ref.Background)) {
+            Column(Modifier.fillMaxSize()) {
+                Column(Modifier.weight(1f).fillMaxWidth()) {
+                    Text("التداولات",color=ThText,fontSize=20.sp,fontWeight=FontWeight.Medium,textAlign=TextAlign.Start,modifier=Modifier.fillMaxWidth().padding(start=padH,end=padH,top=12.dp,bottom=18.dp))
+                    Row(Modifier.fillMaxWidth().padding(start=padH,end=padH,bottom=18.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        ThTab("مفتوحة",tab=="open") { tab="open"; selectedId=null }
+                        ThTab("مغلقة",tab=="closed") { tab="closed"; selectedId=null }
+                    }
+                    if(sorted.isEmpty()) {
+                        Text("لا توجد تداولات "+(if(tab=="open")"مفتوحة" else "مغلقة"),color=ThEmpty,fontSize=13.sp,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=20.dp))
+                    } else LazyColumn(Modifier.fillMaxSize()) {
+                        items(sorted,key= { it.id }) { item->
+                            TradeHistoryRow(item,selectedId==item.id,now) { selectedId=if(selectedId==item.id)null else item.id }
+                            if(selectedId==item.id)TradeHistoryDetail(item,now)
+                        }
+                    }
+                }
+                BottomNavBar(onHome={ HistoryOverlay.open=false })
+            }
+        }
+    }
+}
+
+@Composable private fun RowScope.ThTab(label:String,on:Boolean,onClick:()->Unit) {
+    Box(Modifier.weight(1f).height(38.dp).clip(RoundedCornerShape(7.dp)).background(if(on)ThTabOnBg else ThTabBg).border(1.dp,if(on)ThTabOnBorder else ThTabBorder,RoundedCornerShape(7.dp)).clickable(onClick=onClick),contentAlignment=Alignment.Center) {
+        Text(label,color=ThText,fontSize=17.sp,fontWeight=FontWeight.Medium)
+    }
+}
+
+@Composable private fun TradeHistoryRow(item:ThItem,selected:Boolean,now:Long,onToggle:()->Unit) {
+    val padH=(LocalConfiguration.current.screenWidthDp*0.051f).dp
+    val rate=PairNames.payout(item.symbol)
+    val profit=if(item.isOpen)item.amount*rate/100 else item.profit
+    val win=!item.isOpen&&item.profit>0
+    val total=if(item.isOpen)item.amount+profit else if(win)item.amount+item.profit else maxOf(0.0,item.amount+item.profit)
+    val sell=item.direction<0
+    Column(Modifier.fillMaxWidth().background(if(selected)Color.White.copy(alpha=.045f) else Color.Transparent).clickable(onClick=onToggle)) {
+        Column(Modifier.fillMaxWidth().height(51.dp).padding(horizontal=padH),verticalArrangement=Arrangement.Center) {
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                Row(Modifier.weight(1.2f),verticalAlignment=Alignment.CenterVertically) {
+                    Text("☆",color=ThStar,fontSize=19.sp)
+                    Spacer(Modifier.width(5.dp))
+                    Text("${PairNames.pretty(item.symbol)} OTC ",color=ThAsset,fontSize=14.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
+                    Text("+$rate%",color=ThPct,fontSize=14.sp,maxLines=1)
+                }
+                Spacer(Modifier.weight(1f))
+                Text(if(item.isOpen)thClock(item.expiresAt-now) else "00:00",color=ThTime,fontSize=15.sp,textAlign=TextAlign.End,modifier=Modifier.weight(.8f))
+            }
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                Row(Modifier.weight(1.2f),verticalAlignment=Alignment.CenterVertically) {
+                    Text(if(sell)"↘" else "↗",color=ThDir,fontSize=17.sp,fontWeight=FontWeight.Black)
+                    Spacer(Modifier.width(4.dp))
+                    Text(thMoney(item.amount).replace(".00",""),color=ThAmount,fontSize=15.sp,maxLines=1)
+                }
+                Text(thMoney(total),color=ThGain,fontSize=15.sp,textAlign=TextAlign.Center,modifier=Modifier.weight(1f))
+                Text((if(item.isOpen||win)"+" else "\u2212")+thMoney(kotlin.math.abs(profit)),color=if(item.isOpen||win)ThGain else ThLoss,fontSize=15.sp,textAlign=TextAlign.End,modifier=Modifier.weight(.8f))
+            }
+        }
+    }
+}
+
+@Composable private fun RowScope.ThCell(label:String,value:String,color:Color,align:TextAlign) {
+    Column(Modifier.weight(1f)) {
+        Text(label,color=ThLabel,fontSize=13.sp,maxLines=1,textAlign=align,modifier=Modifier.fillMaxWidth())
+        Text(value,color=color,fontSize=13.sp,fontWeight=FontWeight.Medium,textAlign=align,modifier=Modifier.fillMaxWidth())
+    }
+}
+
+@Composable private fun TradeHistoryDetail(item:ThItem,now:Long) {
+    val padH=(LocalConfiguration.current.screenWidthDp*0.051f).dp
+    val padInner=(LocalConfiguration.current.screenWidthDp*0.035f).dp
+    val isOpen=item.isOpen
+    val entry=item.entry
+    val live=TradeStore.quotes[item.symbol]?.price
+    val current=if(isOpen)(if(live!=null&&live>0)live else entry) else (if(item.closePrice>0)item.closePrice else entry)
+    val duration=maxOf(1L,item.expiresAt-item.openedAt)
+    val left=if(isOpen)maxOf(0L,item.expiresAt-now) else 0L
+    val elapsed=if(isOpen)(100.0*(1.0-left.toDouble()/duration)).coerceIn(0.0,100.0) else 100.0
+    val difference=if(entry>0&&current>0)current-entry else 0.0
+    val points=if(entry>0&&current>0)kotlin.math.round(difference/thPointUnit(item.symbol)).toLong() else 0L
+    val sell=item.direction<0
+    val profit=item.profit
+    Column(Modifier.fillMaxWidth().padding(start=padH,end=padH,bottom=12.dp).clip(RoundedCornerShape(13.dp)).background(ThDetailBg).padding(horizontal=padInner).padding(top=16.dp,bottom=18.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Text("وقت الفتح:",color=ThLabel,fontSize=13.sp)
+                Text(thTimeOfDay(item.openedAt),color=ThText,fontSize=13.sp)
+            }
+            Text(thDurationLabel(duration),color=ThText,fontSize=13.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(top=14.dp))
+            Column(Modifier.weight(1f),horizontalAlignment=Alignment.End) {
+                Text("وقت الإغلاق:",color=ThLabel,fontSize=13.sp)
+                Text(thTimeOfDay(item.expiresAt),color=ThText,fontSize=13.sp)
+            }
+        }
+        Box(Modifier.padding(top=19.dp,bottom=12.dp).fillMaxWidth().height(9.dp).clip(RoundedCornerShape(8.dp)).background(ThBarBg)) {
+            Box(Modifier.fillMaxHeight().fillMaxWidth((elapsed/100).toFloat().coerceIn(0f,1f)).clip(RoundedCornerShape(8.dp)).background(ThBarFill))
+        }
+        Text(if(isOpen)"الوقت المتبقي : "+thClock(left) else "انتهت الصفقة",color=ThText,fontSize=15.sp,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth().padding(bottom=22.dp))
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(ThGridBg).padding(horizontal=padInner,vertical=17.dp)) {
+            Row(Modifier.fillMaxWidth()) {
+                ThCell("توقعاتك:",if(sell)"بيع" else "شراء",if(sell)ThText else ThGreen,TextAlign.Start)
+                ThCell("المنصرف:",thMoney(item.amount),ThText,TextAlign.Center)
+                ThCell("الربح:",thMoney(profit),if(profit<0)ThRed else ThGreen,TextAlign.End)
+            }
+            Spacer(Modifier.height(19.dp))
+            Row(Modifier.fillMaxWidth()) {
+                ThCell("سعر الفتح:",thPrice(entry,item.symbol),ThText,TextAlign.Start)
+                ThCell("الفرق:",if(points>0)"(+$points النقاط)" else if(points<0)"(\u2212${-points} النقاط)" else "(0 النقاط)",if(points>0)ThGreen else if(points<0)ThRed else ThText,TextAlign.Center)
+                ThCell("السعر الحالي:",thPrice(current,item.symbol),ThText,TextAlign.End)
+            }
+        }
+    }
+}
+
+@Composable fun BottomNavBar(onHome:()->Unit={},onOperations:()->Unit={ HistoryOverlay.open=true }) {
+    var selected by remember { mutableIntStateOf(2) }
+    Column(Modifier.background(C.BG)) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(C.Divider))
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            Row(Modifier.fillMaxWidth().background(C.BG).padding(vertical=6.dp),horizontalArrangement=Arrangement.SpaceEvenly,verticalAlignment=Alignment.CenterVertically) {
+                BottomItem("الشارت",selected==0,{selected=0;onHome()}) { ChartIcon(Modifier.size(24.dp),it) }
+                BottomItem("الدردشة",selected==1,{selected=1}) { ChatIcon(Modifier.size(24.dp),it) }
+                BottomItem("العمليات",selected==2,{selected=2;onOperations()}) { HistoryIcon(Modifier.size(24.dp),it) }
+                BottomItem("أول الاجتماعي",selected==3,{selected=3}) { SocialIcon(Modifier.size(24.dp),it) }
+                BottomItem("المزيد",selected==4,{selected=4}) { DotsIcon(Modifier.size(24.dp),it) }
+            }
+        }
+    }
+}
+@Composable fun BottomItem(label:String,selected:Boolean,onClick:()->Unit,icon:@Composable (Color)->Unit) {
+    val color=if(selected)C.Cyan else C.TextSecondary
+    Column(Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick=onClick).padding(horizontal=6.dp,vertical=4.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+        Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(if(selected)C.SurfaceRaised else Color.Transparent).border(1.dp,if(selected)C.Cyan else Color.Transparent,RoundedCornerShape(10.dp)),contentAlignment=Alignment.Center) { icon(color) }
+        Spacer(Modifier.height(3.dp));Text(label,color=color,fontSize=10.sp,textAlign=TextAlign.Center,maxLines=1)
+    }
+}
+
+@Composable private fun ChartIcon(modifier:Modifier=Modifier,color:Color=C.TextPrimary) { Canvas(modifier) {
+    val w=size.width;val h=size.height;val stroke=w*.075f
+    drawLine(color,Offset(w*.12f,h*.12f),Offset(w*.12f,h*.88f),stroke,StrokeCap.Round)
+    drawLine(color,Offset(w*.12f,h*.88f),Offset(w*.90f,h*.88f),stroke,StrokeCap.Round)
+    for((x,range) in listOf(.34f to (.40f to .68f),.57f to (.28f to .57f),.80f to (.18f to .43f))) {
+        val top=h*range.first;val bottom=h*range.second
+        drawLine(color,Offset(w*x,top-h*.10f),Offset(w*x,bottom+h*.10f),stroke*.65f,StrokeCap.Round)
+        drawRoundRect(color,Offset(w*(x-.055f),top),Size(w*.11f,bottom-top),CornerRadius(w*.02f))
+    }
+} }
+@Composable private fun ChatIcon(modifier:Modifier=Modifier,color:Color=C.TextPrimary) { Canvas(modifier) {
+    val w=size.width;val h=size.height;val stroke=w*.075f
+    val bubble=Path().apply {
+        moveTo(w*.23f,h*.16f);lineTo(w*.77f,h*.16f)
+        quadraticBezierTo(w*.90f,h*.16f,w*.90f,h*.29f);lineTo(w*.90f,h*.63f)
+        quadraticBezierTo(w*.90f,h*.76f,w*.77f,h*.76f);lineTo(w*.43f,h*.76f)
+        lineTo(w*.20f,h*.92f);lineTo(w*.20f,h*.75f)
+        quadraticBezierTo(w*.10f,h*.73f,w*.10f,h*.63f);lineTo(w*.10f,h*.29f)
+        quadraticBezierTo(w*.10f,h*.16f,w*.23f,h*.16f);close()
+    }
+    drawPath(bubble,color,style=Stroke(stroke,cap=StrokeCap.Round,join=StrokeJoin.Round))
+    for(x in listOf(.32f,.50f,.68f))drawCircle(color,w*.04f,Offset(w*x,h*.46f))
+} }
+@Composable private fun HistoryIcon(modifier:Modifier=Modifier,color:Color=C.TextPrimary) { Canvas(modifier) {
+    val w=size.width;val h=size.height;val stroke=w*.075f
+    drawRoundRect(color,Offset(w*.18f,h*.10f),Size(w*.64f,h*.80f),CornerRadius(w*.08f),style=Stroke(stroke))
+    for(y in listOf(.32f,.51f,.70f)) {
+        drawCircle(color,w*.025f,Offset(w*.31f,h*y))
+        drawLine(color,Offset(w*.43f,h*y),Offset(w*.69f,h*y),stroke*.8f,StrokeCap.Round)
+    }
+} }
+
+@Composable fun DownArrow(modifier:Modifier=Modifier,color:Color=C.TextSecondary) { Canvas(modifier) { drawPath(Path().apply { moveTo(0f,0f);lineTo(size.width,0f);lineTo(size.width/2,size.height);close() },color) } }
+@Composable fun DotsIcon(modifier:Modifier=Modifier,color:Color=C.TextPrimary) { Canvas(modifier) { val r=size.minDimension*.11f;val y=size.height/2;drawCircle(color,r,Offset(size.width*.15f,y));drawCircle(color,r,Offset(size.width*.5f,y));drawCircle(color,r,Offset(size.width*.85f,y)) } }
+@Composable fun WalletIcon(modifier:Modifier=Modifier,color:Color=Color.White) { Canvas(modifier) { val w=size.width;val h=size.height
+    drawRoundRect(color,Offset(w*.05f,h*.22f),Size(w*.9f,h*.62f),CornerRadius(w*.1f),style=Stroke(w*.08f))
+    drawRoundRect(color,Offset(w*.55f,h*.4f),Size(w*.4f,h*.28f),CornerRadius(w*.06f),style=Stroke(w*.07f));drawCircle(color,w*.05f,Offset(w*.73f,h*.54f))
+} }
+@Composable fun ClockIcon(modifier:Modifier=Modifier,color:Color=C.Cyan) { Canvas(modifier) { val d=size.minDimension;val cx=size.width/2;val cy=size.height/2;val s=d*.09f
+    drawCircle(color,d*.4f,Offset(cx,cy),style=Stroke(s));drawLine(color,Offset(cx,cy),Offset(cx,size.height*.25f),s,StrokeCap.Round);drawLine(color,Offset(cx,cy),Offset(size.width*.72f,cy),s,StrokeCap.Round)
+} }
+@Composable fun DollarIcon(modifier:Modifier=Modifier,color:Color=C.Cyan) { Canvas(modifier) { val d=size.minDimension;val s=d*.09f;val cx=size.width/2;val cy=size.height/2;val m=d*.16f
+    drawCircle(color,d*.4f,Offset(cx,cy),style=Stroke(s));drawLine(color,Offset(cx+m*.6f,cy-m),Offset(cx-m*.5f,cy-m*.2f),s,StrokeCap.Round);drawLine(color,Offset(cx-m*.5f,cy-m*.2f),Offset(cx+m*.5f,cy+m*.2f),s,StrokeCap.Round);drawLine(color,Offset(cx+m*.5f,cy+m*.2f),Offset(cx-m*.6f,cy+m),s,StrokeCap.Round)
+} }
+@Composable fun TradesIcon(modifier:Modifier=Modifier,color:Color=Color.White) { Canvas(modifier) { val w=size.width;val h=size.height;val s=w*.09f
+    drawLine(color,Offset(w*.3f,h*.85f),Offset(w*.3f,h*.15f),s,StrokeCap.Round);drawLine(color,Offset(w*.3f,h*.15f),Offset(w*.15f,h*.32f),s,StrokeCap.Round);drawLine(color,Offset(w*.3f,h*.15f),Offset(w*.45f,h*.32f),s,StrokeCap.Round)
+    drawLine(color,Offset(w*.7f,h*.15f),Offset(w*.7f,h*.85f),s,StrokeCap.Round);drawLine(color,Offset(w*.7f,h*.85f),Offset(w*.55f,h*.68f),s,StrokeCap.Round);drawLine(color,Offset(w*.7f,h*.85f),Offset(w*.85f,h*.68f),s,StrokeCap.Round)
+} }
+@Composable fun SignalIcon(modifier:Modifier=Modifier,color:Color=Color.White) { Canvas(modifier) { val cx=size.width/2;val cy=size.height*.75f;val s=size.minDimension*.09f
+    drawArc(color,180f,180f,false,Offset(cx-size.width*.42f,cy-size.height*.42f),Size(size.width*.84f,size.height*.84f),style=Stroke(s));drawArc(color,180f,180f,false,Offset(cx-size.width*.26f,cy-size.height*.26f),Size(size.width*.52f,size.height*.52f),style=Stroke(s));drawCircle(color,size.minDimension*.1f,Offset(cx,cy-size.height*.02f))
+} }
+@Composable fun ProIcon(modifier:Modifier=Modifier,color:Color=Color.White) { Canvas(modifier) { val w=size.width;val h=size.height
+    drawRoundRect(color,Offset(w*.08f,h*.12f),Size(w*.84f,h*.76f),CornerRadius(w*.16f),style=Stroke(w*.08f))
+    drawPath(Path().apply { moveTo(w*.24f,h*.62f);lineTo(w*.40f,h*.44f);lineTo(w*.54f,h*.56f);lineTo(w*.76f,h*.34f) },color,style=Stroke(w*.08f,cap=StrokeCap.Round))
+} }
+@Composable fun SocialIcon(modifier:Modifier=Modifier,color:Color=Color.White) { Canvas(modifier) { val cx=size.width/2;val cy=size.height/2
+    drawCircle(color,size.minDimension*.17f,Offset(cx,cy-size.height*.16f));drawArc(color,180f,180f,false,Offset(cx-size.width*.28f,cy+size.height*.04f),Size(size.width*.56f,size.height*.5f),style=Stroke(size.minDimension*.08f))
+    drawCircle(color,size.minDimension*.09f,Offset(cx-size.width*.36f,cy-size.height*.14f));drawCircle(color,size.minDimension*.09f,Offset(cx+size.width*.36f,cy-size.height*.14f))
+} }
+@Composable private fun ReferenceGlyph(kind:String,modifier:Modifier=Modifier,color:Color=Color.White) {
+    val paths=remember(kind) {
+        val data=when(kind) {
+            "time"->listOf("M9 2h6M12 2v3M18 5l2-2","M20 13a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z","M12 8v5l3 2")
+            "amount"->listOf("M4 6h15a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h12v3","M21 10h-6a3 3 0 0 0 0 6h6M16 13h.01")
+            "close"->listOf("M5 5l14 14M19 5 5 19")
+            "check"->listOf("m5 12 4 4L19 6")
+            "candles"->listOf("M3 21h18M8 5v4M6 9h4v9H6ZM17 2v4M15 6h4v10h-4Z")
+            "people"->listOf("M14 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z","M2 21v-2a6 6 0 0 1 6-6h3a6 6 0 0 1 6 6v2","M18 3a4 4 0 0 1 0 8M19 14a6 6 0 0 1 3 5v2")
+            "settings"->listOf("M3 7h12M20 7h1M3 16h3M11 16h10","M20 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z","M11 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z")
+            "temperature"->listOf("M7 4a3 3 0 0 1 6 0v10a5 5 0 1 1-6 0Z","M10 6v11M17 5h4M17 9h3M17 13h4","M12 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z")
+            "drawing"->listOf("M12 2v2M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z","M10 10 4 22M14 10l6 12M5 15q7 6 14 0M2 18l3-3M19 15l3 3")
+            "bolt"->listOf("m14 2-10 12h7l-1 8 10-13h-7Z")
+            "wallet"->listOf("M6 6H18Q21 6 21 9V17Q21 20 18 20H6Q3 20 3 17V9Q3 6 6 6Z","M3 10h18M16 15h2")
+            "download"->listOf("M12 3v12m0 0 4-4m-4 4-4-4","M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2")
+            "demo"->listOf("m12 4 10 5-10 5L2 9Z","M6 11.5V16c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5","M22 9v5")
+            "coins"->listOf("M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6","M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6")
+            else->listOf("M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2.2 0 2.9 6 1.5 6 4.3 0 1.4-1.3 2.2-3 2.2-1.4 0-2.5-.5-3-1.5M12 6v12")
+        }
+        data.map { androidx.compose.ui.graphics.vector.PathParser().parsePathString(it).toPath() }
+    }
+    Canvas(modifier) {
+        scale(size.width/24,size.height/24,pivot=Offset.Zero) {
+            val stroke=if(kind=="wallet")1.8f else 1.7f
+            val originalGlyph=kind=="wallet"||kind=="download"||kind=="demo"||kind=="coins"||kind=="dollar"
+            paths.forEach { drawPath(it,color,style=if(originalGlyph)Stroke(stroke) else Stroke(stroke,cap=StrokeCap.Round,join=StrokeJoin.Round)) }
+            if(kind=="coins")drawOval(color,Offset(5f,3f),Size(14f,6f),style=Stroke(stroke))
+            if(kind=="dollar")drawCircle(color,9f,Offset(12f,12f),style=Stroke(stroke))
+        }
+    }
+}
+
+private const val REFERENCE_LOADING_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><defs><linearGradient id="white" x2="1" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#bdcbea"/></linearGradient><linearGradient id="green" x2="0" y2="1"><stop stop-color="#20ffc2"/><stop offset="1" stop-color="#00b98a"/></linearGradient><linearGradient id="red" x2="0" y2="1"><stop stop-color="#ff426b"/><stop offset="1" stop-color="#e90040"/></linearGradient><filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M256 82 L389 159 Q400 166 400 181 V326 Q400 341 387 349 L269 418 Q256 426 243 418 L125 349 Q112 341 112 326 V181 Q112 166 125 159 Z" fill="none" stroke="url(#white)" stroke-width="17" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="1000" stroke-dashoffset="1000" pathLength="1000" filter="url(#glow)"><animate attributeName="stroke-dashoffset" from="1000" to="0" dur="1s" fill="freeze"/></path><g filter="url(#glow)"><g><animateTransform attributeName="transform" type="translate" values="0,-100;0,8;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".7s" begin=".65s" fill="freeze"/><g fill="url(#green)"><rect x="153" y="221" width="8" height="120" rx="4"/><rect x="141" y="241" width="32" height="94" rx="5"/></g></g><g><animateTransform attributeName="transform" type="translate" values="0,-130;0,10;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".72s" begin=".82s" fill="freeze"/><g fill="url(#red)"><rect x="197" y="179" width="8" height="159" rx="4"/><rect x="185" y="207" width="32" height="117" rx="5"/></g></g><g><animateTransform attributeName="transform" type="translate" values="0,-115;0,9;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".7s" begin=".99s" fill="freeze"/><g fill="url(#green)"><rect x="351" y="221" width="8" height="120" rx="4"/><rect x="339" y="241" width="32" height="94" rx="5"/></g></g><g><animateTransform attributeName="transform" type="translate" values="0,-145;0,10;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".74s" begin="1.16s" fill="freeze"/><g fill="url(#red)"><rect x="307" y="179" width="8" height="159" rx="4"/><rect x="295" y="207" width="32" height="117" rx="5"/></g></g></g><path d="M256 139 L276 158 V351 L256 369 L236 351 V158 Z" fill="url(#white)" opacity="0" filter="url(#glow)"><animate attributeName="opacity" values="0;1" dur=".45s" begin="1.45s" fill="freeze"/><animateTransform attributeName="transform" type="translate" values="0,-45;0,5;0,-2;0,0" keyTimes="0;0.72;0.9;1" dur=".6s" begin="1.45s" fill="freeze"/></path></svg>"""
+
+// Drawing tools are isolated from orders, indicators and market data.
+// Anchors persist as absolute time/price coordinates, not screen pixels.
+private enum class DrawingKind(val title:String,val anchors:Int) {
+    HORIZONTAL("خط أفقي",1),VERTICAL("خط رأسي",1),RAY("شعاع",2),
+    RETRACEMENT("ارتدادات فيبوناتشي",2),FAN("مروحة فيبوناتشي",2),
+    TREND("خط الاتجاه",2),CHANNEL("قناة موازية",3),RECTANGLE("مستطيل",2),PITCHFORK("شوكة أندروز",3)
+}
+private data class DrawingAnchor(val time:Long,val price:Double)
+private data class DrawingLevel(val ratio:Double,val enabled:Boolean=true,val color:Long=0xFF70C8F1L)
+private data class ChartDrawing(
+    val id:Long,val symbol:String,val kind:DrawingKind,val points:List<DrawingAnchor>,
+    val name:String=kind.title,val color:Long=0xFF70C8F1L,val width:Float=1.5f,
+    val dash:Int=0,val fill:Boolean=false,val opacity:Float=.12f,
+    val extendLeft:Boolean=false,val extendRight:Boolean=false,val labels:Boolean=true,
+    val prices:Boolean=true,val locked:Boolean=false,val visible:Boolean=true,
+    val snap:Boolean=false,val frameOnly:String?=null,val reverse:Boolean=false,
+    val levels:List<DrawingLevel> = when(kind) {
+        DrawingKind.RETRACEMENT->listOf(0.0,.236,.382,.5,.618,.786,1.0).map { DrawingLevel(it) }
+        DrawingKind.FAN->listOf(.382,.5,.618).map { DrawingLevel(it) }
+        else->emptyList()
+    }
+)
+private data class DrawingRequest(val id:Long,val kind:DrawingKind,val symbol:String)
+private object ChartDrawings {
+    val objects=mutableStateMapOf<Long,ChartDrawing>()
+    var selected by mutableStateOf<Long?>(null)
+    var editing by mutableStateOf<Long?>(null)
+    var managerOpen by mutableStateOf(false)
+    var pending by mutableStateOf<DrawingRequest?>(null)
+    var loaded=false
+    fun request(kind:DrawingKind,symbol:String) { pending=DrawingRequest(nextId(),kind,symbol) }
+    fun remove(id:Long) { objects.remove(id);if(selected==id)selected=null;if(editing==id)editing=null }
+    fun duplicate(d:ChartDrawing) {
+        // Identical coordinates deliberately preserve the drawing's measured geometry.
+        val n=d.copy(id=nextId(),name=d.name+" — نسخة",locked=false,visible=true)
+        objects[n.id]=n;selected=n.id
+    }
+    fun visible(symbol:String,frame:String)=objects.values.filter { it.symbol==symbol&&it.visible&&(it.frameOnly==null||it.frameOnly==frame) }.sortedBy { it.id }
+}
+private val DrawingPalette=listOf(0xFF70C8F1L,0xFFFFFFFFL,0xFFFFD34DL,0xFF39CF8AL,0xFFFF667AL,0xFFB38CFFL,0xFFFF963DL,0xFF4192FFL)
+private fun drawingJson(d:ChartDrawing):JSONObject {
+    val points=JSONArray();d.points.forEach { points.put(JSONObject().put("time",it.time).put("price",it.price)) }
+    val levels=JSONArray();d.levels.forEach { levels.put(JSONObject().put("ratio",it.ratio).put("enabled",it.enabled).put("color",it.color)) }
+    return JSONObject().put("id",d.id).put("symbol",d.symbol).put("kind",d.kind.name).put("points",points)
+        .put("name",d.name).put("color",d.color).put("width",d.width.toDouble()).put("dash",d.dash)
+        .put("fill",d.fill).put("opacity",d.opacity.toDouble()).put("left",d.extendLeft).put("right",d.extendRight)
+        .put("labels",d.labels).put("prices",d.prices).put("locked",d.locked).put("visible",d.visible)
+        .put("snap",d.snap).put("frame",d.frameOnly ?: "").put("reverse",d.reverse).put("levels",levels)
+}
+private fun readDrawing(j:JSONObject):ChartDrawing? = try {
+    val kind=DrawingKind.valueOf(j.getString("kind"));val a=j.getJSONArray("points")
+    val points=(0 until a.length()).map { val p=a.getJSONObject(it);DrawingAnchor(p.getLong("time"),p.getDouble("price")) }
+    val symbol=j.getString("symbol")
+    if(symbol.isBlank()||!validDrawingPoints(kind,points))null
+    else {
+        val initial=ChartDrawing(j.getLong("id"),symbol,kind,points)
+        val lv=j.optJSONArray("levels")
+        val levels=if(lv==null)initial.levels else (0 until min(lv.length(),24)).mapNotNull { i->
+            val l=lv.optJSONObject(i) ?: return@mapNotNull null;val r=l.optDouble("ratio",Double.NaN)
+            if(!r.isFinite()||r !in -10.0..10.0)null else DrawingLevel(r,l.optBoolean("enabled",true),l.optLong("color",initial.color))
+        }
+        initial.copy(name=j.optString("name",kind.title).take(80),color=j.optLong("color",initial.color),
+            width=j.optDouble("width",1.5).toFloat().takeIf { it.isFinite()&&it in .5f..6f } ?: 1.5f,
+            dash=j.optInt("dash",0).coerceIn(0,2),fill=j.optBoolean("fill",false),
+            opacity=j.optDouble("opacity",.12).toFloat().takeIf { it.isFinite()&&it in 0f..1f } ?: .12f,
+            extendLeft=j.optBoolean("left",false),extendRight=j.optBoolean("right",false),
+            labels=j.optBoolean("labels",true),prices=j.optBoolean("prices",true),locked=j.optBoolean("locked",false),
+            visible=j.optBoolean("visible",true),snap=j.optBoolean("snap",false),
+            frameOnly=j.optString("frame","").takeIf { it in ChartTimeframes },reverse=j.optBoolean("reverse",false),levels=levels)
+    }
+} catch(_:Exception) { null }
+@Composable private fun ChartDrawingPreferences() {
+    val context=LocalContext.current.applicationContext
+    val prefs=remember(context) { context.getSharedPreferences("chart_drawings_v1",Context.MODE_PRIVATE) }
+    fun save() {
+        val array=JSONArray();ChartDrawings.objects.values.sortedBy { it.id }.forEach { array.put(drawingJson(it)) }
+        prefs.edit().putString("objects",array.toString()).apply()
+    }
+    DisposableEffect(prefs) {
+        if(!ChartDrawings.loaded) {
+            try {
+                val list=JSONArray(prefs.getString("objects","[]") ?: "[]")
+                for(i in 0 until list.length())list.optJSONObject(i)?.let { readDrawing(it) }?.let { d->
+                    ChartDrawings.objects[d.id]=d
+                    // Keep subsequently created IDs above restored IDs, including after a clock change.
+                    if(d.id>ids.get())ids.set(d.id)
+                }
+            } catch(_:Exception) { /* Corrupted drawings never interrupt the trading screen. */ }
+            ChartDrawings.loaded=true
+        }
+        onDispose { save() }
+    }
+    LaunchedEffect(prefs) {
+        snapshotFlow { ChartDrawings.objects.toMap() }.collectLatest { delay(220);save() }
+    }
+}
+private data class DrawingProjection(val view:ChartViewport,val origin:Long,val interval:Long,val width:Float,val height:Float) {
+    fun screen(p:DrawingAnchor)=Offset((view.fractionFor((p.time-origin).toDouble()/interval)*width).toFloat(),((view.maxPrice-p.price)/view.priceSpan*height).toFloat())
+    fun anchor(p:Offset):DrawingAnchor {
+        val bar=view.anchorBar+(p.x/width.coerceAtLeast(1f)-view.anchorFraction)*view.visibleBars
+        val time=(origin+bar*interval).coerceIn(0.0,32_503_680_000_000.0).roundToLong()
+        return DrawingAnchor(time,(view.maxPrice-p.y/height.coerceAtLeast(1f)*view.priceSpan).coerceAtLeast(1e-12))
+    }
+}
+private data class DrawingSegment(val a:Offset,val b:Offset,val color:Long,val guide:Boolean=false)
+private data class DrawingCaption(val at:Offset,val text:String,val color:Long)
+private data class DrawingGeometry(val lines:List<DrawingSegment>,val areas:List<List<Offset>>,val captions:List<DrawingCaption>,val handles:List<Offset>)
+// Slab clipping handles segments, directional rays and full lines without giant endpoints.
+private fun drawingClip(a:Offset,b:Offset,w:Float,h:Float,low:Double=0.0,high:Double=1.0):Pair<Offset,Offset>? {
+    if(!a.x.isFinite()||!a.y.isFinite()||!b.x.isFinite()||!b.y.isFinite()||w<=0||h<=0)return null
+    val dx=(b.x-a.x).toDouble();val dy=(b.y-a.y).toDouble()
+    if(abs(dx)+abs(dy)<1e-7)return null
+    var lo=low;var hi=high
+    fun slab(start:Double,delta:Double,limit:Double):Boolean {
+        if(abs(delta)<1e-10)return start in 0.0..limit
+        var x=-start/delta;var y=(limit-start)/delta
+        if(x>y) { val t=x;x=y;y=t }
+        lo=max(lo,x);hi=min(hi,y);return lo<=hi
+    }
+    if(!slab(a.x.toDouble(),dx,w.toDouble())||!slab(a.y.toDouble(),dy,h.toDouble()))return null
+    if(!lo.isFinite()||!hi.isFinite())return null
+    return Offset((a.x+dx*lo).toFloat(),(a.y+dy*lo).toFloat()) to Offset((a.x+dx*hi).toFloat(),(a.y+dy*hi).toFloat())
+}
+private fun drawingGeometry(d:ChartDrawing,p:DrawingProjection):DrawingGeometry {
+    val points=d.points.map { p.screen(it) };val a=points[0];val b=points.getOrElse(1) { a }
+    val lines=mutableListOf<DrawingSegment>();val areas=mutableListOf<List<Offset>>();val text=mutableListOf<DrawingCaption>()
+    val lo=if(d.extendLeft)Double.NEGATIVE_INFINITY else 0.0;val hi=if(d.extendRight)Double.POSITIVE_INFINITY else 1.0
+    fun line(x:Offset,y:Offset,l:Double=0.0,r:Double=1.0,color:Long=d.color,guide:Boolean=false) {
+        drawingClip(x,y,p.width,p.height,l,r)?.let { lines.add(DrawingSegment(it.first,it.second,color,guide)) }
+    }
+    fun caption(at:Offset,label:String,color:Long=d.color) {
+        if(at.x.isFinite()&&at.y.isFinite()&&at.y in 0f..p.height)text.add(DrawingCaption(Offset(at.x.coerceIn(4f,max(4f,p.width-4f)),at.y),label,color))
+    }
+    fun price(value:Double)=priceText(value,priceDecimals(nicePriceStep(p.view.priceSpan/5)))
+    when(d.kind) {
+        DrawingKind.HORIZONTAL->{
+            line(Offset(0f,a.y),Offset(p.width,a.y))
+            if(d.labels||d.prices)caption(Offset(8f,a.y),listOfNotNull(d.name.takeIf { d.labels },price(d.points[0].price).takeIf { d.prices }).joinToString("  "))
+        }
+        DrawingKind.VERTICAL->{
+            line(Offset(a.x,0f),Offset(a.x,p.height))
+            if(d.labels)caption(Offset(a.x+6f,p.height-24f),candleTimeText(d.points[0].time,p.interval))
+        }
+        DrawingKind.RAY->line(a,b,0.0,Double.POSITIVE_INFINITY)
+        DrawingKind.TREND->line(a,b,lo,hi)
+        DrawingKind.RECTANGLE->{
+            val left=if(d.extendLeft)0f else min(a.x,b.x);val right=if(d.extendRight)p.width else max(a.x,b.x)
+            val top=min(a.y,b.y);val bottom=max(a.y,b.y)
+            val corners=listOf(Offset(left,top),Offset(right,top),Offset(right,bottom),Offset(left,bottom))
+            if(d.fill)areas.add(corners)
+            corners.indices.forEach { line(corners[it],corners[(it+1)%4]) }
+        }
+        DrawingKind.RETRACEMENT->{
+            line(a,b,guide=true)
+            val left=if(d.extendLeft)0f else min(a.x,b.x);val right=if(d.extendRight)p.width else max(a.x,b.x)
+            val levels=d.levels.filter { it.enabled }.map { level->
+                // Default: 0% is the end of the impulse and 100% is its start.
+                val ratio=if(d.reverse)1.0-level.ratio else level.ratio
+                val value=d.points[1].price+(d.points[0].price-d.points[1].price)*ratio
+                val y=p.screen(DrawingAnchor(d.points[1].time,value)).y
+                line(Offset(left,y),Offset(right,y),color=level.color)
+                if(d.labels||d.prices)caption(Offset(left+5f,y),listOfNotNull((shortAmount(level.ratio*100)+"%").takeIf { d.labels },price(value).takeIf { d.prices }).joinToString("  "),level.color)
+                y
+            }.sorted()
+            if(d.fill)levels.zipWithNext().forEach { (y1,y2)->areas.add(listOf(Offset(left,y1),Offset(right,y1),Offset(right,y2),Offset(left,y2))) }
+        }
+        DrawingKind.FAN->{
+            line(a,b,guide=true)
+            d.levels.filter { it.enabled }.forEach { level->
+                val r=if(d.reverse)level.ratio else 1.0-level.ratio
+                val end=Offset(b.x,a.y+(b.y-a.y)*r.toFloat())
+                line(a,end,if(d.extendLeft)Double.NEGATIVE_INFINITY else 0.0,Double.POSITIVE_INFINITY,color=level.color)
+                if(d.labels)caption(end,shortAmount(level.ratio*100)+"%",level.color)
+            }
+            if(d.fill) {
+                val active=d.levels.filter { it.enabled }.map { if(d.reverse)it.ratio else 1-it.ratio }.sorted()
+                if(active.size>=2) {
+                    val dx=b.x-a.x
+                    if(abs(dx)>.001f) {
+                        val edge=if(dx>0)p.width else 0f;val t=(edge-a.x)/dx
+                        areas.add(listOf(a,Offset(edge,a.y+(b.y-a.y)*active.first().toFloat()*t),Offset(edge,a.y+(b.y-a.y)*active.last().toFloat()*t)))
+                    }
+                }
+            }
+        }
+        DrawingKind.CHANNEL->{
+            val c=points[2];val dx=b.x-a.x
+            val shift=if(abs(dx)>.001f)Offset(0f,c.y-a.y-(b.y-a.y)*(c.x-a.x)/dx) else Offset(c.x-a.x,0f)
+            val a2=a+shift;val b2=b+shift
+            line(a,b,lo,hi);line(a2,b2,lo,hi);line(a+shift*.5f,b+shift*.5f,lo,hi,guide=true)
+            if(d.fill) {
+                val first=drawingClip(a,b,p.width,p.height,lo,hi)
+                val second=drawingClip(a2,b2,p.width,p.height,lo,hi)
+                // Use shared time limits, so fill and channel boundaries remain parallel.
+                if(abs(dx)>.001f) {
+                    val left=if(d.extendLeft&&dx>0||d.extendRight&&dx<0)0f else min(a.x,b.x)
+                    val right=if(d.extendRight&&dx>0||d.extendLeft&&dx<0)p.width else max(a.x,b.x)
+                    fun at(x:Float)=Offset(x,a.y+(b.y-a.y)*(x-a.x)/dx)
+                    areas.add(listOf(at(left),at(right),at(right)+shift,at(left)+shift))
+                } else if(first!=null&&second!=null)areas.add(listOf(first.first,first.second,second.second,second.first))
+            }
+        }
+        DrawingKind.PITCHFORK->{
+            val c=points[2];val middle=(b+c)*.5f;val direction=middle-a
+            line(b,c,guide=true)
+            val l=if(d.extendLeft)Double.NEGATIVE_INFINITY else 0.0
+            val r=if(d.extendRight)Double.POSITIVE_INFINITY else 1.0
+            line(a,middle,l,r);line(b,b+direction,l,r);line(c,c+direction,l,r)
+            if(d.fill) {
+                val end=if(d.extendRight) {
+                    val length=max(p.width,p.height)*4f
+                    direction*(length/direction.getDistance().coerceAtLeast(1f))
+                } else direction
+                val start=if(d.extendLeft)-end else Offset.Zero
+                areas.add(listOf(b+start,b+end,c+end,c+start))
+            }
+        }
+    }
+    if(d.labels&&d.kind in listOf(DrawingKind.RAY,DrawingKind.TREND,DrawingKind.CHANNEL,DrawingKind.RECTANGLE,DrawingKind.PITCHFORK))caption(a+Offset(7f,-10f),d.name)
+    return DrawingGeometry(lines,areas,text,points)
+}
+private fun drawingDistance(point:Offset,a:Offset,b:Offset):Float {
+    val v=b-a;val length=v.x*v.x+v.y*v.y
+    val t=if(length<.0001f)0f else (((point.x-a.x)*v.x+(point.y-a.y)*v.y)/length).coerceIn(0f,1f)
+    return (point-(a+v*t)).getDistance()
+}
+private data class DrawingHit(val id:Long,val handle:Int=-1)
+private fun drawingHit(position:Offset,projection:DrawingProjection,objects:List<ChartDrawing>,tolerance:Float):DrawingHit? {
+    // Selected anchor handles take precedence over every other object.
+    val selected=objects.firstOrNull { it.id==ChartDrawings.selected }
+    if(selected!=null&&!selected.locked) {
+        val handles=selected.points.map { projection.screen(it) }
+        handles.indices.minByOrNull { (handles[it]-position).getDistance() }?.let { index->
+            if((handles[index]-position).getDistance()<=tolerance*1.35f)return DrawingHit(selected.id,index)
+        }
+    }
+    val ordered=objects.asReversed()
+    return ordered.firstNotNullOfOrNull { d->
+        val g=drawingGeometry(d,projection)
+        if(g.lines.any { drawingDistance(position,it.a,it.b)<=tolerance })DrawingHit(d.id) else null
+    }
+}
+private fun DrawScope.drawChartDrawings(objects:List<ChartDrawing>,projection:DrawingProjection) {
+    clipRect(0f,0f,size.width,size.height) {
+        objects.forEach { d->
+            val g=drawingGeometry(d,projection);val color=Color(d.color)
+            val effect=when(d.dash) { 1->PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(),5.dp.toPx()));2->PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(),4.dp.toPx()));else->null }
+            g.areas.forEach { points->
+                if(points.size>=3&&points.all { it.x.isFinite()&&it.y.isFinite() }) {
+                    val path=Path().apply { moveTo(points[0].x,points[0].y);points.drop(1).forEach { lineTo(it.x,it.y) };close() }
+                    drawPath(path,color.copy(alpha=d.opacity))
+                }
+            }
+            g.lines.forEach { segment->
+                drawLine(Color(segment.color).copy(alpha=if(segment.guide).55f else 1f),segment.a,segment.b,
+                    (if(segment.guide)min(1f,d.width) else d.width).dp.toPx(),StrokeCap.Butt,
+                    pathEffect=if(segment.guide)PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(),4.dp.toPx())) else effect)
+            }
+            val paint=NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { textSize=10.sp.toPx();typeface=Typeface.DEFAULT;textAlign=NativePaint.Align.LEFT }
+            g.captions.forEach { caption->
+                paint.color=Color(caption.color).toArgb()
+                val textWidth=paint.measureText(caption.text)
+                val x=caption.at.x.coerceIn(3.dp.toPx(),max(3.dp.toPx(),size.width-textWidth-3.dp.toPx()))
+                val y=(caption.at.y-4.dp.toPx()).coerceIn(paint.textSize,size.height.coerceAtLeast(paint.textSize))
+                drawContext.canvas.nativeCanvas.drawText(caption.text,x,y,paint)
+            }
+            if(ChartDrawings.selected==d.id&&!d.locked)g.handles.forEach { point->
+                if(point.x in 0f..size.width&&point.y in 0f..size.height) {
+                    drawCircle(Color(0xFF222E43),6.dp.toPx(),point)
+                    drawCircle(color,6.dp.toPx(),point,style=Stroke(1.7.dp.toPx()))
+                }
+            }
+        }
+    }
+}
+private fun drawingSnap(point:DrawingAnchor,bars:List<Candle>):DrawingAnchor {
+    val nearest=bars.minByOrNull { abs(it.time-point.time) } ?: return point
+    val price=listOf(nearest.open,nearest.high,nearest.low,nearest.close).minByOrNull { abs(it-point.price) }!!.toDouble()
+    return DrawingAnchor(nearest.time,price)
+}
+private fun validDrawingPoints(kind:DrawingKind,points:List<DrawingAnchor>):Boolean {
+    if(points.size!=kind.anchors||points.any { it.time !in 0L..32_503_680_000_000L||!it.price.isFinite()||it.price<=0.0 })return false
+    if(points.size<2)return true
+    val a=points[0];val b=points[1]
+    return when(kind) {
+        DrawingKind.FAN,DrawingKind.CHANNEL->a.time!=b.time
+        DrawingKind.TREND,DrawingKind.RAY->a!=b
+        DrawingKind.RECTANGLE->a.time!=b.time&&a.price!=b.price
+        DrawingKind.PITCHFORK->{
+            val c=points[2]
+            b!=c&&(abs(a.time.toDouble()-(b.time.toDouble()+c.time)/2.0)>.5||abs(a.price-(b.price+c.price)/2)>1e-12)
+        }
+        else->true
+    }
+}
+private data class DrawingDrag(val original:ChartDrawing,val handle:Int,val projection:DrawingProjection) {
+    fun moved(delta:Offset,bars:List<Candle>):ChartDrawing {
+        if(original.locked||!delta.x.isFinite()||!delta.y.isFinite())return original
+        if(handle<0) {
+            // One bounded world-space translation preserves lengths, slopes and parallelism.
+            val dt=(delta.x/projection.width.coerceAtLeast(1f)*projection.view.visibleBars*projection.interval).roundToLong()
+                .coerceIn(-original.points.minOf { it.time },32_503_680_000_000L-original.points.maxOf { it.time })
+            val dp=(-delta.y/projection.height.coerceAtLeast(1f)*projection.view.priceSpan).coerceAtLeast(1e-12-original.points.minOf { it.price })
+            return original.copy(points=original.points.map { DrawingAnchor(it.time+dt,it.price+dp) })
+        }
+        val points=original.points.mapIndexed { index,anchor->
+            if(handle>=0&&index!=handle)anchor else {
+                val shifted=projection.anchor(projection.screen(anchor)+delta)
+                if(original.snap&&handle>=0)drawingSnap(shifted,bars) else shifted
+            }
+        }
+        return if(validDrawingPoints(original.kind,points))original.copy(points=points) else original
+    }
+}
+private fun createChartDrawing(request:DrawingRequest,projection:DrawingProjection):ChartDrawing {
+    fun at(x:Float,y:Float)=projection.anchor(Offset(projection.width*x,projection.height*y))
+    val a=at(.25f,.68f);val b=at(.64f,.40f);val c=at(.62f,.72f)
+    val points=when(request.kind) {
+        DrawingKind.HORIZONTAL->listOf(at(.50f,.54f))
+        DrawingKind.VERTICAL->listOf(at(.46f,.55f))
+        DrawingKind.PITCHFORK->listOf(at(.22f,.68f),at(.48f,.32f),at(.65f,.62f))
+        else->listOf(a,b,c).take(request.kind.anchors)
+    }
+    return ChartDrawing(nextId(),request.symbol,request.kind,points,
+        extendRight=request.kind in listOf(DrawingKind.RETRACEMENT,DrawingKind.CHANNEL,DrawingKind.PITCHFORK),
+        fill=request.kind==DrawingKind.RECTANGLE)
+}
+@Composable private fun DrawingGlyph(kind:DrawingKind,modifier:Modifier=Modifier,color:Color=Color.White) {
+    Canvas(modifier) {
+        val w=size.width;val h=size.height;val stroke=1.5.dp.toPx()
+        fun point(x:Float,y:Float)=Offset(w*x,h*y)
+        fun line(x1:Float,y1:Float,x2:Float,y2:Float)=drawLine(color,point(x1,y1),point(x2,y2),stroke,StrokeCap.Round)
+        fun dot(x:Float,y:Float)=drawCircle(color,1.9.dp.toPx(),point(x,y))
+        when(kind) {
+            DrawingKind.HORIZONTAL->{line(.15f,.5f,.85f,.5f);dot(.15f,.5f);dot(.85f,.5f)}
+            DrawingKind.VERTICAL->{line(.5f,.12f,.5f,.88f);dot(.5f,.12f);dot(.5f,.88f)}
+            DrawingKind.RAY->{line(.16f,.84f,.90f,.10f);dot(.16f,.84f)}
+            DrawingKind.TREND->{line(.16f,.84f,.84f,.16f);dot(.16f,.84f);dot(.84f,.16f)}
+            DrawingKind.RETRACEMENT->{listOf(.15f,.40f,.65f,.9f).forEach { line(.1f,it,.9f,it) };line(.15f,.9f,.85f,.15f);dot(.15f,.9f);dot(.85f,.15f)}
+            DrawingKind.FAN->{listOf(Offset(.18f,.12f),Offset(.55f,.18f),Offset(.85f,.45f),Offset(.90f,.85f)).forEach { line(.18f,.85f,it.x,it.y) };dot(.18f,.85f)}
+            DrawingKind.CHANNEL->{line(.1f,.55f,.85f,.10f);line(.15f,.9f,.90f,.45f);dot(.1f,.55f);dot(.90f,.45f)}
+            DrawingKind.RECTANGLE->{line(.15f,.15f,.85f,.15f);line(.85f,.15f,.85f,.85f);line(.85f,.85f,.15f,.85f);line(.15f,.85f,.15f,.15f);dot(.15f,.85f);dot(.85f,.15f)}
+            DrawingKind.PITCHFORK->{line(.12f,.70f,.70f,.12f);line(.30f,.88f,.88f,.30f);line(.12f,.88f,.85f,.15f);dot(.12f,.88f)}
+        }
+    }
+}
+@Composable private fun DrawingsDialog(onDismiss:()->Unit) {
+    val symbol by TradeStore.currentSymbol.collectAsState()
+    val configuration=LocalConfiguration.current
+    val available=ChartDrawings.objects.values.count { it.symbol==symbol }
+    val rowHeight=(configuration.screenWidthDp*.082f).dp.coerceIn(30.dp,48.dp)
+    val headerHeight=(configuration.screenWidthDp*.15f).dp.coerceIn(52.dp,70.dp)
+    val itemFont=(configuration.screenWidthDp*.035f).coerceIn(14f,18f).sp
+    val glyphSize=(configuration.screenWidthDp*.036f).dp.coerceIn(16.dp,24.dp)
+    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            val shape=RoundedCornerShape(14.dp)
+            Column(Modifier.fillMaxWidth(.89f).heightIn(max=(configuration.screenHeightDp*.82f).dp)
+                .clip(shape).background(Color(0xFF222E43)).border(1.dp,Color(0xFF38485E),shape)) {
+                Row(Modifier.fillMaxWidth().height(headerHeight).padding(start=21.dp,end=14.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Text("الرسومات",color=Color(0xFFF1F4F8),fontSize=15.sp,modifier=Modifier.weight(1f),style=TextStyle(textDirection=TextDirection.Rtl))
+                    if(available>0)DrawingButton("إدارة ($available)") { onDismiss();ChartDrawings.managerOpen=true }
+                    Box(Modifier.size(34.dp).clickable(onClick=onDismiss),contentAlignment=Alignment.Center) { ReferenceGlyph("close",Modifier.size(24.dp),Color(0xFFA8C0D2)) }
+                }
+                Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()).padding(top=10.dp,bottom=7.dp)) {
+                    DrawingKind.values().forEach { kind->
+                        Row(Modifier.fillMaxWidth().height(rowHeight).clickable { ChartDrawings.request(kind,symbol);onDismiss() }.padding(horizontal=23.dp),verticalAlignment=Alignment.CenterVertically) {
+                            DrawingGlyph(kind,Modifier.size(glyphSize))
+                            Spacer(Modifier.width(16.dp))
+                            Text(kind.title,color=Color(0xFFF1F4F8),fontSize=itemFont,style=TextStyle(textDirection=TextDirection.Rtl),maxLines=1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+@Composable private fun DrawingButton(title:String,active:Boolean=false,danger:Boolean=false,onClick:()->Unit) {
+    Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if(active)Color(0xFF385875) else if(danger)Color(0xFF743447) else Color(0xFF2C3C53))
+        .clickable(onClick=onClick).padding(horizontal=10.dp,vertical=9.dp),contentAlignment=Alignment.Center) {
+        Text(title,color=Color.White,fontSize=12.sp,maxLines=1,style=TextStyle(textDirection=TextDirection.Content))
+    }
+}
+@Composable private fun DrawingToolbar(symbol:String,frame:String,modifier:Modifier=Modifier) {
+    val d=ChartDrawings.selected?.let { ChartDrawings.objects[it] }?.takeIf { it.symbol==symbol&&it.visible&&(it.frameOnly==null||it.frameOnly==frame) } ?: return
+    Row(modifier.clip(RoundedCornerShape(9.dp)).background(Color(0xF2222E43)).border(1.dp,Color(0xFF52667F),RoundedCornerShape(9.dp))
+        .horizontalScroll(rememberScrollState()).padding(5.dp),horizontalArrangement=Arrangement.spacedBy(5.dp),verticalAlignment=Alignment.CenterVertically) {
+        Text(d.name,color=Color.White,fontSize=11.sp,modifier=Modifier.padding(horizontal=6.dp))
+        DrawingButton("إعدادات") { ChartDrawings.editing=d.id }
+        DrawingButton(if(d.locked)"فتح القفل" else "قفل",d.locked) { ChartDrawings.objects[d.id]=d.copy(locked=!d.locked) }
+        DrawingButton("نسخ") { ChartDrawings.duplicate(d) }
+        DrawingButton("إخفاء") { ChartDrawings.objects[d.id]=d.copy(visible=false);ChartDrawings.selected=null }
+        DrawingButton("حذف",danger=true) { ChartDrawings.remove(d.id) }
+        DrawingButton("الكل") { ChartDrawings.managerOpen=true }
+        DrawingButton("×") { ChartDrawings.selected=null }
+    }
+}
+@Composable private fun DrawingManagerDialog(symbol:String,onDismiss:()->Unit) {
+    val objects=ChartDrawings.objects.values.filter { it.symbol==symbol }.sortedByDescending { it.id }
+    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Column(Modifier.fillMaxWidth(.93f).heightIn(max=(LocalConfiguration.current.screenHeightDp*.78f).dp)
+                .clip(RoundedCornerShape(14.dp)).background(Color(0xFF222E43)).padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Text("إدارة الرسومات — $symbol",color=Color.White,fontSize=16.sp,modifier=Modifier.weight(1f))
+                    DrawingButton("إغلاق",onClick=onDismiss)
+                }
+                if(objects.isEmpty())Text("لا توجد رسومات لهذا الزوج",color=C.TextSecondary,fontSize=14.sp)
+                Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    objects.forEach { d->
+                        Column(Modifier.fillMaxWidth().background(Color(0xFF293A51),RoundedCornerShape(8.dp)).padding(9.dp),verticalArrangement=Arrangement.spacedBy(7.dp)) {
+                            Text(d.name+(if(d.locked)" • مقفل" else "")+(d.frameOnly?.let { " • $it" } ?: ""),color=Color(d.color),fontSize=14.sp)
+                            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                                DrawingButton("إعدادات") { ChartDrawings.editing=d.id;onDismiss() }
+                                DrawingButton(if(d.visible)"إخفاء" else "إظهار") { ChartDrawings.objects[d.id]=d.copy(visible=!d.visible) }
+                                DrawingButton("تحديد") { ChartDrawings.objects[d.id]=d.copy(visible=true,frameOnly=d.frameOnly?.let { ChartSettings.frame });ChartDrawings.selected=d.id;onDismiss() }
+                                DrawingButton("حذف",danger=true) { ChartDrawings.remove(d.id) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+private fun drawingNumber(text:String):Double? {
+    val normalized=buildString { text.trim().forEach { c->append(when { c==','||c=='،'||c=='٫'->'.';Character.digit(c,10)>=0->('0'.code+Character.digit(c,10)).toChar();else->c }) } }
+    return normalized.toDoubleOrNull()?.takeIf { it.isFinite() }
+}
+private fun drawingDateFormat()=SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US).apply { timeZone=TimeZone.getTimeZone("GMT+3");isLenient=false }
+private fun drawingDate(text:String):Long? = try {
+    val value=text.trim();val position=java.text.ParsePosition(0);val date=drawingDateFormat().parse(value,position)
+    date?.time?.takeIf { position.index==value.length&&it in 0L..32_503_680_000_000L }
+} catch(_:Exception) { null }
+@Composable private fun DrawingField(label:String,value:String,numeric:Boolean=false,onChange:(String)->Unit) {
+    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+        Text(label,color=Color(0xFFBCCBDD),fontSize=12.sp)
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            BasicTextField(value=value,onValueChange=onChange,singleLine=true,textStyle=TextStyle(color=Color.White,fontSize=14.sp,textDirection=TextDirection.Content),
+                cursorBrush=SolidColor(C.Cyan),keyboardOptions=KeyboardOptions(keyboardType=if(numeric)KeyboardType.Decimal else KeyboardType.Text),
+                modifier=Modifier.fillMaxWidth().background(Color(0xFF172336),RoundedCornerShape(6.dp)).border(1.dp,Color(0xFF475B73),RoundedCornerShape(6.dp)).padding(10.dp))
+        }
+    }
+}
+@Composable private fun DrawingToggle(label:String,checked:Boolean,onToggle:()->Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick=onToggle).padding(vertical=6.dp),verticalAlignment=Alignment.CenterVertically) {
+        Text(label,color=Color.White,fontSize=13.sp,modifier=Modifier.weight(1f))
+        PlatformSwitch(checked,onToggle)
+    }
+}
+@Composable private fun DrawingSettingsDialog(original:ChartDrawing,onDismiss:()->Unit) {
+    var draft by remember(original.id) { mutableStateOf(original) }
+    var tab by remember(original.id) { mutableIntStateOf(0) }
+    var error by remember(original.id) { mutableStateOf("") }
+    val prices=remember(original.id) { mutableStateListOf<String>().apply { addAll(original.points.map { it.price.toString() }) } }
+    val times=remember(original.id) { mutableStateListOf<String>().apply { addAll(original.points.map { drawingDateFormat().format(Date(it.time)) }) } }
+    val ratios=remember(original.id) { mutableStateListOf<String>().apply { addAll(original.levels.map { it.ratio.toString() }) } }
+    val hasLevels=original.kind==DrawingKind.RETRACEMENT||original.kind==DrawingKind.FAN
+    val supportsExtension=original.kind in listOf(DrawingKind.TREND,DrawingKind.CHANNEL,DrawingKind.RETRACEMENT,DrawingKind.PITCHFORK,DrawingKind.RECTANGLE)
+    val supportsFill=original.kind in listOf(DrawingKind.CHANNEL,DrawingKind.RETRACEMENT,DrawingKind.FAN,DrawingKind.PITCHFORK,DrawingKind.RECTANGLE)
+    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Column(Modifier.fillMaxWidth(.94f).heightIn(max=(LocalConfiguration.current.screenHeightDp*.87f).dp)
+                .clip(RoundedCornerShape(14.dp)).background(Color(0xFF222E43)).padding(15.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Text("إعدادات ${original.kind.title}",color=Color.White,fontSize=16.sp,modifier=Modifier.weight(1f))
+                    DrawingButton("×",onClick=onDismiss)
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                    listOf("النمط","الإحداثيات","المستويات","الظهور").forEachIndexed { index,label->
+                        if(index!=2||hasLevels)DrawingButton(label,tab==index) { tab=index;error="" }
+                    }
+                }
+                Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                    when(tab) {
+                        0->{
+                            DrawingField("الاسم",draft.name) { draft=draft.copy(name=it.take(80)) }
+                            Text("لون الرسم",color=Color.White,fontSize=13.sp)
+                            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(9.dp)) {
+                                DrawingPalette.forEach { color->Box(Modifier.size(27.dp).clip(CircleShape).background(Color(color))
+                                    .border(if(draft.color==color)3.dp else 1.dp,if(draft.color==color)Color.White else Color.Transparent,CircleShape)
+                                    .clickable { draft=draft.copy(color=color,levels=draft.levels.map { it.copy(color=color) }) }) }
+                            }
+                            Text("سمك الخط",color=Color.White,fontSize=13.sp)
+                            Row(horizontalArrangement=Arrangement.spacedBy(5.dp)) { listOf(1f,1.5f,2f,3f,4f).forEach { width->DrawingButton(width.toString(),draft.width==width) { draft=draft.copy(width=width) } } }
+                            Row(horizontalArrangement=Arrangement.spacedBy(5.dp)) { listOf("متصل","متقطع","منقط").forEachIndexed { i,label->DrawingButton(label,draft.dash==i) { draft=draft.copy(dash=i) } } }
+                            DrawingToggle("إظهار التسميات",draft.labels) { draft=draft.copy(labels=!draft.labels) }
+                            if(original.kind==DrawingKind.HORIZONTAL||original.kind==DrawingKind.RETRACEMENT)DrawingToggle("إظهار الأسعار",draft.prices) { draft=draft.copy(prices=!draft.prices) }
+                            if(supportsExtension) {
+                                DrawingToggle("امتداد إلى اليسار",draft.extendLeft) { draft=draft.copy(extendLeft=!draft.extendLeft) }
+                                DrawingToggle("امتداد إلى اليمين",draft.extendRight) { draft=draft.copy(extendRight=!draft.extendRight) }
+                            }
+                            if(original.kind==DrawingKind.FAN)DrawingToggle("امتداد المروحة إلى الخلف",draft.extendLeft) { draft=draft.copy(extendLeft=!draft.extendLeft) }
+                            if(hasLevels)DrawingToggle("عكس اتجاه فيبوناتشي",draft.reverse) { draft=draft.copy(reverse=!draft.reverse) }
+                            if(supportsFill) {
+                                DrawingToggle("تعبئة الخلفية",draft.fill) { draft=draft.copy(fill=!draft.fill) }
+                                if(draft.fill) {
+                                    Text("كثافة التعبئة",color=Color.White,fontSize=13.sp)
+                                    Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(5.dp)) { listOf(.05f,.12f,.25f,.4f).forEach { opacity->DrawingButton("${(opacity*100).roundToInt()}%",draft.opacity==opacity) { draft=draft.copy(opacity=opacity) } } }
+                                }
+                            }
+                            DrawingToggle("قفل التحريك والمقابض",draft.locked) { draft=draft.copy(locked=!draft.locked) }
+                            DrawingToggle("التقاط المقابض لأقرب شمعة وسعر OHLC",draft.snap) { draft=draft.copy(snap=!draft.snap) }
+                        }
+                        1->{
+                            Text("إحداثيات ثابتة بالوقت والسعر • المنطقة الزمنية UTC+3",color=Color(0xFFBCCBDD),fontSize=12.sp)
+                            original.points.indices.forEach { index->
+                                Text("النقطة ${index+1}",color=C.Cyan,fontSize=14.sp)
+                                if(original.kind!=DrawingKind.HORIZONTAL)DrawingField("الوقت: yyyy-MM-dd HH:mm:ss",times[index]) { times[index]=it;error="" }
+                                if(original.kind!=DrawingKind.VERTICAL)DrawingField("السعر",prices[index],true) { prices[index]=it;error="" }
+                            }
+                            Text(when(original.kind) {
+                                DrawingKind.CHANNEL->"النقطتان 1 و2 لخط الأساس، والنقطة 3 تحدد البعد الموازي."
+                                DrawingKind.PITCHFORK->"النقطة 1 بداية الخط الأوسط، والنقطتان 2 و3 قمتا الشوكة؛ يمر الوسط بمنتصفهما."
+                                DrawingKind.HORIZONTAL->"الخط يمتد عبر الشارت عند السعر المحدد."
+                                DrawingKind.VERTICAL->"الخط يثبت عند الوقت المحدد."
+                                DrawingKind.RAY->"الشعاع يبدأ من النقطة 1 ويمتد بلا نهاية باتجاه النقطة 2."
+                                DrawingKind.RETRACEMENT->"0% عند نهاية الحركة (2)، و100% عند بدايتها (1)، ما لم يُفعّل العكس."
+                                DrawingKind.FAN->"أشعة من النقطة 1 تمر بمستويات التصحيح عند زمن النقطة 2."
+                                else->"اسحب جسم الرسم لنقله بالكامل أو المقابض لتعديل النقاط."
+                            },color=Color(0xFFBCCBDD),fontSize=12.sp)
+                        }
+                        2->{
+                            Text("النسبة كعدد عشري: 0.618 = 61.8%، و1.618 = 161.8%",color=Color(0xFFBCCBDD),fontSize=12.sp)
+                            draft.levels.forEachIndexed { index,level->
+                                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                                    Box(Modifier.weight(1f)) { DrawingField("المستوى ${index+1}",ratios[index],true) { ratios[index]=it;error="" } }
+                                    DrawingButton(if(level.enabled)"✓" else "—",level.enabled) { draft=draft.copy(levels=draft.levels.mapIndexed { i,l->if(i==index)l.copy(enabled=!l.enabled) else l }) }
+                                    Box(Modifier.size(24.dp).clip(CircleShape).background(Color(level.color)).clickable {
+                                        val color=DrawingPalette[(DrawingPalette.indexOf(level.color)+1).mod(DrawingPalette.size)]
+                                        draft=draft.copy(levels=draft.levels.mapIndexed { i,l->if(i==index)l.copy(color=color) else l })
+                                    })
+                                    DrawingButton("×") { ratios.removeAt(index);draft=draft.copy(levels=draft.levels.filterIndexed { i,_->i!=index }) }
+                                }
+                            }
+                            if(draft.levels.size<24)DrawingButton("إضافة مستوى") { ratios.add("1.618");draft=draft.copy(levels=draft.levels+DrawingLevel(1.618,color=draft.color)) }
+                        }
+                        3->{
+                            DrawingToggle("إظهار الرسم",draft.visible) { draft=draft.copy(visible=!draft.visible) }
+                            DrawingToggle("إظهار على الفريم الحالي فقط (${ChartSettings.frame})",draft.frameOnly!=null) { draft=draft.copy(frameOnly=if(draft.frameOnly==null)ChartSettings.frame else null) }
+                            Text("يُحفظ الرسم لهذا الزوج فقط. عند إظهار الرسم على جميع الفريمات تظل نقاطه مرتبطة بالوقت والسعر الأصليين.",color=Color(0xFFBCCBDD),fontSize=13.sp)
+                            Text("الضغط يحدد الرسم، والسحب ينقله، والضغط المطوّل أو المزدوج يفتح إعداداته. الرسم المقفل لا يتحرك.",color=Color(0xFFBCCBDD),fontSize=13.sp)
+                        }
+                    }
+                }
+                if(error.isNotEmpty())Text(error,color=Color(0xFFFF8A96),fontSize=12.sp)
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                    DrawingButton("حفظ",active=true) {
+                        val anchors=original.points.indices.map { i->
+                            val price=if(original.kind==DrawingKind.VERTICAL)original.points[i].price else drawingNumber(prices[i])
+                            val time=if(original.kind==DrawingKind.HORIZONTAL||times[i]==drawingDateFormat().format(Date(original.points[i].time)))original.points[i].time else drawingDate(times[i])
+                            if(price==null||price<=0.0||time==null)null else DrawingAnchor(time,price)
+                        }
+                        val levels=ratios.map { drawingNumber(it) }
+                        val points=anchors.filterNotNull()
+                        val badShape=points.size==original.kind.anchors&&!validDrawingPoints(original.kind,points)
+                        when {
+                            anchors.any { it==null }->error="أدخل سعرًا موجبًا ووقتًا صحيحًا بالتنسيق الموضح."
+                            badShape->error="النقاط متطابقة أو لا تسمح بتكوين هذا الرسم؛ عدّل الإحداثيات."
+                            levels.any { it==null||it !in -10.0..10.0 }->error="نسب المستويات يجب أن تكون بين -10 و10."
+                            hasLevels&&draft.levels.none { it.enabled }->error="فعّل مستوى واحدًا على الأقل."
+                            else->{
+                                ChartDrawings.objects[original.id]=draft.copy(name=draft.name.ifBlank { original.kind.title },points=points,levels=draft.levels.mapIndexed { i,l->l.copy(ratio=levels[i]!!) })
+                                if(!draft.visible)ChartDrawings.selected=null
+                                onDismiss()
+                            }
+                        }
+                    }
+                    DrawingButton("إلغاء",onClick=onDismiss)
+                    DrawingButton("حذف",danger=true) { ChartDrawings.remove(original.id);onDismiss() }
+                }
+            }
+        }
+    }
+}
