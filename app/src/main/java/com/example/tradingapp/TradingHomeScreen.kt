@@ -284,6 +284,49 @@ object IconProvider {
     else Box(modifier.clip(CircleShape).background(C.SurfaceRaised).border(1.dp,C.Cyan.copy(alpha=.55f),CircleShape),contentAlignment=Alignment.Center) { Text(label.take(2),color=C.Cyan,fontSize=9.sp,fontWeight=FontWeight.ExtraBold) }
 }
 
+// ✅ تم إضافة هذا الكائن لحل مشكلة PairNames
+object PairNames {
+    private val names = mapOf(
+        "EURUSD" to "EUR / USD",
+        "GBPUSD" to "GBP / USD",
+        "USDJPY" to "USD / JPY",
+        "AUDUSD" to "AUD / USD",
+        "USDCAD" to "USD / CAD",
+        "USDCHF" to "USD / CHF",
+        "NZDUSD" to "NZD / USD",
+        "EURGBP" to "EUR / GBP",
+        "EURJPY" to "EUR / JPY",
+        "GBPJPY" to "GBP / JPY",
+        "XAUUSD" to "XAU / USD (ذهب)",
+        "XAGUSD" to "XAG / USD (فضة)",
+        "USOIL" to "US Oil (نفط)",
+        "UKOIL" to "UK Oil (نفط برنت)",
+        "NGAS" to "Natural Gas (غاز)",
+        "BTCUSD" to "BTC / USD",
+        "ETHUSD" to "ETH / USD",
+        "SOLUSD" to "SOL / USD",
+        "XRPUSD" to "XRP / USD",
+        "BNBUSD" to "BNB / USD",
+        "US30" to "Dow Jones 30",
+        "US500" to "S&P 500",
+        "USTEC" to "NASDAQ 100"
+    )
+
+    fun get(symbol: String): String {
+        return names[symbol.uppercase()] ?: if (symbol.length == 6) {
+            "${symbol.substring(0, 3)} / ${symbol.substring(3)}"
+        } else symbol
+    }
+
+    fun pretty(symbol: String): String = get(symbol)
+
+    fun payout(symbol: String): Int {
+        var h = 0L
+        for (c in symbol) h = ((h * 31L + c.code) and 0xFFFFFFFFL)
+        return 80 + (h % 16).toInt()
+    }
+}
+
 private data class ChartTick(val price:Double,val time:Long)
 private fun sourceTimestamp(raw:Any?):Long {
     val t=when(raw) { is Number->raw.toLong();is String->raw.toLongOrNull() ?: runCatching { java.time.Instant.parse(raw).toEpochMilli() }.getOrDefault(0L);else->0L }
@@ -1931,7 +1974,7 @@ private fun DrawScope.drawReferenceTrades(symbol:String,account:String,now:Long,
     for(p in places) {
         val color=if(p.trade.direction>0)Color(0xFF4CAF50) else Color(0xFFF44336)
         // One straight horizontal line on the entry price, from the label to the dot.
-        drawLine(color.copy(alpha=.6f),Offset(p.right,p.dotY),Offset(p.dot,p.dotY),px(1f))
+        drawLine(color.copy(alpha=.6f),Offset(p.right,p.dotY),Offset(p.dot, p.dotY),px(1f))
         drawCircle(color,px(4f),Offset(p.dot,p.dotY));drawCircle(Color(0xFFEAFFF5),px(1.5f),Offset(p.dot,p.dotY))
     }
     for(p in places) {
