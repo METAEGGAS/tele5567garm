@@ -104,7 +104,9 @@ const val GIFT_ICON_URL = "https://cdn-icons-png.flaticon.com/128/18546/18546266
 
 object C {
     val BG=Color(0xFF141126); val Surface=Color(0xFF24203D); val SurfaceRaised=Color(0xFF30284F)
-    val Cyan=Color(0xFF58D9F5); val Green=Color(0xFF39FF14); val Red=Color(0xFFFF1A1A)
+    val Cyan=Color(0xFF58D9F5); 
+    val Green=Color(0xFF00E676); // أخضر ساطع مطابق للمنصات
+    val Red=Color(0xFFFF1A1A);   // أحمر ساطع مطابق للمنصات
     val Blue=Cyan; val Yellow=Color(0xFFFFD34D); val TextPrimary=Color(0xFFF5F2FF)
     val TextSecondary=Color(0xFFA9A5C6); val Divider=Color(0xFF3D355A); val Grid=Color(0xFF67558D)
     val PriceTag=Cyan; val PkBg=BG; val PkSurface=Surface; val PkTab=Surface; val PkTabOn=Cyan
@@ -117,7 +119,6 @@ private object Ref {
     val Muted=Color(0xFFC7D5EF); val Green=Color(0xFF2EBD85)
     val TimeButton=Color(0xFF3E434D); val TimeOn=Color(0xFF007AFF)
     val Entrance=object:Easing {
-        // CSS cubic-bezier(.2,1.1,.35,1), with overshoot retained.
         override fun transform(fraction:Float):Float {
             val x=fraction.coerceIn(0f,1f); var lo=0f; var hi=1f
             repeat(22) { val t=(lo+hi)/2; val u=1-t
@@ -166,9 +167,16 @@ object PairSession {
     fun load(context:Context)=context.getSharedPreferences("trading_session",Context.MODE_PRIVATE).getString("last_symbol",null)?.uppercase(Locale.US)?.replace(Regex("[_/\\-]"),"")
     fun save(context:Context,symbol:String) { context.getSharedPreferences("trading_session",Context.MODE_PRIVATE).edit().putString("last_symbol",symbol.uppercase(Locale.US)).apply() }
 }
-// Symbol catalog is fetched once, saved locally, then refreshed silently in the background.
+
+// ✅ تم تخصيص هذا المتجر للفوركس فقط
 object PairCatalogStore {
-    var allSymbols by mutableStateOf<List<String>>(emptyList())
+    private val FOREX_PAIRS = listOf(
+        "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD",
+        "EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "CADJPY", "CHFJPY", "NZDJPY",
+        "EURCHF", "EURAUD", "EURCAD", "EURNZD", "GBPCHF", "GBPAUD", "GBPCAD",
+        "GBPNZD", "AUDCHF", "AUDCAD", "AUDNZD", "CADCHF", "NZDCAD", "NZDCHF"
+    )
+    var allSymbols by mutableStateOf<List<String>>(FOREX_PAIRS)
         private set
     var connected by mutableStateOf<Set<String>>(emptySet())
         private set
@@ -180,25 +188,25 @@ object PairCatalogStore {
     fun load(context:Context) {
         if(app==null) { app=context.applicationContext
             val p=app!!.getSharedPreferences("pair_catalog_v1",Context.MODE_PRIVATE)
-            val savedAll=p.getString("all","")?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
             val savedConn=p.getString("connected","")?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
-            if(savedAll.isNotEmpty()) { allSymbols=savedAll;connected=savedConn.toSet();loaded=true }
+            if(savedConn.isNotEmpty()) { connected=savedConn.toSet();loaded=true }
         }
         refresh()
     }
     fun refresh() {
         if(refreshing)return;refreshing=true
         scope.launch {
-            val all=BiquoteApi.symbols();val live=BiquoteApi.symbols(true).toSet()
-            if(all.isNotEmpty()) { allSymbols=all;if(live.isNotEmpty())connected=live;loaded=true
-                app?.getSharedPreferences("pair_catalog_v1",Context.MODE_PRIVATE)?.edit()?.putString("all",all.joinToString(","))?.putString("connected",connected.joinToString(","))?.apply()
+            val live=BiquoteApi.symbols(true).toSet()
+            if(live.isNotEmpty()) {
+                connected=live.intersect(FOREX_PAIRS.toSet())
+                loaded=true
+                app?.getSharedPreferences("pair_catalog_v1",Context.MODE_PRIVATE)?.edit()?.putString("connected",connected.joinToString(","))?.apply()
             }
             refreshing=false
         }
     }
 }
-// Successful image downloads live in filesDir, not the evictable HTTP cache.
-// All remote artwork in this screen shares one loader and one persistent store.
+
 private object TradingImageStore {
     private val locks=ConcurrentHashMap<String,Mutex>()
     @Volatile private var loader:ImageLoader?=null
@@ -257,7 +265,6 @@ private object TradingImageStore {
 object IconProvider {
     private val FLAGS=mapOf("EUR" to "eu","USD" to "us","GBP" to "gb","JPY" to "jp","CHF" to "ch","AUD" to "au","CAD" to "ca","NZD" to "nz","TRY" to "tr","ZAR" to "za","MXN" to "mx","SEK" to "se","NOK" to "no","SGD" to "sg","HKD" to "hk","PLN" to "pl","DKK" to "dk","HUF" to "hu","CZK" to "cz","ILS" to "il","CNY" to "cn","QAR" to "qa","SAR" to "sa","UAH" to "ua","IDR" to "id","AED" to "ae","THB" to "th","MYR" to "my","PHP" to "ph","INR" to "in","KRW" to "kr","BRL" to "br","ARS" to "ar","CLP" to "cl","COP" to "co","PEN" to "pe","RUB" to "ru")
     private fun flags(code:String)=listOf("https://flagcdn.com/$code.svg","https://flagcdn.com/w160/$code.png","https://flagcdn.com/w80/$code.png")
-    // Deterministic random artwork for assets that have no official icon.
     private fun randomIcon(seed:String):String {
         var h=0;for(c in seed)h=h*31+c.code
         val style=listOf("identicon","shapes","bottts-neutral","rings")[abs(h)%4]
@@ -266,50 +273,29 @@ object IconProvider {
     fun getPairIcons(symbol:String):List<List<String>> {
         val s=symbol.uppercase(Locale.US).replace(Regex("[_/\\-]"),"")
         if(s.length==6) { val a=FLAGS[s.take(3)]; val b=FLAGS[s.drop(3)]; if(a!=null&&b!=null) return listOf(flags(a)+randomIcon(s.take(3)),flags(b)+randomIcon(s.drop(3))) }
-        val id=mapOf("XAUUSD" to 2933245,"XAGUSD" to 2933253,"USOIL" to 2933251,"UKOIL" to 2933251,"NGAS" to 2933254,"US30" to 2933255,"US500" to 2933256,"USTEC" to 2933257)[s]
-        if(id!=null) return listOf(listOf("https://cdn-icons-png.flaticon.com/512/2933/$id.png"))
-        if(s.endsWith("USDT")||s.endsWith("USD")&&s.length>3) {
-            val coin=s.removeSuffix(if(s.endsWith("USDT")) "USDT" else "USD").lowercase(Locale.US)
-            return listOf(listOf("https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/svg/color/$coin.svg","https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.18.1/128/color/$coin.png",randomIcon(s)))
-        }
-        return listOf(listOf("https://assets.parqet.com/logos/symbol/$s?format=png",randomIcon(s)))
+        return listOf(listOf(randomIcon(s)))
     }
 }
 @Composable fun CurrencyIcon(urls:List<String>,label:String,modifier:Modifier=Modifier) {
     val context=LocalContext.current.applicationContext
-    // A previously successful fallback is tried locally before any remote URL.
     val candidates=remember(context,urls) { urls.sortedBy { TradingImageStore.cached(context,it)==null } }
     var failed by remember(candidates) { mutableIntStateOf(0) }
     if(failed<candidates.size) CachedTradingImage(url=candidates[failed],contentDescription=label,contentScale=ContentScale.Crop,modifier=modifier.clip(CircleShape).background(C.Surface),onError={failed++})
     else Box(modifier.clip(CircleShape).background(C.SurfaceRaised).border(1.dp,C.Cyan.copy(alpha=.55f),CircleShape),contentAlignment=Alignment.Center) { Text(label.take(2),color=C.Cyan,fontSize=9.sp,fontWeight=FontWeight.ExtraBold) }
 }
 
-// ✅ تم إضافة هذا الكائن لحل مشكلة PairNames
 object PairNames {
     private val names = mapOf(
-        "EURUSD" to "EUR / USD",
-        "GBPUSD" to "GBP / USD",
-        "USDJPY" to "USD / JPY",
-        "AUDUSD" to "AUD / USD",
-        "USDCAD" to "USD / CAD",
-        "USDCHF" to "USD / CHF",
-        "NZDUSD" to "NZD / USD",
-        "EURGBP" to "EUR / GBP",
-        "EURJPY" to "EUR / JPY",
-        "GBPJPY" to "GBP / JPY",
-        "XAUUSD" to "XAU / USD (ذهب)",
-        "XAGUSD" to "XAG / USD (فضة)",
-        "USOIL" to "US Oil (نفط)",
-        "UKOIL" to "UK Oil (نفط برنت)",
-        "NGAS" to "Natural Gas (غاز)",
-        "BTCUSD" to "BTC / USD",
-        "ETHUSD" to "ETH / USD",
-        "SOLUSD" to "SOL / USD",
-        "XRPUSD" to "XRP / USD",
-        "BNBUSD" to "BNB / USD",
-        "US30" to "Dow Jones 30",
-        "US500" to "S&P 500",
-        "USTEC" to "NASDAQ 100"
+        "EURUSD" to "EUR / USD", "GBPUSD" to "GBP / USD", "USDJPY" to "USD / JPY",
+        "AUDUSD" to "AUD / USD", "USDCAD" to "USD / CAD", "USDCHF" to "USD / CHF",
+        "NZDUSD" to "NZD / USD", "EURGBP" to "EUR / GBP", "EURJPY" to "EUR / JPY",
+        "GBPJPY" to "GBP / JPY", "AUDJPY" to "AUD / JPY", "CADJPY" to "CAD / JPY",
+        "CHFJPY" to "CHF / JPY", "NZDJPY" to "NZD / JPY", "EURCHF" to "EUR / CHF",
+        "EURAUD" to "EUR / AUD", "EURCAD" to "EUR / CAD", "EURNZD" to "EUR / NZD",
+        "GBPCHF" to "GBP / CHF", "GBPAUD" to "GBP / AUD", "GBPCAD" to "GBP / CAD",
+        "GBPNZD" to "GBP / NZD", "AUDCHF" to "AUD / CHF", "AUDCAD" to "AUD / CAD",
+        "AUDNZD" to "AUD / NZD", "CADCHF" to "CAD / CHF", "NZDCAD" to "NZD / CAD",
+        "NZDCHF" to "NZD / CHF"
     )
 
     fun get(symbol: String): String {
@@ -407,8 +393,6 @@ object BiquoteApi {
         if(ms<MINUTE_MS) {
             val ticks=chartTickHistory(symbol)
             val bars=chartBarsFromTicks(ticks,ms)
-            // The history limit may start inside a bucket; do not label that
-            // truncated first bucket as a complete historical candle.
             return if(ticks.isNotEmpty()&&bars.isNotEmpty()&&ticks.first().time>bars.first().time)bars.drop(1) else bars
         }
         val base=chartSourceInterval(frame)
@@ -426,7 +410,6 @@ object BiquoteApi {
             parseChartTick(j)
         } catch(_:Exception) { null }
     }
-    // Keep tick timestamps so repeated REST snapshots cannot manufacture new candles.
     internal suspend fun updateChartQuote(symbol:String,onTick:(Double,Long)->Unit) {
         sourceChartTick(symbol)?.let { onTick(it.price,it.time) }
     }
@@ -439,21 +422,11 @@ object BiquoteApi {
     }
 }
 object SymCatalog {
-    private val forex="EUR USD GBP JPY CHF AUD CAD NZD TRY ZAR MXN SEK NOK SGD HKD PLN DKK HUF CZK ILS CNY QAR SAR UAH IDR THB MYR PHP INR KRW BRL ARS CLP COP PEN RUB AED".split(" ").toSet()
-    private val crypto="BTC ETH SOL XRP BNB ADA DOGE DOT MATIC AVAX LINK LTC TRX ATOM ETC XLM ALGO VET FIL NEAR APT ARB OP INJ SUI SEI TIA TON PEPE SHIB".split(" ")
-    private val commodity="XAU XAG XPT XPD USOIL UKOIL WTI BRENT NGAS".split(" ")
-    fun isForex(s:String)=s.length==6&&forex.any { s.startsWith(it) }
-    fun isCrypto(s:String)=!isForex(s)&&crypto.any { s.startsWith(it) }
-    fun isCommodity(s:String)=!isForex(s)&&!isCrypto(s)&&commodity.any { s.startsWith(it) }
-    fun isIndex(s:String)=s in setOf("US30","US500","USTEC","UK100","GER40","FRA40","JP225")
-    fun isStock(s:String)=Regex("^[A-Z]{1,5}$").matches(s)&&!isForex(s)&&!isCrypto(s)&&!isCommodity(s)&&!isIndex(s)
+    fun isForex(s:String)=s.length==6 && PairNames.names.keys.contains(s)
     fun pretty(s:String)=if(s.length==6) "${s.take(3)}/${s.drop(3)}" else s
     fun payout(s:String):Int { var h=0L; for(c in s) h=(h*31+c.code) and 0xFFFFFFFFL; return 80+(h%16).toInt() }
 }
 
-// Local simulation only: no deposit, withdrawal or order is sent to a broker.
-// Display currency of the balance boxes: USD and TRY only.
-// Rate: 1 USD = 49.55 TRY (mid-market, 2026-10-18).
 object CurrencyStore {
     const val USD="USD"; const val TRY="TRY"
     var selected by mutableStateOf(USD)
@@ -536,8 +509,6 @@ object TradeSounds {
         for((freq,start,dw) in tones) { val(dur,wave)=dw; val begin=(start/1000*SR).toInt()
             for(i in 0 until (dur*SR).toInt()) { val pos=begin+i; if(pos>=buf.size)break
                 val t=i.toDouble()/SR
-                // A quiet sine tap with a smooth attack/release avoids the sharp opening click.
-                // Other trade-result sounds keep their original envelopes.
                 val env=if(wave=="soft") .48*sin(PI*(t/dur).coerceIn(0.0,1.0)).pow(2.0)*exp(-t*10.0) else .9.pow(i/(SR*.08))
                 val x=2*PI*freq*t
                 val s=when(wave) { "square"->if(sin(x)>=0)1.0 else -1.0; "sawtooth"->2*(t*freq-floor(.5+t*freq)); "triangle"->2/PI*asin(sin(x)); else->sin(x) }
@@ -569,7 +540,6 @@ private fun openTrade(direction:Int,symbol:String,payout:Int) {
     NotificationManager.show(symbol,priceText(quote.price,decimals))
 }
 @Composable private fun TradeSettlementLoop() {
-    // A quote for the selected pair is NEVER used to settle another pair.
     LaunchedEffect(Unit) {
         while(isActive) {
             val now=System.currentTimeMillis()
@@ -583,7 +553,6 @@ private fun openTrade(direction:Int,symbol:String,payout:Int) {
             for(tr in TradeStore.openTrades.toList()) {
                 if(tr.expiresAt>System.currentTimeMillis())continue
                 val q=TradeStore.quotes[tr.symbol] ?: continue
-                // Wait for a quote received after expiry; do not fabricate a closing price.
                 if(q.receivedAt<tr.expiresAt)continue
                 val entry=tr.exactEntry; val win=if(tr.direction>0) q.price>entry else q.price<entry
                 val tie=abs(q.price-entry)<1e-10
@@ -733,8 +702,6 @@ private fun initialViewport(candles:List<Candle>,origin:Long,intervalMs:Long=MIN
     val a=candles.takeLast(min(60,candles.size)); val low=a.minOf { it.low.toDouble() }; val high=a.maxOf { it.high.toDouble() }
     return ChartViewport(60.0,barPosition(candles.last().time,origin,intervalMs),LIVE_CANDLE_FRACTION,(low+high)/2,((high-low)/.70*1.04).coerceAtLeast(MIN_PRICE_SPAN))
 }
-// Do not allow panning into future space beyond the initial 55% live-candle position.
-// History remains scrollable in both directions up to this live boundary.
 private fun boundedChartCenter(view:ChartViewport,desired:Double,first:Double,last:Double):Double {
     val liveCenter=last+(.5-LIVE_CANDLE_FRACTION)*view.visibleBars
     val historyCenter=min(first+view.visibleBars/2-1,liveCenter)
@@ -856,7 +823,7 @@ private object ChartMenuColors {
     }
 } }
 @Composable private fun ChartStyleDialog(onDismiss:()->Unit) {
-    var tab by remember { mutableIntStateOf(1) } // Always open chart types first.
+    var tab by remember { mutableIntStateOf(1) }
     val frame=ChartSettings.frame
     val screenHeight=LocalConfiguration.current.screenHeightDp
     Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
@@ -905,8 +872,6 @@ private object ChartMenuColors {
     }
 }
 
-
-// Indicator UI is deliberately isolated from trading, accounts and the chart feed.
 private val IndicatorNames=listOf(
     "Accelerator Oscillator","ADX","Alligator","Aroon","Average True Range",
     "Awesome Oscillator","Bears Power","Bollinger Bands","Bollinger Bands Width",
@@ -994,8 +959,6 @@ private object IndicatorSettings {
         }
     }
 }
-// AC = AO - SMA(AO, signal); AO = SMA(median, fast) - SMA(median, slow).
-// Warm-up values stay NaN: insufficient history is never replaced with invented data.
 private fun acceleratorValues(bars:List<Candle>,fast:Int,slow:Int,signal:Int):DoubleArray {
     require(fast>0&&slow>0&&signal>0)
     val n=bars.size
@@ -1133,8 +1096,6 @@ private fun acceleratorValues(bars:List<Candle>,fast:Int,slow:Int,signal:Int):Do
     }
 }
 
-// Indicator extension: all calculations use the chart's unmodified OHLC feed.
-// NaN is a warm-up / unavailable value, never a fabricated zero.
 private data class IndicatorInput(val label:String,val initial:Double,val min:Double=1.0,val max:Double=500.0,val integer:Boolean=true)
 private data class IndicatorDefinition(val name:String,val overlay:Boolean,val inputs:List<IndicatorInput>,val lines:List<String>,val colors:List<Long>,val histogram:Boolean=false,val lower:Double?=null,val upper:Double?=null)
 private data class IndicatorLineStyle(val color:Long,val width:Float=1f,val enabled:Boolean=true)
@@ -1199,7 +1160,7 @@ private object ExtraIndicators {
                 val s=definition.colors.mapIndexed { i,color->val item=styles?.optJSONObject(i);IndicatorLineStyle(item?.optLong("color",color) ?: color,(item?.optDouble("width",1.0) ?: 1.0).toFloat().takeIf { it.isFinite()&&it in 1f..4f } ?: 1f,item?.optBoolean("enabled",true) ?: true) }
                 if(validIndicatorInputs(definition,v))ExtraIndicators.active[definition.name]=IndicatorConfig(v,s,saved.optBoolean("visible",true))
             }
-        } catch(_:Exception) { /* A damaged indicator preference never interrupts trading. */ }
+        } catch(_:Exception) { }
         snapshotFlow { ExtraIndicators.active.toMap() }.collect { settings->
             val root=JSONObject()
             settings.forEach { (name,config)->
@@ -1218,7 +1179,6 @@ private fun validIndicatorInputs(d:IndicatorDefinition,v:List<Double>):Boolean {
         else->true
     }
 }
-// Pure numerical kernels, independent of Compose and trading state.
 private object IndicatorMath {
     fun average(x:DoubleArray,p:Int,kind:Int=0):DoubleArray {
         require(p>0)
@@ -1321,7 +1281,6 @@ private object IndicatorMath {
             "Envelopes"->{ val mean=average(close,p());listOf(line(0,mean),line(1,DoubleArray(n) { mean[it]*(1+v[1]/100) }),line(2,DoubleArray(n) { mean[it]*(1-v[1]/100) })) }
             "Fractal"->{
                 val hi=DoubleArray(n) { Double.NaN };val lo=hi.copyOf();val radius=p()
-                // Require closed bars on both sides; the forming last bar never confirms a pivot.
                 for(i in radius until n-radius-1) {
                     var up=true;var down=true
                     for(j in i-radius..i+radius)if(j!=i) { if(high[j]>=high[i])up=false;if(low[j]<=low[i])down=false }
@@ -1375,7 +1334,6 @@ private object IndicatorMath {
 @Composable private fun ExtraIndicatorPanes() {
     val panes=ExtraIndicators.active.toMap().filter { (name,cfg)->cfg.visible&&ExtraIndicators.definition(name)?.overlay==false }
     if(!IndicatorSettings.acceleratorEnabled&&panes.isEmpty())return
-    // A scrollable bounded group keeps the trade panel and main chart usable with many indicators.
     Column(Modifier.fillMaxWidth().heightIn(max=(LocalConfiguration.current.screenHeightDp*.28f).dp).verticalScroll(rememberScrollState())) {
         if(IndicatorSettings.acceleratorEnabled)AcceleratorOscillatorPane()
         panes.forEach { (name,cfg)->key(name) { ExtraIndicatorPane(ExtraIndicators.definition(name)!!,cfg) } }
@@ -1460,7 +1418,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
     fun yFor(value:Double)=((view.maxPrice-value)/view.priceSpan*size.height).toFloat()
     clipRect(0f,0f,size.width,size.height) {
         overlays.forEach { (cfg,series)->
-            // Ichimoku: fill between the shifted Senkou spans, never between unrelated lines.
             if(series.size==5&&series[2].name=="Senkou A"&&cfg.styles[2].enabled&&cfg.styles[3].enabled) {
                 val a=series[2];val b=series[3]
                 for(i in 1 until bars.size)if(a.values[i-1].isFinite()&&a.values[i].isFinite()&&b.values[i-1].isFinite()&&b.values[i].isFinite()) {
@@ -1545,7 +1502,9 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
     }
 }
 
-
+// ============================================================
+// الشارت الرئيسي (تم إصلاح رسم الشموع بدقة)
+// ============================================================
 @Composable fun LiveCandlestickChart(modifier:Modifier=Modifier,onOpenPairPicker:()->Unit) {
     ChartDrawingPreferences()
     val sym by TradeStore.currentSymbol.collectAsState()
@@ -1621,15 +1580,12 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
     val onPinchStart by rememberUpdatedState<()->Unit>({beginPinch()})
     val onZoom by rememberUpdatedState<(Double)->Unit>({zoomOnly(it)})
     val onPan by rememberUpdatedState<(Float)->Unit>({ dx->panOnly(dx) })
-    // Velocity is bars/second, independent of pointer-event frequency and display refresh rate.
     val onFling by rememberUpdatedState<(Float)->Unit>({ velocity->
         if(chartSize.width>1&&candles.isNotEmpty()&&velocity.isFinite()) {
             inertia=-velocity.coerceIn(-12000f,12000f)*PAN_GAIN/chartSize.width*viewport.visibleBars
         }
     })
 
-    // The original chart pan/zoom callbacks remain intact. Only a hit on an
-    // unlocked drawing captures a single-finger drag; pinch always zooms the chart.
     val drawingObjects=ChartDrawings.visible(sym,frame)
     val onDrawingHit by rememberUpdatedState<(Offset)->DrawingHit?>({ position->
         if(isLoading||loadError||chartSize.width<=1||chartSize.height<=1)null
@@ -1658,9 +1614,7 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
     LaunchedEffect(drawingRequest?.id,sym,frame,isLoading,loadError,chartSize) {
         val request=ChartDrawings.pending ?: return@LaunchedEffect
         if(request.symbol!=sym) { ChartDrawings.pending=null;return@LaunchedEffect }
-        if(loadError) {
-            ChartDrawings.pending=null;TradeMessage.show("تعذر إضافة الرسم حتى تحميل بيانات الشارت");return@LaunchedEffect
-        }
+        if(loadError) { ChartDrawings.pending=null;TradeMessage.show("تعذر إضافة الرسم حتى تحميل بيانات الشارت");return@LaunchedEffect }
         if(!isLoading&&candles.isNotEmpty()&&chartSize.width>1&&chartSize.height>1) {
             val d=createChartDrawing(request,DrawingProjection(viewport,origin,intervalMs,chartSize.width.toFloat(),chartSize.height.toFloat()))
             ChartDrawings.objects[d.id]=d;ChartDrawings.selected=d.id;ChartDrawings.pending=null
@@ -1682,8 +1636,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                     viewport=vp.copy(anchorBar=center,anchorFraction=.5);inertia=0.0
                     followLive=viewport.atLiveBoundary(live)
                 }
-                // Receiving a new bar must not cancel follow mode while the next
-                // network request is suspended; only gestures/clamping change it.
             }
             if(!interacting&&candles.isNotEmpty()&&abs(inertia)>0.0) {
                 val vp=viewport;val decay=exp(-INERTIA_FRICTION*dt)
@@ -1725,7 +1677,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                     if(candles.isNotEmpty()) {
                         viewport=initialViewport(candles,origin,intervalMs);bsTarget=viewport.visibleBars;livePrice=candles.last().close
                         displayCandle=candles.last();success=true
-                        // Historical OHLC is not represented as a fresh live quote.
                         BiquoteApi.updateChartQuote(sym) { price,_->TradeStore.quote(sym,price);livePrice=price.toFloat() }
                     }
                 } else delay(1500)
@@ -1740,8 +1691,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
         while(isActive) {
             delay(1000)
             val refreshEvery=if(intervalMs<MINUTE_MS)3000L else 5000L
-            // History is merged before the newest quote so an older server bar cannot
-            // replace the latest close. For seconds, never subdivide a minute candle.
             if(System.currentTimeMillis()-lastRefresh>=refreshEvery) {
                 val lastBars=BiquoteApi.chartHistory(sym,frame,true)
                 for(b in lastBars) {
@@ -1788,7 +1737,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
         }
     }
     LaunchedEffect(intervalMs) { while(isActive) { delay(100);nowMs=System.currentTimeMillis();clockText=clockNow();candles.lastOrNull()?.let { secondsLeft=remainingSeconds(it.time,nowMs,intervalMs) } } }
-    // Publish only the existing chart data; no separate feed or simulated indicator bars.
     val indicatorBars=if(isLoading||loadError)emptyList() else candles.toList()
     val overlayConfigs=ExtraIndicators.active.toMap().filter { (name,cfg)->cfg.visible&&ExtraIndicators.definition(name)?.overlay==true }
     val overlaySeries=remember(indicatorBars,overlayConfigs) {
@@ -1888,8 +1836,11 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                     val label=candleTimeText(minute*intervalMs,intervalMs);val half=timePaint.measureText(label)/2
                     if(x-half>=0&&x+half<=w)native.drawText(label,x,baseline(h-7.dp.toPx(),timePaint),timePaint)
                 }
-                val spacing=w/view.visibleBars.toFloat();val bw=(spacing*.76f).coerceIn(min(MINBW,spacing*.95f),spacing*.95f)
-                val wick=min(1.2.dp.toPx(),bw)
+                
+                // ✅ الرسم الصحيح للشموع 
+                val spacing=w/view.visibleBars.toFloat()
+                val bw=(spacing*.70f).coerceIn(min(MINBW,spacing*.95f),spacing*.95f)
+                val wick=min(1.0.dp.toPx(),bw)
                 clipRect(0f,0f,w,h) {
                     val source=candles.mapIndexed { index,real->if(index==lastIdx&&dv!=null&&dv.time==real.time)dv else real }
                     val rendered=if(chartType=="هيكين آشي")heikinAshi(source) else source
@@ -1903,16 +1854,25 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                     } else for(candle in rendered) {
                         val x=xFor(barPosition(candle.time,origin))
                         if(x+bw/2<0||x-bw/2>w)continue
-                        val col=if(candle.close>=candle.open)C.Green else C.Red
+                        val isUp = candle.close >= candle.open
+                        val col=if(isUp) C.Green else C.Red
                         val yH=yFor(candle.high.toDouble());val yL=yFor(candle.low.toDouble());val yO=yFor(candle.open.toDouble());val yC=yFor(candle.close.toDouble())
+                        
+                        // رسم الظل
                         drawLine(col,Offset(x,yH),Offset(x,yL),wick,StrokeCap.Butt)
+                        
+                        // رسم الجسم
                         if(chartType=="أشرطة") {
                             drawLine(col,Offset(x-bw/2,yO),Offset(x,yO),wick,StrokeCap.Butt)
                             drawLine(col,Offset(x,yC),Offset(x+bw/2,yC),wick,StrokeCap.Butt)
-                        } else if(abs(yO-yC)<1.dp.toPx())drawLine(col,Offset(x-bw/2,(yO+yC)/2),Offset(x+bw/2,(yO+yC)/2),1.dp.toPx())
-                        else drawRect(col,Offset(x-bw/2,min(yO,yC)),Size(bw,abs(yO-yC)))
+                        } else if(abs(yO-yC)<1.dp.toPx()) {
+                            drawLine(col,Offset(x-bw/2,(yO+yC)/2),Offset(x+bw/2,(yO+yC)/2),1.dp.toPx())
+                        } else {
+                            drawRect(col,Offset(x-bw/2,min(yO,yC)),Size(bw,abs(yO-yC)))
+                        }
                     }
                 }
+                
                 drawIndicatorOverlays(indicatorBars,view,origin,intervalMs,overlaySeries)
                 drawChartDrawings(drawingObjects,DrawingProjection(view,origin,intervalMs,w,h))
                 val displayPrice=dv?.close ?: if(livePrice>0)livePrice else candles.last().close
@@ -1925,7 +1885,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                     native.drawText(label,w-3.dp.toPx()-tw/2,baseline(y,tagPaint),tagPaint)
                     val candleX=xFor(barPosition(candles.last().time,origin))
                     val countdown=String.format(Locale.US,"%02d:%02d",secondsLeft/60,secondsLeft%60)
-                    // Three full price-line dash intervals ahead of the active candle.
                     val labelHalf=max(detailPaint.measureText(frame),detailPaint.measureText(countdown))/2
                     val labelX=min(candleX+3f*(dash+gap),w-labelHalf-5.dp.toPx())
                     if(ChartSettings.countdownEnabled&&candleX in 0f..w&&labelX-labelHalf>candleX+bw/2) {
@@ -1953,9 +1912,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
 }
 
 private data class MarkerPlacement(val trade:OpenTrade,val y:Float,val dot:Float,val dotY:Float,val right:Float,val left:Float,val width:Float)
-// Trade markers are chart-anchored, never screen-anchored: every label sits on one straight
-// horizontal line at its entry price, behind its entry dot, and never ahead of the active
-// (live) candle. All positions come from xFor/yFor, so they pan and zoom with the chart.
 private fun DrawScope.drawReferenceTrades(symbol:String,account:String,now:Long,liveX:Float,xFor:(Long)->Float,yFor:(Double)->Float,hits:MutableList<Pair<Long,Rect>>,intervalMs:Long=MINUTE_MS) {
     fun px(n:Float)=n*density
     val w=size.width;val h=size.height;val native=drawContext.canvas.nativeCanvas
@@ -1967,13 +1923,11 @@ private fun DrawScope.drawReferenceTrades(symbol:String,account:String,now:Long,
         val dotY=yFor(tr.exactEntry)
         if(dotY<px(-40f)||dotY>h+px(40f))continue
         val width=amountPaint.measureText("$"+shortAmount(tr.amount))+px(16f)
-        // The label ends behind the entry dot and never crosses ahead of the active candle.
         val right=min(dot,liveX)-px(6f)
         places.add(MarkerPlacement(tr,dotY,dot,dotY,right,right-width,width))
     }
     for(p in places) {
         val color=if(p.trade.direction>0)Color(0xFF4CAF50) else Color(0xFFF44336)
-        // One straight horizontal line on the entry price, from the label to the dot.
         drawLine(color.copy(alpha=.6f),Offset(p.right,p.dotY),Offset(p.dot, p.dotY),px(1f))
         drawCircle(color,px(4f),Offset(p.dot,p.dotY));drawCircle(Color(0xFFEAFFF5),px(1.5f),Offset(p.dot,p.dotY))
     }
@@ -2050,7 +2004,6 @@ private fun DrawScope.drawReferenceTrades(symbol:String,account:String,now:Long,
     }
 }
 
-// The preset order, colors, grid, dimensions and anchoring come from #tp / .tpc.
 private val TimeOptions=listOf("00:15","00:10","00:05","02:00","01:00","00:30","15:00","10:00","05:00","02:00:00","01:00:00","30:00")
 @Composable fun TradePanel() {
     Column(Modifier.fillMaxWidth().background(C.BG)) {
@@ -2144,7 +2097,6 @@ private val TimeOptions=listOf("00:15","00:10","00:05","02:00","01:00","00:30","
                 }
             }
         }
-        // This editor owns its own window: focus is no longer lost to the preset popup.
         LaunchedEffect(Unit) { withFrameNanos { };focus.requestFocus();withFrameNanos { };keyboard?.show() }
     }
 }
@@ -2207,19 +2159,16 @@ private val DollarPrefixTransformation=VisualTransformation { text->
 }
 
 @Composable fun PairPickerSheet(onDismiss:()->Unit) {
-    val tabs=listOf("الجميع","فوركس","عملات رقمية","سلع","مؤشرات","أسهم")
+    val tabs=listOf("فوركس")
     var selectedTab by remember { mutableIntStateOf(0) };var query by remember { mutableStateOf("") }
     val allSymbols=PairCatalogStore.allSymbols;val connected=PairCatalogStore.connected
     val loading=!PairCatalogStore.loaded;val favorites=remember { mutableStateListOf<String>() }
     val context=LocalContext.current
     LaunchedEffect(Unit) { PairCatalogStore.load(context)
-        // Background monitoring: silent periodic refresh, never shows a loading indicator.
         while(isActive) { delay(10000);PairCatalogStore.refresh() } }
     val filtered=allSymbols.filter { s->
-        val category=when(selectedTab) { 0->true;1->SymCatalog.isForex(s);2->SymCatalog.isCrypto(s);3->SymCatalog.isCommodity(s);4->SymCatalog.isIndex(s);5->SymCatalog.isStock(s);else->false }
-        category&&(query.isBlank()||s.contains(query.uppercase(Locale.US)))
+        query.isBlank()||s.contains(query.uppercase(Locale.US))
     }.sortedWith(compareBy({it !in connected},{it}))
-    // Full-screen Popup keeps Back/outside dismissal working and prevents click-through.
     Popup(alignment=Alignment.TopStart,onDismissRequest=onDismiss,properties=PopupProperties(focusable=true)) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=.5f)).clickable(onClick=onDismiss)) {
             Column(Modifier.fillMaxWidth(.88f).fillMaxHeight().align(Alignment.CenterStart).clip(RoundedCornerShape(topEnd=18.dp,bottomEnd=18.dp)).background(C.PkBg).clickable(interactionSource=remember { androidx.compose.foundation.interaction.MutableInteractionSource() },indication=null,onClick={})) {
@@ -2284,8 +2233,6 @@ private val DollarPrefixTransformation=VisualTransformation { text->
     }
 }
 @Composable private fun ReferenceAnimatedLogo(modifier:Modifier=Modifier) {
-    // Only the original inline SVG is used, not the HTML application's scripts.
-    // SMIL gradients, glow and animation timings are retained verbatim.
     AndroidView(modifier=modifier,factory={context->WebView(context).apply {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
         layoutParams=ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)
@@ -2296,8 +2243,6 @@ private val DollarPrefixTransformation=VisualTransformation { text->
     } },onReset=null,onRelease={it.stopLoading();it.destroy()})
 }
 
-
-// ====== Trade history page (ported verbatim from the reference HTML #tradeHistory) ======
 object HistoryOverlay { var open by mutableStateOf(false) }
 
 private val ThText=Color(0xFFF5F6FB)
@@ -2572,8 +2517,6 @@ private fun thDurationLabel(durationMs:Long):String=when {
 
 private const val REFERENCE_LOADING_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><defs><linearGradient id="white" x2="1" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#bdcbea"/></linearGradient><linearGradient id="green" x2="0" y2="1"><stop stop-color="#20ffc2"/><stop offset="1" stop-color="#00b98a"/></linearGradient><linearGradient id="red" x2="0" y2="1"><stop stop-color="#ff426b"/><stop offset="1" stop-color="#e90040"/></linearGradient><filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M256 82 L389 159 Q400 166 400 181 V326 Q400 341 387 349 L269 418 Q256 426 243 418 L125 349 Q112 341 112 326 V181 Q112 166 125 159 Z" fill="none" stroke="url(#white)" stroke-width="17" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="1000" stroke-dashoffset="1000" pathLength="1000" filter="url(#glow)"><animate attributeName="stroke-dashoffset" from="1000" to="0" dur="1s" fill="freeze"/></path><g filter="url(#glow)"><g><animateTransform attributeName="transform" type="translate" values="0,-100;0,8;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".7s" begin=".65s" fill="freeze"/><g fill="url(#green)"><rect x="153" y="221" width="8" height="120" rx="4"/><rect x="141" y="241" width="32" height="94" rx="5"/></g></g><g><animateTransform attributeName="transform" type="translate" values="0,-130;0,10;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".72s" begin=".82s" fill="freeze"/><g fill="url(#red)"><rect x="197" y="179" width="8" height="159" rx="4"/><rect x="185" y="207" width="32" height="117" rx="5"/></g></g><g><animateTransform attributeName="transform" type="translate" values="0,-115;0,9;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".7s" begin=".99s" fill="freeze"/><g fill="url(#green)"><rect x="351" y="221" width="8" height="120" rx="4"/><rect x="339" y="241" width="32" height="94" rx="5"/></g></g><g><animateTransform attributeName="transform" type="translate" values="0,-145;0,10;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".74s" begin="1.16s" fill="freeze"/><g fill="url(#red)"><rect x="307" y="179" width="8" height="159" rx="4"/><rect x="295" y="207" width="32" height="117" rx="5"/></g></g></g><path d="M256 139 L276 158 V351 L256 369 L236 351 V158 Z" fill="url(#white)" opacity="0" filter="url(#glow)"><animate attributeName="opacity" values="0;1" dur=".45s" begin="1.45s" fill="freeze"/><animateTransform attributeName="transform" type="translate" values="0,-45;0,5;0,-2;0,0" keyTimes="0;0.72;0.9;1" dur=".6s" begin="1.45s" fill="freeze"/></path></svg>"""
 
-// Drawing tools are isolated from orders, indicators and market data.
-// Anchors persist as absolute time/price coordinates, not screen pixels.
 private enum class DrawingKind(val title:String,val anchors:Int) {
     HORIZONTAL("خط أفقي",1),VERTICAL("خط رأسي",1),RAY("شعاع",2),
     RETRACEMENT("ارتدادات فيبوناتشي",2),FAN("مروحة فيبوناتشي",2),
@@ -2605,7 +2548,6 @@ private object ChartDrawings {
     fun request(kind:DrawingKind,symbol:String) { pending=DrawingRequest(nextId(),kind,symbol) }
     fun remove(id:Long) { objects.remove(id);if(selected==id)selected=null;if(editing==id)editing=null }
     fun duplicate(d:ChartDrawing) {
-        // Identical coordinates deliberately preserve the drawing's measured geometry.
         val n=d.copy(id=nextId(),name=d.name+" — نسخة",locked=false,visible=true)
         objects[n.id]=n;selected=n.id
     }
@@ -2656,10 +2598,9 @@ private fun readDrawing(j:JSONObject):ChartDrawing? = try {
                 val list=JSONArray(prefs.getString("objects","[]") ?: "[]")
                 for(i in 0 until list.length())list.optJSONObject(i)?.let { readDrawing(it) }?.let { d->
                     ChartDrawings.objects[d.id]=d
-                    // Keep subsequently created IDs above restored IDs, including after a clock change.
                     if(d.id>ids.get())ids.set(d.id)
                 }
-            } catch(_:Exception) { /* Corrupted drawings never interrupt the trading screen. */ }
+            } catch(_:Exception) { }
             ChartDrawings.loaded=true
         }
         onDispose { save() }
@@ -2679,7 +2620,6 @@ private data class DrawingProjection(val view:ChartViewport,val origin:Long,val 
 private data class DrawingSegment(val a:Offset,val b:Offset,val color:Long,val guide:Boolean=false)
 private data class DrawingCaption(val at:Offset,val text:String,val color:Long)
 private data class DrawingGeometry(val lines:List<DrawingSegment>,val areas:List<List<Offset>>,val captions:List<DrawingCaption>,val handles:List<Offset>)
-// Slab clipping handles segments, directional rays and full lines without giant endpoints.
 private fun drawingClip(a:Offset,b:Offset,w:Float,h:Float,low:Double=0.0,high:Double=1.0):Pair<Offset,Offset>? {
     if(!a.x.isFinite()||!a.y.isFinite()||!b.x.isFinite()||!b.y.isFinite()||w<=0||h<=0)return null
     val dx=(b.x-a.x).toDouble();val dy=(b.y-a.y).toDouble()
@@ -2728,7 +2668,6 @@ private fun drawingGeometry(d:ChartDrawing,p:DrawingProjection):DrawingGeometry 
             line(a,b,guide=true)
             val left=if(d.extendLeft)0f else min(a.x,b.x);val right=if(d.extendRight)p.width else max(a.x,b.x)
             val levels=d.levels.filter { it.enabled }.map { level->
-                // Default: 0% is the end of the impulse and 100% is its start.
                 val ratio=if(d.reverse)1.0-level.ratio else level.ratio
                 val value=d.points[1].price+(d.points[0].price-d.points[1].price)*ratio
                 val y=p.screen(DrawingAnchor(d.points[1].time,value)).y
@@ -2765,7 +2704,6 @@ private fun drawingGeometry(d:ChartDrawing,p:DrawingProjection):DrawingGeometry 
             if(d.fill) {
                 val first=drawingClip(a,b,p.width,p.height,lo,hi)
                 val second=drawingClip(a2,b2,p.width,p.height,lo,hi)
-                // Use shared time limits, so fill and channel boundaries remain parallel.
                 if(abs(dx)>.001f) {
                     val left=if(d.extendLeft&&dx>0||d.extendRight&&dx<0)0f else min(a.x,b.x)
                     val right=if(d.extendRight&&dx>0||d.extendLeft&&dx<0)p.width else max(a.x,b.x)
@@ -2800,7 +2738,6 @@ private fun drawingDistance(point:Offset,a:Offset,b:Offset):Float {
 }
 private data class DrawingHit(val id:Long,val handle:Int=-1)
 private fun drawingHit(position:Offset,projection:DrawingProjection,objects:List<ChartDrawing>,tolerance:Float):DrawingHit? {
-    // Selected anchor handles take precedence over every other object.
     val selected=objects.firstOrNull { it.id==ChartDrawings.selected }
     if(selected!=null&&!selected.locked) {
         val handles=selected.points.map { projection.screen(it) }
@@ -2871,7 +2808,6 @@ private data class DrawingDrag(val original:ChartDrawing,val handle:Int,val proj
     fun moved(delta:Offset,bars:List<Candle>):ChartDrawing {
         if(original.locked||!delta.x.isFinite()||!delta.y.isFinite())return original
         if(handle<0) {
-            // One bounded world-space translation preserves lengths, slopes and parallelism.
             val dt=(delta.x/projection.width.coerceAtLeast(1f)*projection.view.visibleBars*projection.interval).roundToLong()
                 .coerceIn(-original.points.minOf { it.time },32_503_680_000_000L-original.points.maxOf { it.time })
             val dp=(-delta.y/projection.height.coerceAtLeast(1f)*projection.view.priceSpan).coerceAtLeast(1e-12-original.points.minOf { it.price })
