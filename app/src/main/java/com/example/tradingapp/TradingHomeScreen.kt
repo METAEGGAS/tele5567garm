@@ -348,7 +348,25 @@ object PairNames {
         "NZDUSD" to "NZD / USD",
         "EURGBP" to "EUR / GBP",
         "EURJPY" to "EUR / JPY",
-        "GBPJPY" to "GBP / JPY"
+        "GBPJPY" to "GBP / JPY",
+        "AUDJPY" to "AUD / JPY",
+        "CADJPY" to "CAD / JPY",
+        "CHFJPY" to "CHF / JPY",
+        "NZDJPY" to "NZD / JPY",
+        "EURCHF" to "EUR / CHF",
+        "EURAUD" to "EUR / AUD",
+        "EURCAD" to "EUR / CAD",
+        "EURNZD" to "EUR / NZD",
+        "GBPCHF" to "GBP / CHF",
+        "GBPAUD" to "GBP / AUD",
+        "GBPCAD" to "GBP / CAD",
+        "GBPNZD" to "GBP / NZD",
+        "AUDCHF" to "AUD / CHF",
+        "AUDCAD" to "AUD / CAD",
+        "AUDNZD" to "AUD / NZD",
+        "CADCHF" to "CAD / CHF",
+        "NZDCAD" to "NZD / CAD",
+        "NZDCHF" to "NZD / CHF"
     )
 
     fun get(symbol: String): String {
@@ -2616,7 +2634,7 @@ private val DollarPrefixTransformation=VisualTransformation { text->
 @Composable private fun ReferenceChartLoading(modifier:Modifier=Modifier,token:String,initial:Boolean) {
     val transition=rememberInfiniteTransition(label="reference-shimmer")
     val shimmer by transition.animateFloat(2f,-2f,infiniteRepeatable(tween(1200,easing=LinearEasing)),label="shimmer")
-    Box(modifier.background(C.ChartBg).onSizeChanged { chartSize=it }) {
+    Box(modifier.background(C.ChartBg)) {
         Canvas(Modifier.matchParentSize()) {
             val bands=listOf(floatArrayOf(.05f,.12f,.20f,8f),floatArrayOf(.05f,.22f,.35f,8f),floatArrayOf(.10f,.35f,.15f,40f),floatArrayOf(.28f,.35f,.15f,60f),floatArrayOf(.46f,.35f,.15f,35f),floatArrayOf(.64f,.35f,.15f,55f),floatArrayOf(.05f,.70f,.90f,1f),floatArrayOf(.05f,.85f,.15f,8f),floatArrayOf(.25f,.85f,.15f,8f),floatArrayOf(.45f,.85f,.15f,8f),floatArrayOf(.65f,.85f,.15f,8f))
             bands.forEach { b->drawRoundRect(Color(0xFF3C5A8C).copy(alpha=.18f),Offset(size.width*b[0],size.height*b[1]),Size(size.width*b[2],b[3]*density),CornerRadius(3*density)) }
