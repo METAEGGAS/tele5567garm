@@ -106,8 +106,8 @@ const val GIFT_ICON_URL = "https://cdn-icons-png.flaticon.com/128/18546/18546266
 object C {
     val BG=Color(0xFF141126); val Surface=Color(0xFF24203D); val SurfaceRaised=Color(0xFF30284F)
     val Cyan=Color(0xFF58D9F5); 
-    val Green=Color(0xFF00E676); 
-    val Red=Color(0xFFFF1A1A);   
+    val Green=Color(0xFF00FF00); // أخضر ساطع جداً
+    val Red=Color(0xFFFF0000);   // أحمر ساطع جداً
     val Blue=Cyan; val Yellow=Color(0xFFFFD34D); val TextPrimary=Color(0xFFF5F2FF)
     val TextSecondary=Color(0xFFA9A5C6); val Divider=Color(0xFF3D355A); val Grid=Color(0xFF67558D)
     val PriceTag=Cyan; val PkBg=BG; val PkSurface=Surface; val PkTab=Surface; val PkTabOn=Cyan
@@ -134,8 +134,8 @@ private object Ref {
     const val ResultDuration=4500L
 }
 private const val MINUTE_MS=60_000L
-private const val MIN_PRICE_SPAN=0.000005
-private const val LIVE_CANDLE_FRACTION=.5
+private const val MIN_PRICE_SPAN=0.00001
+private const val LIVE_CANDLE_FRACTION=.85 // يجعل الشمعة في أقصى اليمين
 private fun candleBodyWidth(spacing:Float,gapPx:Float):Float {
     if(!spacing.isFinite()||spacing<=0f)return 0f
     val unit=gapPx.coerceAtLeast(.001f)
@@ -166,8 +166,8 @@ private fun candleDirection(c:Candle)=when {
     else->CandleDirection.DOJI
 }
 private object ForexCandleColors {
-    val Up=Color(0xFFFFE600) 
-    val Down=Color(0xFFFF1A1A) 
+    val Up=Color(0xFF00FF00) // أخضر نيون
+    val Down=Color(0xFFFF0000) // أحمر نيون
     val Doji=Up 
 }
 private fun candleColor(c:Candle)=when(candleDirection(c)) {
@@ -201,7 +201,6 @@ object PairSession {
     fun save(context:Context,symbol:String) { context.getSharedPreferences("trading_session",Context.MODE_PRIVATE).edit().putString("last_symbol",symbol.uppercase(Locale.US)).apply() }
 }
 
-// ✅ قسم خاص بجلب الأزواج (فوركس فقط)
 object PairCatalogStore {
     private val FOREX_PAIRS = listOf(
         "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD",
@@ -413,7 +412,6 @@ private object ChartSettings {
     var autoScrollEnabled by mutableStateOf(true)
 }
 
-// ✅ تم جعل مصدر الأسعار واحد (REST) وإزالة WebSocket لضمان الاستقرار
 object BiquoteApi {
     private fun get(path:String,params:List<Pair<String,String>> = emptyList()):String? {
         val qs=if(params.isEmpty()) "" else "?"+params.joinToString("&") { "${it.first}=${URLEncoder.encode(it.second,"UTF-8")}" }
@@ -428,12 +426,10 @@ object BiquoteApi {
             if(status in 200..299)c.inputStream.bufferedReader().use { it.readText() } else null
         } catch(_:Exception) { null } finally { c?.disconnect() }
     }
-    
     suspend fun tick(symbol:String):Double?=withContext(Dispatchers.IO) {
         val txt=get("/api/${symbol.uppercase(Locale.US)}",listOf("allowStale" to "false")) ?: return@withContext null
         try { JSONObject(txt).optDouble("mid",Double.NaN).takeIf { it.isFinite()&&it>0 } } catch(_:Exception) { null }
     }
-
     suspend fun ohlc(symbol:String,interval:String="1m",limit:Int=300):List<Candle> = withContext(Dispatchers.IO) {
         val txt=get("/api/${symbol.uppercase(Locale.US)}/ohlc",listOf("interval" to interval,"limit" to "$limit")) ?: return@withContext emptyList()
         try {
@@ -449,19 +445,15 @@ object BiquoteApi {
             }.sortedBy { it.time }
         } catch(e:Exception) { emptyList() }
     }
-    
     internal suspend fun chartHistory(symbol:String,frame:String,recent:Boolean=false):List<Candle> {
         val ms=chartFrameMillis(frame)
-        if(ms<MINUTE_MS) {
-            return emptyList()
-        }
+        if(ms<MINUTE_MS) return emptyList()
         val base=chartSourceInterval(frame)
         val baseMs=when(base) { "5m"->300_000L;"15m"->900_000L;"30m"->1_800_000L;"1h"->3_600_000L;"4h"->14_400_000L;"1d"->86_400_000L;else->MINUTE_MS }
         val factor=(ms/baseMs).toInt().coerceAtLeast(1)
         val source=ohlc(symbol,base,if(recent)maxOf(8,factor*4) else 1000)
         return aggregateChartBars(source,ms,baseMs)
     }
-    
     suspend fun symbols(liveOnly:Boolean=false):List<String> = withContext(Dispatchers.IO) {
         val txt=get("/api/symbols",listOf("liveOnly" to "$liveOnly")) ?: return@withContext emptyList()
         try { val a=JSONArray(txt); (0 until a.length()).mapNotNull { i->
@@ -852,7 +844,8 @@ private fun verticalTarget(view:ChartViewport,candles:List<Candle>,origin:Long,i
     val visible=rendered.filter { abs(barPosition(it.time,origin,intervalMs)-view.centerBar)<=view.visibleBars/2+.6 }
     if(visible.isEmpty())return view.centerPrice to view.priceSpan
     val low=visible.minOf { it.low.toDouble() }; val high=visible.maxOf { it.high.toDouble() }
-    val padding=.05*max(.0005,high-low) 
+    // توزيع متوازن: 12% حشو من الأعلى والأسفل
+    val padding = max(0.0005, (high - low) * 0.12) 
     return (high+low)/2 to (high-low+padding*2).coerceAtLeast(MIN_PRICE_SPAN)
 }
 private fun nicePriceStep(raw:Double):Double {
@@ -1819,7 +1812,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
             viewport=viewport.copy(centerPrice=center,priceSpan=span)
         }
     }
-    // ✅ تم جعل مصدر البيانات واحد (REST) وإزالة WebSocket
     LaunchedEffect(sym,frame,retryKey) {
         val started=System.currentTimeMillis();val initial=!everLoaded
         isLoading=true;loadError=false;candles.clear();displayCandle=null;livePrice=0.0;TradeStore.livePrice.value=0f;followLive=true;inertia=0.0
@@ -2361,7 +2353,6 @@ private val DollarPrefixTransformation=VisualTransformation { text->
         loadDataWithBaseURL(null,"<html><head><meta name='viewport' content='width=device-width,initial-scale=1'><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}body{display:grid;place-items:center}svg{display:block;width:100%;height:100%}</style></head><body>"+REFERENCE_LOADING_SVG+"</body></html>","text/html","UTF-8",null)
     } },onReset=null,onRelease={it.stopLoading();it.destroy()})
 }
-
 
 object HistoryOverlay { var open by mutableStateOf(false) }
 
