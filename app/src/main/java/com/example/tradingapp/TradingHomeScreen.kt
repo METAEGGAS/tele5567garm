@@ -105,7 +105,9 @@ const val GIFT_ICON_URL = "https://cdn-icons-png.flaticon.com/128/18546/18546266
 
 object C {
     val BG=Color(0xFF141126); val Surface=Color(0xFF24203D); val SurfaceRaised=Color(0xFF30284F)
-    val Cyan=Color(0xFF58D9F5); val Green=Color(0xFF39FF14); val Red=Color(0xFFFF1A1A)
+    val Cyan=Color(0xFF58D9F5); 
+    val Green=Color(0xFF00E676); 
+    val Red=Color(0xFFFF1A1A);   
     val Blue=Cyan; val Yellow=Color(0xFFFFD34D); val TextPrimary=Color(0xFFF5F2FF)
     val TextSecondary=Color(0xFFA9A5C6); val Divider=Color(0xFF3D355A); val Grid=Color(0xFF67558D)
     val PriceTag=Cyan; val PkBg=BG; val PkSurface=Surface; val PkTab=Surface; val PkTabOn=Cyan
@@ -118,7 +120,6 @@ private object Ref {
     val Muted=Color(0xFFC7D5EF); val Green=Color(0xFF2EBD85)
     val TimeButton=Color(0xFF3E434D); val TimeOn=Color(0xFF007AFF)
     val Entrance=object:Easing {
-        // CSS cubic-bezier(.2,1.1,.35,1), with overshoot retained.
         override fun transform(fraction:Float):Float {
             val x=fraction.coerceIn(0f,1f); var lo=0f; var hi=1f
             repeat(22) { val t=(lo+hi)/2; val u=1-t
@@ -135,7 +136,6 @@ private object Ref {
 private const val MINUTE_MS=60_000L
 private const val MIN_PRICE_SPAN=0.000005
 private const val LIVE_CANDLE_FRACTION=.5
-// Reference HTML wd(bs): round the spacing, leave a one-dp gap, minimum two dp.
 private fun candleBodyWidth(spacing:Float,gapPx:Float):Float {
     if(!spacing.isFinite()||spacing<=0f)return 0f
     val unit=gapPx.coerceAtLeast(.001f)
@@ -152,13 +152,10 @@ private val ids=AtomicLong(System.currentTimeMillis())
 private fun nextId()=ids.incrementAndGet()
 private fun barPosition(time:Long,origin:Long,intervalMs:Long=MINUTE_MS)=(time-origin).toDouble()/intervalMs
 
-// Keep Double precision. Chart presentation links opens to previous closes like the HTML.
-// isClosed may also mean a later source bar has arrived; raw quote/trade prices stay separate.
 data class Candle(
     val open:Double,val high:Double,val low:Double,val close:Double,
     val time:Long=0L,val isClosed:Boolean=false
 ) {
-    // Compatibility for callers in other files that still pass Float prices.
     constructor(open:Float,high:Float,low:Float,close:Float,time:Long=0L):
         this(open.toDouble(),high.toDouble(),low.toDouble(),close.toDouble(),time,false)
 }
@@ -169,9 +166,9 @@ private fun candleDirection(c:Candle)=when {
     else->CandleDirection.DOJI
 }
 private object ForexCandleColors {
-    val Up=Color(0xFFFFE600) // HTML CCU
-    val Down=Color(0xFFFF1A1A) // HTML CCD
-    val Doji=Up // HTML uses close >= open for the rising color
+    val Up=Color(0xFFFFE600) 
+    val Down=Color(0xFFFF1A1A) 
+    val Doji=Up 
 }
 private fun candleColor(c:Candle)=when(candleDirection(c)) {
     CandleDirection.UP->ForexCandleColors.Up
@@ -181,27 +178,7 @@ private fun candleColor(c:Candle)=when(candleDirection(c)) {
 private fun validCandle(c:Candle)=
     c.time>0&&c.open.isFinite()&&c.high.isFinite()&&c.low.isFinite()&&c.close.isFinite()&&
         c.low>0.0&&c.high>=maxOf(c.open,c.close)&&c.low<=minOf(c.open,c.close)
-// Bounded, change-only diagnostics. Prices are logged before any label formatting.
-// Filter Android Logcat by QUBEX_CANDLES; set enabled=false to silence diagnostics.
-private object CandleDiagnostics {
-    @Volatile var enabled=true
-    private val previous=object:LinkedHashMap<String,Candle>(256,.75f,true) {
-        override fun removeEldestEntry(eldest:MutableMap.MutableEntry<String,Candle>?)=size>6000
-    }
-    @Synchronized fun record(stage:String,symbol:String,frame:String,c:Candle) {
-        if(!enabled)return
-        val key="$stage/$symbol/$frame/${c.time}"
-        if(previous[key]==c)return
-        previous[key]=c
-        val color=when(candleDirection(c)) {
-            CandleDirection.UP->"UP/#FFE600"
-            CandleDirection.DOWN->"DOWN/#FF1A1A"
-            CandleDirection.DOJI->"DOJI/#FFE600"
-        }
-        android.util.Log.d("QUBEX_CANDLES","stage=$stage symbol=$symbol frame=$frame timestamp=${c.time} Open=${c.open} High=${c.high} Low=${c.low} Close=${c.close} color=$color closed=${c.isClosed}")
-    }
-    fun event(message:String) { if(enabled)android.util.Log.w("QUBEX_CANDLES",message) }
-}
+
 private fun chartPriceY(price:Double,maxPrice:Double,span:Double,height:Float)=
     ((maxPrice-price)/span*height.toDouble()).toFloat()
 private fun forexPriceDecimals(symbol:String)=if(symbol.endsWith("JPY"))3 else 5
@@ -223,9 +200,16 @@ object PairSession {
     fun load(context:Context)=context.getSharedPreferences("trading_session",Context.MODE_PRIVATE).getString("last_symbol",null)?.uppercase(Locale.US)?.replace(Regex("[_/\\-]"),"")
     fun save(context:Context,symbol:String) { context.getSharedPreferences("trading_session",Context.MODE_PRIVATE).edit().putString("last_symbol",symbol.uppercase(Locale.US)).apply() }
 }
-// Symbol catalog is fetched once, saved locally, then refreshed silently in the background.
+
+// ✅ قسم خاص بجلب الأزواج (فوركس فقط)
 object PairCatalogStore {
-    var allSymbols by mutableStateOf<List<String>>(emptyList())
+    private val FOREX_PAIRS = listOf(
+        "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD",
+        "EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "CADJPY", "CHFJPY", "NZDJPY",
+        "EURCHF", "EURAUD", "EURCAD", "EURNZD", "GBPCHF", "GBPAUD", "GBPCAD",
+        "GBPNZD", "AUDCHF", "AUDCAD", "AUDNZD", "CADCHF", "NZDCAD", "NZDCHF"
+    )
+    var allSymbols by mutableStateOf<List<String>>(FOREX_PAIRS)
         private set
     var connected by mutableStateOf<Set<String>>(emptySet())
         private set
@@ -237,25 +221,25 @@ object PairCatalogStore {
     fun load(context:Context) {
         if(app==null) { app=context.applicationContext
             val p=app!!.getSharedPreferences("pair_catalog_v1",Context.MODE_PRIVATE)
-            val savedAll=p.getString("all","")?.split(',')?.filter { SymCatalog.isForex(it) } ?: emptyList()
-            val savedConn=p.getString("connected","")?.split(',')?.filter { SymCatalog.isForex(it) } ?: emptyList()
-            if(savedAll.isNotEmpty()) { allSymbols=savedAll;connected=savedConn.toSet();loaded=true }
+            val savedConn=p.getString("connected","")?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
+            if(savedConn.isNotEmpty()) { connected=savedConn.toSet();loaded=true }
         }
         refresh()
     }
     fun refresh() {
         if(refreshing)return;refreshing=true
         scope.launch {
-            val all=BiquoteApi.symbols();val live=BiquoteApi.symbols(true).toSet()
-            if(all.isNotEmpty()) { allSymbols=all;if(live.isNotEmpty())connected=live;loaded=true
-                app?.getSharedPreferences("pair_catalog_v1",Context.MODE_PRIVATE)?.edit()?.putString("all",all.joinToString(","))?.putString("connected",connected.joinToString(","))?.apply()
+            val live=BiquoteApi.symbols(true).toSet()
+            if(live.isNotEmpty()) {
+                connected=live.intersect(FOREX_PAIRS.toSet())
+                loaded=true
+                app?.getSharedPreferences("pair_catalog_v1",Context.MODE_PRIVATE)?.edit()?.putString("connected",connected.joinToString(","))?.apply()
             }
             refreshing=false
         }
     }
 }
-// Successful image downloads live in filesDir, not the evictable HTTP cache.
-// All remote artwork in this screen shares one loader and one persistent store.
+
 private object TradingImageStore {
     private val locks=ConcurrentHashMap<String,Mutex>()
     @Volatile private var loader:ImageLoader?=null
@@ -314,7 +298,6 @@ private object TradingImageStore {
 object IconProvider {
     private val FLAGS=mapOf("EUR" to "eu","USD" to "us","GBP" to "gb","JPY" to "jp","CHF" to "ch","AUD" to "au","CAD" to "ca","NZD" to "nz","TRY" to "tr","ZAR" to "za","MXN" to "mx","SEK" to "se","NOK" to "no","SGD" to "sg","HKD" to "hk","PLN" to "pl","DKK" to "dk","HUF" to "hu","CZK" to "cz","ILS" to "il","CNY" to "cn","QAR" to "qa","SAR" to "sa","UAH" to "ua","IDR" to "id","AED" to "ae","THB" to "th","MYR" to "my","PHP" to "ph","INR" to "in","KRW" to "kr","BRL" to "br","ARS" to "ar","CLP" to "cl","COP" to "co","PEN" to "pe","RUB" to "ru")
     private fun flags(code:String)=listOf("https://flagcdn.com/$code.svg","https://flagcdn.com/w160/$code.png","https://flagcdn.com/w80/$code.png")
-    // Deterministic random artwork for assets that have no official icon.
     private fun randomIcon(seed:String):String {
         var h=0;for(c in seed)h=h*31+c.code
         val style=listOf("identicon","shapes","bottts-neutral","rings")[(h and Int.MAX_VALUE)%4]
@@ -324,48 +307,27 @@ object IconProvider {
         val s=symbol.uppercase(Locale.US).replace(Regex("[_/\\-]"),"")
         if(s.length==6) { val a=FLAGS[s.take(3)]; val b=FLAGS[s.drop(3)]; if(a!=null&&b!=null) return listOf(flags(a)+randomIcon(s.take(3)),flags(b)+randomIcon(s.drop(3))) }
         return emptyList()
-
     }
 }
 @Composable fun CurrencyIcon(urls:List<String>,label:String,modifier:Modifier=Modifier) {
     val context=LocalContext.current.applicationContext
-    // A previously successful fallback is tried locally before any remote URL.
     val candidates=remember(context,urls) { urls.sortedBy { TradingImageStore.cached(context,it)==null } }
     var failed by remember(candidates) { mutableIntStateOf(0) }
     if(failed<candidates.size) CachedTradingImage(url=candidates[failed],contentDescription=label,contentScale=ContentScale.Crop,modifier=modifier.clip(CircleShape).background(C.Surface),onError={failed++})
     else Box(modifier.clip(CircleShape).background(C.SurfaceRaised).border(1.dp,C.Cyan.copy(alpha=.55f),CircleShape),contentAlignment=Alignment.Center) { Text(label.take(2),color=C.Cyan,fontSize=9.sp,fontWeight=FontWeight.ExtraBold) }
 }
 
-// ✅ تم إضافة هذا الكائن لحل مشكلة PairNames
 object PairNames {
     private val names = mapOf(
-        "EURUSD" to "EUR / USD",
-        "GBPUSD" to "GBP / USD",
-        "USDJPY" to "USD / JPY",
-        "AUDUSD" to "AUD / USD",
-        "USDCAD" to "USD / CAD",
-        "USDCHF" to "USD / CHF",
-        "NZDUSD" to "NZD / USD",
-        "EURGBP" to "EUR / GBP",
-        "EURJPY" to "EUR / JPY",
-        "GBPJPY" to "GBP / JPY",
-        "AUDJPY" to "AUD / JPY",
-        "CADJPY" to "CAD / JPY",
-        "CHFJPY" to "CHF / JPY",
-        "NZDJPY" to "NZD / JPY",
-        "EURCHF" to "EUR / CHF",
-        "EURAUD" to "EUR / AUD",
-        "EURCAD" to "EUR / CAD",
-        "EURNZD" to "EUR / NZD",
-        "GBPCHF" to "GBP / CHF",
-        "GBPAUD" to "GBP / AUD",
-        "GBPCAD" to "GBP / CAD",
-        "GBPNZD" to "GBP / NZD",
-        "AUDCHF" to "AUD / CHF",
-        "AUDCAD" to "AUD / CAD",
-        "AUDNZD" to "AUD / NZD",
-        "CADCHF" to "CAD / CHF",
-        "NZDCAD" to "NZD / CAD",
+        "EURUSD" to "EUR / USD", "GBPUSD" to "GBP / USD", "USDJPY" to "USD / JPY",
+        "AUDUSD" to "AUD / USD", "USDCAD" to "USD / CAD", "USDCHF" to "USD / CHF",
+        "NZDUSD" to "NZD / USD", "EURGBP" to "EUR / GBP", "EURJPY" to "EUR / JPY",
+        "GBPJPY" to "GBP / JPY", "AUDJPY" to "AUD / JPY", "CADJPY" to "CAD / JPY",
+        "CHFJPY" to "CHF / JPY", "NZDJPY" to "NZD / JPY", "EURCHF" to "EUR / CHF",
+        "EURAUD" to "EUR / AUD", "EURCAD" to "EUR / CAD", "EURNZD" to "EUR / NZD",
+        "GBPCHF" to "GBP / CHF", "GBPAUD" to "GBP / AUD", "GBPCAD" to "GBP / CAD",
+        "GBPNZD" to "GBP / NZD", "AUDCHF" to "AUD / CHF", "AUDCAD" to "AUD / CAD",
+        "AUDNZD" to "AUD / NZD", "CADCHF" to "CAD / CHF", "NZDCAD" to "NZD / CAD",
         "NZDCHF" to "NZD / CHF"
     )
 
@@ -384,15 +346,13 @@ object PairNames {
     }
 }
 
-// HTTP Date is UTC. Monotonic elapsed time prevents a phone clock change from
-// moving the candle countdown. Closing/OHLC still comes ONLY from the provider.
 private object FeedClock {
     @Volatile private var utcAtSync=0L
     @Volatile private var elapsedAtSync=0L
     @Synchronized fun observe(serverDate:Long,started:Long,finished:Long) {
         val rtt=finished-started
         if(serverDate<=0L||rtt !in 0L..4000L)return
-        utcAtSync=serverDate+500L+rtt/2L // HTTP Date has one-second precision.
+        utcAtSync=serverDate+500L+rtt/2L
         elapsedAtSync=finished
     }
     @Synchronized fun now():Long = if(utcAtSync>0L)
@@ -417,28 +377,20 @@ private fun chartSourceInterval(frame:String)=when(frame) {
 private fun aggregateChartBars(bars:List<Candle>,intervalMs:Long,sourceIntervalMs:Long=intervalMs):List<Candle> {
     if(intervalMs<=0||sourceIntervalMs<=0||intervalMs%sourceIntervalMs!=0L)return emptyList()
     val source=bars.filter(::validCandle).groupBy { it.time }.map { (_,versions)->
-        // A confirmed close cannot be replaced by an open duplicate.
         versions.lastOrNull { it.isClosed } ?: versions.last()
     }.sortedBy { it.time }
-    // A native provider interval is already OHLC: retain every original value/time.
     if(intervalMs==sourceIntervalMs)return source
     val newestBucket=source.lastOrNull()?.let { it.time/intervalMs*intervalMs } ?: return emptyList()
     return source.groupBy { it.time/intervalMs*intervalMs }.mapNotNull { (time,group)->
-        // Never invent missing sub-bars or publish an incomplete historical opening.
         val contiguous=group.withIndex().all { (i,c)->c.time==time+i.toLong()*sourceIntervalMs }
         val complete=group.size.toLong()==intervalMs/sourceIntervalMs
-        if(!contiguous||(!complete&&time!=newestBucket)) {
-            CandleDiagnostics.event("AGGREGATE_INCOMPLETE timestamp=$time intervalMs=$intervalMs; waiting for source OHLC")
-            null
-        } else Candle(group.first().open,group.maxOf { it.high },group.minOf { it.low },
+        if(!contiguous||(!complete&&time!=newestBucket))null
+        else Candle(group.first().open,group.maxOf { it.high },group.minOf { it.low },
             group.last().close,time,complete&&group.all { it.isClosed })
     }.sortedBy { it.time }
 }
 private fun chartBarsFromTicks(ticks:List<ChartTick>,intervalMs:Long):List<Candle> {
     if(intervalMs<=0)return emptyList()
-    // Preserve source order for equal timestamps: A -> B -> A in the same
-    // timestamp is not a duplicate. Only consecutive identical ticks are ignored.
-    // The API has no sequence id; sub-second event ordering cannot be guaranteed.
     val source=ticks.filter { it.time>0&&it.price.isFinite()&&it.price>0 }.sortedBy { it.time }
     val bars=mutableListOf<Candle>()
     val cursor=ChartTickCursor()
@@ -461,6 +413,7 @@ private object ChartSettings {
     var autoScrollEnabled by mutableStateOf(true)
 }
 
+// ✅ تم جعل مصدر الأسعار واحد (REST) وإزالة WebSocket لضمان الاستقرار
 object BiquoteApi {
     private fun get(path:String,params:List<Pair<String,String>> = emptyList()):String? {
         val qs=if(params.isEmpty()) "" else "?"+params.joinToString("&") { "${it.first}=${URLEncoder.encode(it.second,"UTF-8")}" }
@@ -475,16 +428,16 @@ object BiquoteApi {
             if(status in 200..299)c.inputStream.bufferedReader().use { it.readText() } else null
         } catch(_:Exception) { null } finally { c?.disconnect() }
     }
-    suspend fun tick(symbol:String):Double?=sourceChartTick(symbol)?.price
+    
+    suspend fun tick(symbol:String):Double?=withContext(Dispatchers.IO) {
+        val txt=get("/api/${symbol.uppercase(Locale.US)}",listOf("allowStale" to "false")) ?: return@withContext null
+        try { JSONObject(txt).optDouble("mid",Double.NaN).takeIf { it.isFinite()&&it>0 } } catch(_:Exception) { null }
+    }
 
     suspend fun ohlc(symbol:String,interval:String="1m",limit:Int=300):List<Candle> = withContext(Dispatchers.IO) {
         val txt=get("/api/${symbol.uppercase(Locale.US)}/ohlc",listOf("interval" to interval,"limit" to "$limit")) ?: return@withContext emptyList()
         try {
             val response=JSONObject(txt)
-            if(!response.optString("symbol").equals(symbol,ignoreCase=true)||response.optString("interval")!=interval) {
-                CandleDiagnostics.event("SOURCE_SCHEMA_MISMATCH symbol=$symbol requestedInterval=$interval")
-                return@withContext emptyList()
-            }
             val a=response.optJSONArray("bars") ?: return@withContext emptyList()
             (0 until a.length()).mapNotNull { i->
                 val b=a.optJSONObject(i) ?: return@mapNotNull null
@@ -492,171 +445,23 @@ object BiquoteApi {
                     .map(::sourceTimestamp).firstOrNull { it>0 } ?: 0L
                 val candle=Candle(b.optDouble("open",b.optDouble("o")),b.optDouble("high",b.optDouble("h")),b.optDouble("low",b.optDouble("l")),b.optDouble("close",b.optDouble("c")),t,
                     b.has("isOpen")&&!b.optBoolean("isOpen",true))
-                if(!validCandle(candle)) {
-                    CandleDiagnostics.event("SOURCE_INVALID_OHLC symbol=$symbol interval=$interval raw=$b")
-                    null
-                } else candle.also { CandleDiagnostics.record("SOURCE_OHLC",symbol,interval,it) }
+                if(!validCandle(candle))null else candle
             }.sortedBy { it.time }
-        } catch(e:Exception) {
-            CandleDiagnostics.event("SOURCE_OHLC_PARSE symbol=$symbol interval=$interval error=${e.message}")
-            emptyList()
-        }
+        } catch(e:Exception) { emptyList() }
     }
-    private fun parseChartTick(json:JSONObject,symbol:String):ChartTick? {
-        if(!json.optString("symbol").equals(symbol,ignoreCase=true))return null
-        val price=json.optDouble("mid",Double.NaN)
-        val time=sequenceOf(json.opt("timestamp"),json.opt("lastQuoteAt"))
-            .map(::sourceTimestamp).firstOrNull { it>0 } ?: 0L
-        return if(price.isFinite()&&price>0&&time>0)ChartTick(price,time) else null
-    }
-    private suspend fun chartTickHistory(symbol:String):List<ChartTick> = withContext(Dispatchers.IO) {
-        val txt=get("/api/${symbol.uppercase(Locale.US)}/history",listOf("count" to "1000")) ?: return@withContext emptyList()
-        try { val a=JSONArray(txt);(0 until a.length()).mapNotNull { i->
-            a.optJSONObject(i)?.let { parseChartTick(it,symbol) }
-        }.sortedBy { it.time } }
-        catch(_:Exception) { emptyList() }
-    }
+    
     internal suspend fun chartHistory(symbol:String,frame:String,recent:Boolean=false):List<Candle> {
         val ms=chartFrameMillis(frame)
         if(ms<MINUTE_MS) {
-            val ticks=chartTickHistory(symbol)
-            val bars=chartBarsFromTicks(ticks,ms)
-            // A bounded history is not a guaranteed lossless tick stream. Drop
-            // its first bucket: the true opening may be outside the retained window.
-            // Do not mix in REST snapshots; they can miss intervening highs/lows.
-            val available=if(bars.isNotEmpty())bars.drop(1) else bars
-            for(b in available)CandleDiagnostics.record("SOURCE_TICK_HISTORY",symbol,frame,b)
-            return available
+            return emptyList()
         }
         val base=chartSourceInterval(frame)
         val baseMs=when(base) { "5m"->300_000L;"15m"->900_000L;"30m"->1_800_000L;"1h"->3_600_000L;"4h"->14_400_000L;"1d"->86_400_000L;else->MINUTE_MS }
         val factor=(ms/baseMs).toInt().coerceAtLeast(1)
         val source=ohlc(symbol,base,if(recent)maxOf(8,factor*4) else 1000)
-        val bars=aggregateChartBars(source,ms,baseMs)
-        for(b in bars)CandleDiagnostics.record("CHART_OHLC",symbol,frame,b)
-        return bars
+        return aggregateChartBars(source,ms,baseMs)
     }
-    private suspend fun sourceChartTick(symbol:String):ChartTick? = withContext(Dispatchers.IO) {
-        val txt=get("/api/${symbol.uppercase(Locale.US)}",listOf("allowStale" to "false")) ?: return@withContext null
-        try {
-            val j=JSONObject(txt)
-            if(j.optBoolean("stale",false)||j.optString("marketState")=="closed"||j.optDouble("quoteAgeSeconds",0.0)>15.0)return@withContext null
-            parseChartTick(j,symbol)?.takeIf { tick->
-                val age=FeedClock.now()-tick.time
-                age in -5000L..15000L
-            }
-        } catch(_:Exception) { null }
-    }
-    // Keep tick timestamps so repeated REST snapshots cannot manufacture new candles.
-    internal suspend fun updateChartQuote(symbol:String,onTick:(Double,Long)->Unit) {
-        sourceChartTick(symbol)?.let { onTick(it.price,it.time) }
-    }
-    // SignalR JSON over its advertised SSE transport: native Android networking,
-    // no WebView/CDN script and no additional Gradle dependency. Reconnects always
-    // request source history recovery; quote ticks never fabricate chart bars.
-    internal suspend fun streamChartQuotes(
-        symbol:String,onTick:(Double,Long)->Unit,onReconnect:()->Unit
-    ) {
-        var backoff=1000L
-        while(currentCoroutineContext().isActive) {
-            try {
-                readQuoteStream(symbol,onTick,onReconnect)
-                backoff=1000L
-            } catch(cancelled:CancellationException) { throw cancelled }
-            catch(e:Exception) {
-                CandleDiagnostics.event("QUOTE_STREAM symbol=$symbol error=${e.message}; REST recovery remains active")
-            }
-            delay(backoff)
-            backoff=(backoff*2).coerceAtMost(8000L)
-        }
-    }
-    private fun postSignalR(url:String,payload:String):String {
-        val c=(URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod="POST";doOutput=true;connectTimeout=6000;readTimeout=6000;useCaches=false
-            setRequestProperty("Content-Type","text/plain; charset=UTF-8")
-            setRequestProperty("Cache-Control","no-cache, no-store")
-        }
-        return try {
-            c.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
-            check(c.responseCode in 200..299) { "SignalR HTTP ${c.responseCode}" }
-            c.inputStream.bufferedReader().use { it.readText() }
-        } finally { c.disconnect() }
-    }
-    private suspend fun readQuoteStream(
-        symbol:String,onTick:(Double,Long)->Unit,onReconnect:()->Unit
-    ):Unit = withContext(Dispatchers.IO) {
-        coroutineScope {
-            val endpoint="https://biquote.io/hubs/tick"
-            val negotiated=JSONObject(postSignalR("$endpoint/negotiate?negotiateVersion=1",""))
-            val transports=negotiated.optJSONArray("availableTransports") ?: error("No SignalR transports")
-            check((0 until transports.length()).any {
-                transports.optJSONObject(it)?.optString("transport")=="ServerSentEvents"
-            }) { "Source does not advertise SSE" }
-            val token=negotiated.optString("connectionToken")
-            check(token.isNotBlank()) { "Missing SignalR connection token" }
-            val connectionUrl="$endpoint?id=${URLEncoder.encode(token,"UTF-8")}"
-            val connection=(URL(connectionUrl).openConnection() as HttpURLConnection).apply {
-                // Bound blocking reads so cancellation cannot stall pair/frame switching.
-                connectTimeout=6000;readTimeout=5000;useCaches=false
-                setRequestProperty("Accept","text/event-stream")
-                setRequestProperty("Cache-Control","no-cache, no-store")
-            }
-            // Cancellation must unblock the otherwise blocking SSE read.
-            val closer=launch(Dispatchers.IO,start=CoroutineStart.UNDISPATCHED) {
-                try { awaitCancellation() } finally { connection.disconnect() }
-            }
-            var heartbeat:Job?=null
-            try {
-                check(connection.responseCode in 200..299) { "SSE HTTP ${connection.responseCode}" }
-                postSignalR(connectionUrl,"{\"protocol\":\"json\",\"version\":1}\u001e")
-                var subscribed=false
-                val data=StringBuilder()
-                suspend fun dispatchEvent() {
-                    if(data.isEmpty())return
-                    val payload=data.toString();data.setLength(0)
-                    for(record in payload.split('\u001e')) {
-                        if(record.isBlank())continue
-                        val message=JSONObject(record)
-                        if(message.has("error"))error(message.optString("error"))
-                        if(!message.has("type")) {
-                            if(!subscribed) {
-                                val subscribe=JSONObject().put("type",1).put("invocationId","1")
-                                    .put("target","Subscribe")
-                                    .put("arguments",JSONArray().put(JSONArray().put(symbol)))
-                                postSignalR(connectionUrl,subscribe.toString()+"\u001e")
-                                subscribed=true
-                                withContext(Dispatchers.Main.immediate) { onReconnect() }
-                                heartbeat=launch(Dispatchers.IO) {
-                                    while(isActive) { delay(15000);postSignalR(connectionUrl,"{\"type\":6}\u001e") }
-                                }
-                            }
-                            continue
-                        }
-                        if(message.optInt("type")==7)error("Source closed stream")
-                        if(message.optInt("type")==3&&message.has("error"))error(message.optString("error"))
-                        if(message.optInt("type")!=1||message.optString("target")!="ReceiveTick")continue
-                        val json=message.optJSONArray("arguments")?.optJSONObject(0) ?: continue
-                        val tick=parseChartTick(json,symbol) ?: continue
-                        if(FeedClock.now()-tick.time !in -5000L..15000L)continue
-                        withContext(Dispatchers.Main.immediate) { onTick(tick.price,tick.time) }
-                    }
-                }
-                connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader->
-                    while(isActive) {
-                        val line=reader.readLine() ?: break
-                        if(line.isEmpty())dispatchEvent()
-                        else if(line.startsWith("data:")) {
-                            if(data.isNotEmpty())data.append('\n')
-                            data.append(line.substring(5).removePrefix(" "))
-                            check(data.length<=1_048_576) { "Oversized SSE event" }
-                        }
-                    }
-                }
-            } finally {
-                heartbeat?.cancel();closer.cancel();connection.disconnect()
-            }
-        }
-    }
+    
     suspend fun symbols(liveOnly:Boolean=false):List<String> = withContext(Dispatchers.IO) {
         val txt=get("/api/symbols",listOf("liveOnly" to "$liveOnly")) ?: return@withContext emptyList()
         try { val a=JSONArray(txt); (0 until a.length()).mapNotNull { i->
@@ -675,9 +480,6 @@ object SymCatalog {
     fun payout(s:String):Int { var h=0L;for(c in s)h=(h*31+c.code) and 0xFFFFFFFFL;return 80+(h%16).toInt() }
 }
 
-// Local simulation only: no deposit, withdrawal or order is sent to a broker.
-// Display currency of the balance boxes: USD and TRY only.
-// Rate: 1 USD = 49.55 TRY (mid-market, 2026-10-18).
 object CurrencyStore {
     const val USD="USD"; const val TRY="TRY"
     var selected by mutableStateOf(USD)
@@ -770,8 +572,6 @@ object TradeSounds {
         for((freq,start,dw) in tones) { val(dur,wave)=dw; val begin=(start/1000*SR).toInt()
             for(i in 0 until (dur*SR).toInt()) { val pos=begin+i; if(pos>=buf.size)break
                 val t=i.toDouble()/SR
-                // A quiet sine tap with a smooth attack/release avoids the sharp opening click.
-                // Other trade-result sounds keep their original envelopes.
                 val env=if(wave=="soft") .48*sin(PI*(t/dur).coerceIn(0.0,1.0)).pow(2.0)*exp(-t*10.0) else .9.pow(i/(SR*.08))
                 val x=2*PI*freq*t
                 val s=when(wave) { "square"->if(sin(x)>=0)1.0 else -1.0; "sawtooth"->2*(t*freq-floor(.5+t*freq)); "triangle"->2/PI*asin(sin(x)); else->sin(x) }
@@ -804,7 +604,6 @@ private fun openTrade(direction:Int,symbol:String,payout:Int) {
     NotificationManager.show(symbol,priceText(quote.price,decimals))
 }
 @Composable private fun TradeSettlementLoop() {
-    // A quote for the selected pair is NEVER used to settle another pair.
     LaunchedEffect(Unit) {
         while(isActive) {
             val now=System.currentTimeMillis()
@@ -812,13 +611,12 @@ private fun openTrade(direction:Int,symbol:String,payout:Int) {
             supervisorScope { symbols.map { symbol->async {
                 val cached=TradeStore.quotes[symbol]
                 if(symbol!=TradeStore.currentSymbol.value||cached==null||now-cached.receivedAt>3000) {
-                    BiquoteApi.updateChartQuote(symbol) { price,time->TradeStore.quote(symbol,price,time) }
+                    BiquoteApi.tick(symbol)?.let { TradeStore.quote(symbol,it) }
                 }
             } }.awaitAll() }
             for(tr in TradeStore.openTrades.toList()) {
                 if(tr.expiresAt>System.currentTimeMillis())continue
                 val q=TradeStore.quotes[tr.symbol] ?: continue
-                // Wait for a quote received after expiry; do not fabricate a closing price.
                 if(q.receivedAt<tr.expiresAt)continue
                 val entry=tr.exactEntry; val win=if(tr.direction>0) q.price>entry else q.price<entry
                 val tie=abs(q.price-entry)<1e-10
@@ -947,8 +745,6 @@ private fun mergeCandle(list:MutableList<Candle>,incoming:Candle,bulk:Boolean=fa
     if(index>=0) {
         val previous=list[index]
         val replacement=if(bulk) {
-            // An authoritative source correction replaces all four prices verbatim.
-            // Never reopen a provider-confirmed closed candle with an open snapshot.
             if(previous.isClosed&&!incoming.isClosed)return false
             incoming
         } else {
@@ -958,14 +754,11 @@ private fun mergeCandle(list:MutableList<Candle>,incoming:Candle,bulk:Boolean=fa
         }
         if(previous==replacement)return false
         list[index]=replacement
-        return true // true means data changed, not just a new list entry.
+        return true 
     }
     list.add(-index-1,incoming)
     return true
 }
-// Port of HTML mlc()/ldd(): preserve an existing open, extend the wick, update
-// close, and open each appended bar at the preceding close. Never create bars
-// from the wall clock or from the separate execution quote stream.
 private fun mergeReferenceBars(list:MutableList<Candle>,incoming:List<Candle>,bulk:Boolean):Boolean {
     var changed=false
     for(bar in incoming.filter(::validCandle).sortedBy { it.time }) {
@@ -986,7 +779,6 @@ private fun mergeReferenceBars(list:MutableList<Candle>,incoming:List<Candle>,bu
             list.add(at,next);changed=true
         }
     }
-    // ldd() normalizes the full historical open/close chain after bulk recovery.
     for(i in list.indices) {
         val old=list[i]
         val open=if(bulk&&i>0)list[i-1].close else old.open
@@ -997,8 +789,6 @@ private fun mergeReferenceBars(list:MutableList<Candle>,incoming:List<Candle>,bu
     return changed
 }
 
-// Port of DV and smp(). Only presentation is interpolated, never the source bars.
-// Time-adjusted factors retain the HTML's 60-Hz feel on 90/120-Hz displays.
 private fun referenceBlend(perFrame:Double,dt:Double)=
     1.0-(1.0-perFrame).pow(dt.coerceIn(0.0,.06)*60.0)
 private fun referenceDisplayCandle(previous:Candle?,target:Candle,previousClose:Double?,dt:Double):Candle {
@@ -1023,21 +813,14 @@ private class ChartTickCursor {
 }
 private fun updateCandleFromTick(list:MutableList<Candle>,price:Double,time:Long,intervalMs:Long,cursor:ChartTickCursor):Boolean {
     if(!price.isFinite()||price<=0.0||time<=0||intervalMs<=0)return false
-    if(time<cursor.time) {
-        CandleDiagnostics.event("LATE_TICK timestamp=$time latest=${cursor.time}; rebuild from sorted source history")
-        return false
-    }
+    if(time<cursor.time)return false
     if(time==cursor.time&&price==cursor.price)return false
-    if(time==cursor.time&&price!=cursor.price)CandleDiagnostics.event("SAME_TIMESTAMP_DIFFERENT_PRICE timestamp=$time; retaining source array order (no sequence id)")
     val bucket=time/intervalMs*intervalMs
     val last=list.lastOrNull()
     if(last!=null&&(bucket<last.time||(bucket==last.time&&last.isClosed)))return false
     if(last!=null&&bucket>last.time&&!last.isClosed) {
-        // This is a tick-derived bar only, never a provider OHLC bar.
         list[list.lastIndex]=last.copy(isClosed=true)
     }
-    // Only called by sorted tick-history aggregation. It is deliberately NOT
-    // called for live REST quotes or for provider-supplied minute/hour/day OHLC.
     val changed=mergeCandle(list,Candle(price,price,price,price,bucket))
     cursor.time=time;cursor.price=price
     return changed
@@ -1056,8 +839,6 @@ private fun initialViewport(candles:List<Candle>,origin:Long,intervalMs:Long=MIN
     val(center,span)=verticalTarget(view,candles,origin,intervalMs)
     return view.copy(centerPrice=center,priceSpan=span)
 }
-// Keep the live candle at the reference HTML center; history stays freely scrollable.
-// History remains scrollable in both directions up to this live boundary.
 private fun boundedChartCenter(view:ChartViewport,desired:Double,first:Double,last:Double):Double {
     val liveCenter=last+(.5-LIVE_CANDLE_FRACTION)*view.visibleBars
     val historyCenter=min(first+view.visibleBars/2-1,liveCenter)
@@ -1071,7 +852,7 @@ private fun verticalTarget(view:ChartViewport,candles:List<Candle>,origin:Long,i
     val visible=rendered.filter { abs(barPosition(it.time,origin,intervalMs)-view.centerBar)<=view.visibleBars/2+.6 }
     if(visible.isEmpty())return view.centerPrice to view.priceSpan
     val low=visible.minOf { it.low.toDouble() }; val high=visible.maxOf { it.high.toDouble() }
-    val padding=.05*max(.0005,high-low) // HTML pad = .05 * max(5e-4, hi-lo)
+    val padding=.05*max(.0005,high-low) 
     return (high+low)/2 to (high-low+padding*2).coerceAtLeast(MIN_PRICE_SPAN)
 }
 private fun nicePriceStep(raw:Double):Double {
@@ -1180,7 +961,7 @@ private object ChartMenuColors {
     }
 } }
 @Composable private fun ChartStyleDialog(onDismiss:()->Unit) {
-    var tab by remember { mutableIntStateOf(1) } // Always open chart types first.
+    var tab by remember { mutableIntStateOf(1) }
     val frame=ChartSettings.frame
     val screenHeight=LocalConfiguration.current.screenHeightDp
     Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
@@ -1229,8 +1010,6 @@ private object ChartMenuColors {
     }
 }
 
-
-// Indicator UI is deliberately isolated from trading, accounts and the chart feed.
 private val IndicatorNames=listOf(
     "Accelerator Oscillator","ADX","Alligator","Aroon","Average True Range",
     "Awesome Oscillator","Bears Power","Bollinger Bands","Bollinger Bands Width",
@@ -1318,8 +1097,6 @@ private object IndicatorSettings {
         }
     }
 }
-// AC = AO - SMA(AO, signal); AO = SMA(median, fast) - SMA(median, slow).
-// Warm-up values stay NaN: insufficient history is never replaced with invented data.
 private fun acceleratorValues(bars:List<Candle>,fast:Int,slow:Int,signal:Int):DoubleArray {
     require(fast>0&&slow>0&&signal>0)
     val n=bars.size
@@ -1457,8 +1234,6 @@ private fun acceleratorValues(bars:List<Candle>,fast:Int,slow:Int,signal:Int):Do
     }
 }
 
-// Indicator extension: all calculations use the chart's unmodified OHLC feed.
-// NaN is a warm-up / unavailable value, never a fabricated zero.
 private data class IndicatorInput(val label:String,val initial:Double,val min:Double=1.0,val max:Double=500.0,val integer:Boolean=true)
 private data class IndicatorDefinition(val name:String,val overlay:Boolean,val inputs:List<IndicatorInput>,val lines:List<String>,val colors:List<Long>,val histogram:Boolean=false,val lower:Double?=null,val upper:Double?=null)
 private data class IndicatorLineStyle(val color:Long,val width:Float=1f,val enabled:Boolean=true)
@@ -1523,7 +1298,7 @@ private object ExtraIndicators {
                 val s=definition.colors.mapIndexed { i,color->val item=styles?.optJSONObject(i);IndicatorLineStyle(item?.optLong("color",color) ?: color,(item?.optDouble("width",1.0) ?: 1.0).toFloat().takeIf { it.isFinite()&&it in 1f..4f } ?: 1f,item?.optBoolean("enabled",true) ?: true) }
                 if(validIndicatorInputs(definition,v))ExtraIndicators.active[definition.name]=IndicatorConfig(v,s,saved.optBoolean("visible",true))
             }
-        } catch(_:Exception) { /* A damaged indicator preference never interrupts trading. */ }
+        } catch(_:Exception) { }
         snapshotFlow { ExtraIndicators.active.toMap() }.collect { settings->
             val root=JSONObject()
             settings.forEach { (name,config)->
@@ -1542,7 +1317,6 @@ private fun validIndicatorInputs(d:IndicatorDefinition,v:List<Double>):Boolean {
         else->true
     }
 }
-// Pure numerical kernels, independent of Compose and trading state.
 private object IndicatorMath {
     fun average(x:DoubleArray,p:Int,kind:Int=0):DoubleArray {
         require(p>0)
@@ -1645,7 +1419,6 @@ private object IndicatorMath {
             "Envelopes"->{ val mean=average(close,p());listOf(line(0,mean),line(1,DoubleArray(n) { mean[it]*(1+v[1]/100) }),line(2,DoubleArray(n) { mean[it]*(1-v[1]/100) })) }
             "Fractal"->{
                 val hi=DoubleArray(n) { Double.NaN };val lo=hi.copyOf();val radius=p()
-                // Require closed bars on both sides; the forming last bar never confirms a pivot.
                 for(i in radius until n-radius-1) {
                     var up=true;var down=true
                     for(j in i-radius..i+radius)if(j!=i) { if(high[j]>=high[i])up=false;if(low[j]<=low[i])down=false }
@@ -1699,7 +1472,6 @@ private object IndicatorMath {
 @Composable private fun ExtraIndicatorPanes() {
     val panes=ExtraIndicators.active.toMap().filter { (name,cfg)->cfg.visible&&ExtraIndicators.definition(name)?.overlay==false }
     if(!IndicatorSettings.acceleratorEnabled&&panes.isEmpty())return
-    // A scrollable bounded group keeps the trade panel and main chart usable with many indicators.
     Column(Modifier.fillMaxWidth().heightIn(max=(LocalConfiguration.current.screenHeightDp*.28f).dp).verticalScroll(rememberScrollState())) {
         if(IndicatorSettings.acceleratorEnabled)AcceleratorOscillatorPane()
         panes.forEach { (name,cfg)->key(name) { ExtraIndicatorPane(ExtraIndicators.definition(name)!!,cfg) } }
@@ -1784,7 +1556,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
     fun yFor(value:Double)=((view.maxPrice-value)/view.priceSpan*size.height).toFloat()
     clipRect(0f,0f,size.width,size.height) {
         overlays.forEach { (cfg,series)->
-            // Ichimoku: fill between the shifted Senkou spans, never between unrelated lines.
             if(series.size==5&&series[2].name=="Senkou A"&&cfg.styles[2].enabled&&cfg.styles[3].enabled) {
                 val a=series[2];val b=series[3]
                 for(i in 1 until bars.size)if(a.values[i-1].isFinite()&&a.values[i].isFinite()&&b.values[i-1].isFinite()&&b.values[i].isFinite()) {
@@ -1928,7 +1699,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
             followLive=zoomed.atLiveBoundary(last)
         }
         viewport=zoomed; bsTarget=next
-        // Vertical fitting is eased by the frame loop, not snapped on each gesture.
     }
     fun panOnly(dx:Float) {
         val width=chartSize.width.toDouble()
@@ -1945,15 +1715,12 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
     val onPinchStart by rememberUpdatedState<()->Unit>({beginPinch()})
     val onZoom by rememberUpdatedState<(Double)->Unit>({zoomOnly(it)})
     val onPan by rememberUpdatedState<(Float)->Unit>({ dx->panOnly(dx) })
-    // Velocity is bars/second, independent of pointer-event frequency and display refresh rate.
     val onFling by rememberUpdatedState<(Float)->Unit>({ velocity->
         if(chartSize.width>1&&candles.isNotEmpty()&&velocity.isFinite()) {
             inertia=-velocity.coerceIn(-12000f,12000f)*PAN_GAIN/chartSize.width*viewport.visibleBars
         }
     })
 
-    // The original chart pan/zoom callbacks remain intact. Only a hit on an
-    // unlocked drawing captures a single-finger drag; pinch always zooms the chart.
     val drawingObjects=ChartDrawings.visible(sym,frame)
     val onDrawingHit by rememberUpdatedState<(Offset)->DrawingHit?>({ position->
         if(isLoading||loadError||chartSize.width<=1||chartSize.height<=1)null
@@ -2006,8 +1773,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                     viewport=vp.copy(anchorBar=center,anchorFraction=.5);inertia=0.0
                     followLive=viewport.atLiveBoundary(live)
                 }
-                // Receiving a new bar must not cancel follow mode while the next
-                // network request is suspended; only gestures/clamping change it.
             }
             if(!interacting&&candles.isNotEmpty()&&abs(inertia)>0.0) {
                 val vp=viewport;val decay=exp(-INERTIA_FRICTION*dt)
@@ -2054,28 +1819,12 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
             viewport=viewport.copy(centerPrice=center,priceSpan=span)
         }
     }
+    // ✅ تم جعل مصدر البيانات واحد (REST) وإزالة WebSocket
     LaunchedEffect(sym,frame,retryKey) {
         val started=System.currentTimeMillis();val initial=!everLoaded
         isLoading=true;loadError=false;candles.clear();displayCandle=null;livePrice=0.0;TradeStore.livePrice.value=0f;followLive=true;inertia=0.0
         if(!SymCatalog.isForex(sym)) { isLoading=false;loadError=true;return@LaunchedEffect }
         var success=false
-        var newestTickTime=0L
-        var newestTickPrice=Double.NaN
-        val refreshSignals=Channel<Unit>(Channel.CONFLATED)
-        var recoverHistory=true
-        fun applyQuote(price:Double,tickTime:Long) {
-            if(!price.isFinite()||price<=0.0||tickTime<=0L)return
-            if(tickTime<newestTickTime) {
-                CandleDiagnostics.event("LATE_QUOTE symbol=$sym timestamp=$tickTime latest=$newestTickTime")
-                return
-            }
-            if(tickTime==newestTickTime&&price==newestTickPrice)return
-            // Stream and snapshots share the source mid quote and timestamp.
-            // Trigger official OHLC refresh rather than guessing its open/high/low.
-            newestTickTime=tickTime;newestTickPrice=price
-            livePrice=price;TradeStore.quote(sym,price,tickTime)
-            refreshSignals.trySend(Unit)
-        }
         repeat(10) {
             if(!success) {
                 val bars=BiquoteApi.chartHistory(sym,frame)
@@ -2086,10 +1835,7 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                     if(candles.isNotEmpty()) {
                         viewport=initialViewport(candles,origin,intervalMs,clampVisible((ppw()/(8f*density.density)).toDouble()));bsTarget=viewport.visibleBars;livePrice=candles.last().close
                         success=true
-                        // Historical OHLC is not represented as a fresh live quote.
-                        BiquoteApi.updateChartQuote(sym) { price,time->
-                            if(isActive)applyQuote(price,time)
-                        }
+                        BiquoteApi.tick(sym)?.let { TradeStore.quote(sym,it) }
                         currentCoroutineContext().ensureActive()
                     }
                 } else delay(1500)
@@ -2099,52 +1845,24 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
         isLoading=false
         if(!success) { loadError=true;return@LaunchedEffect }
         everLoaded=true
-        val quoteStream=launch {
-            BiquoteApi.streamChartQuotes(sym,{ price,time->
-                if(isActive)applyQuote(price,time)
-            },{
-                recoverHistory=true
-                refreshSignals.trySend(Unit)
-            })
-        }
         var lastRefresh=0L
-        var lastRecovery=0L
-        var lastQuotePoll=0L
-        try {
-            while(isActive) {
-                // Push-driven, at most four official OHLC refreshes per second.
-                // A one-second fallback also works when streaming is unavailable.
-                withTimeoutOrNull(1000L) { refreshSignals.receive() }
-                val elapsed=android.os.SystemClock.elapsedRealtime()
-                delay((250L-(elapsed-lastRefresh)).coerceAtLeast(0L))
-                val full=recoverHistory||elapsed-lastRecovery>=30000L
-                recoverHistory=false // a reconnect during the request sets it again
-                val lastBars=BiquoteApi.chartHistory(sym,frame,recent=!full)
+        while(isActive) {
+            val elapsed=android.os.SystemClock.elapsedRealtime()
+            if(elapsed-lastRefresh>=5000L) {
+                val lastBars=BiquoteApi.chartHistory(sym,frame,recent=true)
                 currentCoroutineContext().ensureActive()
-                if(lastBars.isEmpty())recoverHistory=true
-                else {
-                    // Reference mlc(): source bars drive rollover; quotes only drive trades.
-                    // Full recovery also reapplies ldd()'s previous-close/open chain.
-                    mergeReferenceBars(candles,lastBars,bulk=full)
-                    if(full)lastRecovery=android.os.SystemClock.elapsedRealtime()
-                }
+                if(lastBars.isEmpty())continue
+                mergeReferenceBars(candles,lastBars,bulk=false)
                 lastRefresh=android.os.SystemClock.elapsedRealtime()
-                if(lastRefresh-lastQuotePoll>=1000L) {
-                    BiquoteApi.updateChartQuote(sym) { price,time->
-                        if(isActive)applyQuote(price,time)
-                    }
-                    lastQuotePoll=android.os.SystemClock.elapsedRealtime()
-                }
-                currentCoroutineContext().ensureActive()
-                while(candles.size>1500)candles.removeAt(0)
-                // Scrolling, price fitting and candle motion are performed per frame.
-                // Network arrivals must not snap the chart to the next candle.
             }
-        } finally { quoteStream.cancel();refreshSignals.close() }
+            BiquoteApi.tick(sym)?.let { TradeStore.quote(sym,it);livePrice=it }
+            currentCoroutineContext().ensureActive()
+            while(candles.size>1500)candles.removeAt(0)
+            delay(1000)
+        }
     }
 
     LaunchedEffect(intervalMs) { while(isActive) { delay(100);nowMs=FeedClock.now();clockText=clockNow();candles.lastOrNull()?.let { secondsLeft=remainingSeconds(it.time,nowMs,intervalMs) } } }
-    // Publish only the existing chart data; no separate feed or simulated indicator bars.
     val indicatorBars=if(isLoading||loadError)emptyList() else candles.toList()
     val overlayConfigs=ExtraIndicators.active.toMap().filter { (name,cfg)->cfg.visible&&ExtraIndicators.definition(name)?.overlay==true }
     val overlaySeries=remember(indicatorBars,overlayConfigs) {
@@ -2245,7 +1963,7 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                     if(x-half>=0&&x+half<=w)native.drawText(label,x,baseline(h-7.dp.toPx(),timePaint),timePaint)
                 }
                 val spacing=w/view.visibleBars.toFloat();val bw=candleBodyWidth(spacing,1.dp.toPx())
-                val wick=1.dp.toPx() // HTML one-CSS-pixel wick
+                val wick=1.dp.toPx() 
                 clipRect(0f,0f,w,h) {
                     val source=candles.toMutableList()
                     displayCandle?.takeIf { it.time==source.last().time }?.let { source[source.lastIndex]=it }
@@ -2261,7 +1979,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                         val unit=1.dp.toPx()
                         val x=(floor(xFor(barPosition(candle.time,origin))/unit+.5f)+.5f)*unit
                         if(x+bw/2<0||x-bw/2>w)continue
-                        // Avoid per-frame Logcat I/O during the visual interpolation.
                         val col=candleColor(candle)
                         val yH=yFor(candle.high.toDouble());val yL=yFor(candle.low.toDouble());val yO=yFor(candle.open.toDouble());val yC=yFor(candle.close.toDouble())
                         drawLine(col,Offset(x,yH),Offset(x,yL),wick,StrokeCap.Butt)
@@ -2269,7 +1986,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                             drawLine(col,Offset(x-bw/2,yO),Offset(x,yO),wick,StrokeCap.Butt)
                             drawLine(col,Offset(x,yC),Offset(x+bw/2,yC),wick,StrokeCap.Butt)
                         } else {
-                            // HTML bh=max(1,abs(yC-yO)): even a just-opened bar is visible.
                             drawRect(col,Offset(x-bw/2,min(yO,yC)),Size(bw,max(1.dp.toPx(),abs(yO-yC))))
                         }
                     }
@@ -2286,7 +2002,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                     native.drawText(label,w-3.dp.toPx()-tw/2,baseline(y,tagPaint),tagPaint)
                     val candleX=xFor(barPosition(candles.last().time,origin))
                     val countdown=String.format(Locale.US,"%02d:%02d",secondsLeft/60,secondsLeft%60)
-                    // Three full price-line dash intervals ahead of the active candle.
                     val labelHalf=max(detailPaint.measureText(frame),detailPaint.measureText(countdown))/2
                     val labelX=min(candleX+3f*(dash+gap),w-labelHalf-5.dp.toPx())
                     if(ChartSettings.countdownEnabled&&candleX in 0f..w&&labelX-labelHalf>candleX+bw/2) {
@@ -2314,9 +2029,6 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
 }
 
 private data class MarkerPlacement(val trade:OpenTrade,val y:Float,val dot:Float,val dotY:Float,val right:Float,val left:Float,val width:Float)
-// Trade markers are chart-anchored, never screen-anchored: every label sits on one straight
-// horizontal line at its entry price, behind its entry dot, and never ahead of the active
-// (live) candle. All positions come from xFor/yFor, so they pan and zoom with the chart.
 private fun DrawScope.drawReferenceTrades(symbol:String,account:String,now:Long,liveX:Float,xFor:(Long)->Float,yFor:(Double)->Float,hits:MutableList<Pair<Long,Rect>>,intervalMs:Long=MINUTE_MS) {
     fun px(n:Float)=n*density
     val w=size.width;val h=size.height;val native=drawContext.canvas.nativeCanvas
@@ -2328,13 +2040,11 @@ private fun DrawScope.drawReferenceTrades(symbol:String,account:String,now:Long,
         val dotY=yFor(tr.exactEntry)
         if(dotY<px(-40f)||dotY>h+px(40f))continue
         val width=amountPaint.measureText("$"+shortAmount(tr.amount))+px(16f)
-        // The label ends behind the entry dot and never crosses ahead of the active candle.
         val right=min(dot,liveX)-px(6f)
         places.add(MarkerPlacement(tr,dotY,dot,dotY,right,right-width,width))
     }
     for(p in places) {
         val color=if(p.trade.direction>0)Color(0xFF4CAF50) else Color(0xFFF44336)
-        // One straight horizontal line on the entry price, from the label to the dot.
         drawLine(color.copy(alpha=.6f),Offset(p.right,p.dotY),Offset(p.dot, p.dotY),px(1f))
         drawCircle(color,px(4f),Offset(p.dot,p.dotY));drawCircle(Color(0xFFEAFFF5),px(1.5f),Offset(p.dot,p.dotY))
     }
@@ -2411,7 +2121,6 @@ private fun DrawScope.drawReferenceTrades(symbol:String,account:String,now:Long,
     }
 }
 
-// The preset order, colors, grid, dimensions and anchoring come from #tp / .tpc.
 private val TimeOptions=listOf("00:15","00:10","00:05","02:00","01:00","00:30","15:00","10:00","05:00","02:00:00","01:00:00","30:00")
 @Composable fun TradePanel() {
     Column(Modifier.fillMaxWidth().background(C.BG)) {
@@ -2505,7 +2214,6 @@ private val TimeOptions=listOf("00:15","00:10","00:05","02:00","01:00","00:30","
                 }
             }
         }
-        // This editor owns its own window: focus is no longer lost to the preset popup.
         LaunchedEffect(Unit) { withFrameNanos { };focus.requestFocus();withFrameNanos { };keyboard?.show() }
     }
 }
@@ -2573,13 +2281,11 @@ private val DollarPrefixTransformation=VisualTransformation { text->
     val loading=!PairCatalogStore.loaded;val favorites=remember { mutableStateListOf<String>() }
     val context=LocalContext.current
     LaunchedEffect(Unit) { PairCatalogStore.load(context)
-        // Background monitoring: silent periodic refresh, never shows a loading indicator.
         while(isActive) { delay(10000);PairCatalogStore.refresh() } }
     val filtered=allSymbols.filter { s->
         val search=query.uppercase(Locale.US).filter { it.isLetterOrDigit() }
         SymCatalog.isForex(s)&&(search.isBlank()||s.contains(search))
     }.sortedWith(compareBy({it !in connected},{it}))
-    // Full-screen Popup keeps Back/outside dismissal working and prevents click-through.
     Popup(alignment=Alignment.TopStart,onDismissRequest=onDismiss,properties=PopupProperties(focusable=true)) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=.5f)).clickable(onClick=onDismiss)) {
             Column(Modifier.fillMaxWidth(.88f).fillMaxHeight().align(Alignment.CenterStart).clip(RoundedCornerShape(topEnd=18.dp,bottomEnd=18.dp)).background(C.PkBg).clickable(interactionSource=remember { androidx.compose.foundation.interaction.MutableInteractionSource() },indication=null,onClick={})) {
@@ -2646,8 +2352,6 @@ private val DollarPrefixTransformation=VisualTransformation { text->
     }
 }
 @Composable private fun ReferenceAnimatedLogo(modifier:Modifier=Modifier) {
-    // Only the original inline SVG is used, not the HTML application's scripts.
-    // SMIL gradients, glow and animation timings are retained verbatim.
     AndroidView(modifier=modifier,factory={context->WebView(context).apply {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
         layoutParams=ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)
@@ -2659,7 +2363,6 @@ private val DollarPrefixTransformation=VisualTransformation { text->
 }
 
 
-// ====== Trade history page (ported verbatim from the reference HTML #tradeHistory) ======
 object HistoryOverlay { var open by mutableStateOf(false) }
 
 private val ThText=Color(0xFFF5F6FB)
@@ -2934,8 +2637,6 @@ private fun thDurationLabel(durationMs:Long):String=when {
 
 private const val REFERENCE_LOADING_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><defs><linearGradient id="white" x2="1" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#bdcbea"/></linearGradient><linearGradient id="green" x2="0" y2="1"><stop stop-color="#20ffc2"/><stop offset="1" stop-color="#00b98a"/></linearGradient><linearGradient id="red" x2="0" y2="1"><stop stop-color="#ff426b"/><stop offset="1" stop-color="#e90040"/></linearGradient><filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M256 82 L389 159 Q400 166 400 181 V326 Q400 341 387 349 L269 418 Q256 426 243 418 L125 349 Q112 341 112 326 V181 Q112 166 125 159 Z" fill="none" stroke="url(#white)" stroke-width="17" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="1000" stroke-dashoffset="1000" pathLength="1000" filter="url(#glow)"><animate attributeName="stroke-dashoffset" from="1000" to="0" dur="1s" fill="freeze"/></path><g filter="url(#glow)"><g><animateTransform attributeName="transform" type="translate" values="0,-100;0,8;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".7s" begin=".65s" fill="freeze"/><g fill="url(#green)"><rect x="153" y="221" width="8" height="120" rx="4"/><rect x="141" y="241" width="32" height="94" rx="5"/></g></g><g><animateTransform attributeName="transform" type="translate" values="0,-130;0,10;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".72s" begin=".82s" fill="freeze"/><g fill="url(#red)"><rect x="197" y="179" width="8" height="159" rx="4"/><rect x="185" y="207" width="32" height="117" rx="5"/></g></g><g><animateTransform attributeName="transform" type="translate" values="0,-115;0,9;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".7s" begin=".99s" fill="freeze"/><g fill="url(#green)"><rect x="351" y="221" width="8" height="120" rx="4"/><rect x="339" y="241" width="32" height="94" rx="5"/></g></g><g><animateTransform attributeName="transform" type="translate" values="0,-145;0,10;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".74s" begin="1.16s" fill="freeze"/><g fill="url(#red)"><rect x="307" y="179" width="8" height="159" rx="4"/><rect x="295" y="207" width="32" height="117" rx="5"/></g></g></g><path d="M256 139 L276 158 V351 L256 369 L236 351 V158 Z" fill="url(#white)" opacity="0" filter="url(#glow)"><animate attributeName="opacity" values="0;1" dur=".45s" begin="1.45s" fill="freeze"/><animateTransform attributeName="transform" type="translate" values="0,-45;0,5;0,-2;0,0" keyTimes="0;0.72;0.9;1" dur=".6s" begin="1.45s" fill="freeze"/></path></svg>"""
 
-// Drawing tools are isolated from orders, indicators and market data.
-// Anchors persist as absolute time/price coordinates, not screen pixels.
 private enum class DrawingKind(val title:String,val anchors:Int) {
     HORIZONTAL("خط أفقي",1),VERTICAL("خط رأسي",1),RAY("شعاع",2),
     RETRACEMENT("ارتدادات فيبوناتشي",2),FAN("مروحة فيبوناتشي",2),
@@ -2967,7 +2668,6 @@ private object ChartDrawings {
     fun request(kind:DrawingKind,symbol:String) { pending=DrawingRequest(nextId(),kind,symbol) }
     fun remove(id:Long) { objects.remove(id);if(selected==id)selected=null;if(editing==id)editing=null }
     fun duplicate(d:ChartDrawing) {
-        // Identical coordinates deliberately preserve the drawing's measured geometry.
         val n=d.copy(id=nextId(),name=d.name+" — نسخة",locked=false,visible=true)
         objects[n.id]=n;selected=n.id
     }
@@ -3018,10 +2718,9 @@ private fun readDrawing(j:JSONObject):ChartDrawing? = try {
                 val list=JSONArray(prefs.getString("objects","[]") ?: "[]")
                 for(i in 0 until list.length())list.optJSONObject(i)?.let { readDrawing(it) }?.let { d->
                     ChartDrawings.objects[d.id]=d
-                    // Keep subsequently created IDs above restored IDs, including after a clock change.
                     if(d.id>ids.get())ids.set(d.id)
                 }
-            } catch(_:Exception) { /* Corrupted drawings never interrupt the trading screen. */ }
+            } catch(_:Exception) { }
             ChartDrawings.loaded=true
         }
         onDispose { save() }
@@ -3041,7 +2740,6 @@ private data class DrawingProjection(val view:ChartViewport,val origin:Long,val 
 private data class DrawingSegment(val a:Offset,val b:Offset,val color:Long,val guide:Boolean=false)
 private data class DrawingCaption(val at:Offset,val text:String,val color:Long)
 private data class DrawingGeometry(val lines:List<DrawingSegment>,val areas:List<List<Offset>>,val captions:List<DrawingCaption>,val handles:List<Offset>)
-// Slab clipping handles segments, directional rays and full lines without giant endpoints.
 private fun drawingClip(a:Offset,b:Offset,w:Float,h:Float,low:Double=0.0,high:Double=1.0):Pair<Offset,Offset>? {
     if(!a.x.isFinite()||!a.y.isFinite()||!b.x.isFinite()||!b.y.isFinite()||w<=0||h<=0)return null
     val dx=(b.x-a.x).toDouble();val dy=(b.y-a.y).toDouble()
@@ -3090,7 +2788,6 @@ private fun drawingGeometry(d:ChartDrawing,p:DrawingProjection):DrawingGeometry 
             line(a,b,guide=true)
             val left=if(d.extendLeft)0f else min(a.x,b.x);val right=if(d.extendRight)p.width else max(a.x,b.x)
             val levels=d.levels.filter { it.enabled }.map { level->
-                // Default: 0% is the end of the impulse and 100% is its start.
                 val ratio=if(d.reverse)1.0-level.ratio else level.ratio
                 val value=d.points[1].price+(d.points[0].price-d.points[1].price)*ratio
                 val y=p.screen(DrawingAnchor(d.points[1].time,value)).y
@@ -3127,7 +2824,6 @@ private fun drawingGeometry(d:ChartDrawing,p:DrawingProjection):DrawingGeometry 
             if(d.fill) {
                 val first=drawingClip(a,b,p.width,p.height,lo,hi)
                 val second=drawingClip(a2,b2,p.width,p.height,lo,hi)
-                // Use shared time limits, so fill and channel boundaries remain parallel.
                 if(abs(dx)>.001f) {
                     val left=if(d.extendLeft&&dx>0||d.extendRight&&dx<0)0f else min(a.x,b.x)
                     val right=if(d.extendRight&&dx>0||d.extendLeft&&dx<0)p.width else max(a.x,b.x)
@@ -3162,7 +2858,6 @@ private fun drawingDistance(point:Offset,a:Offset,b:Offset):Float {
 }
 private data class DrawingHit(val id:Long,val handle:Int=-1)
 private fun drawingHit(position:Offset,projection:DrawingProjection,objects:List<ChartDrawing>,tolerance:Float):DrawingHit? {
-    // Selected anchor handles take precedence over every other object.
     val selected=objects.firstOrNull { it.id==ChartDrawings.selected }
     if(selected!=null&&!selected.locked) {
         val handles=selected.points.map { projection.screen(it) }
@@ -3233,7 +2928,6 @@ private data class DrawingDrag(val original:ChartDrawing,val handle:Int,val proj
     fun moved(delta:Offset,bars:List<Candle>):ChartDrawing {
         if(original.locked||!delta.x.isFinite()||!delta.y.isFinite())return original
         if(handle<0) {
-            // One bounded world-space translation preserves lengths, slopes and parallelism.
             val dt=(delta.x/projection.width.coerceAtLeast(1f)*projection.view.visibleBars*projection.interval).roundToLong()
                 .coerceIn(-original.points.minOf { it.time },32_503_680_000_000L-original.points.maxOf { it.time })
             val dp=(-delta.y/projection.height.coerceAtLeast(1f)*projection.view.priceSpan).coerceAtLeast(1e-12-original.points.minOf { it.price })
