@@ -106,8 +106,8 @@ const val GIFT_ICON_URL = "https://cdn-icons-png.flaticon.com/128/18546/18546266
 object C {
     val BG=Color(0xFF141126); val Surface=Color(0xFF24203D); val SurfaceRaised=Color(0xFF30284F)
     val Cyan=Color(0xFF58D9F5); 
-    val Green=Color(0xFF00FF00); // أخضر نيون ساطع
-    val Red=Color(0xFFFF0000);   // أحمر نيون ساطع
+    val Green=Color(0xFF00FF00); // أخضر ساطع جداً
+    val Red=Color(0xFFFF0000);   // أحمر ساطع جداً
     val Blue=Cyan; val Yellow=Color(0xFFFFD34D); val TextPrimary=Color(0xFFF5F2FF)
     val TextSecondary=Color(0xFFA9A5C6); val Divider=Color(0xFF3D355A); val Grid=Color(0xFF67558D)
     val PriceTag=Cyan; val PkBg=BG; val PkSurface=Surface; val PkTab=Surface; val PkTabOn=Cyan
@@ -135,7 +135,7 @@ private object Ref {
 }
 private const val MINUTE_MS=60_000L
 private const val MIN_PRICE_SPAN=0.00001
-private const val LIVE_CANDLE_FRACTION=.50 // الشمعة في المنتصف 50%
+private const val LIVE_CANDLE_FRACTION=.85 // يجعل الشمعة في أقصى اليمين
 private fun candleBodyWidth(spacing:Float,gapPx:Float):Float {
     if(!spacing.isFinite()||spacing<=0f)return 0f
     val unit=gapPx.coerceAtLeast(.001f)
@@ -844,12 +844,9 @@ private fun verticalTarget(view:ChartViewport,candles:List<Candle>,origin:Long,i
     val visible=rendered.filter { abs(barPosition(it.time,origin,intervalMs)-view.centerBar)<=view.visibleBars/2+.6 }
     if(visible.isEmpty())return view.centerPrice to view.priceSpan
     val low=visible.minOf { it.low.toDouble() }; val high=visible.maxOf { it.high.toDouble() }
-    val rawSpan = high - low
-    // ضغط السعر 10 أضعاف
-    val compressedSpan = max(0.00001, rawSpan * 0.10)
     // توزيع متوازن: 12% حشو من الأعلى والأسفل
-    val padding = compressedSpan * 0.12
-    return (high+low)/2 to (compressedSpan + padding*2)
+    val padding = max(0.0005, (high - low) * 0.12) 
+    return (high+low)/2 to (high-low+padding*2).coerceAtLeast(MIN_PRICE_SPAN)
 }
 private fun nicePriceStep(raw:Double):Double {
     if(!raw.isFinite()||raw<=0)return .001
@@ -2374,4 +2371,826 @@ private val ThGreen=Color(0xFF48A75C); private val ThRed=Color(0xFFF05B5B)
 private class ThItem(val id:Long,val symbol:String,val direction:Int,val amount:Double,val payoutPct:Int,val openedAt:Long,val expiresAt:Long,val entry:Double,val closePrice:Double,val profit:Double,val isOpen:Boolean)
 
 private fun thDigits(symbol:String)=if(symbol.contains("JPY"))3 else if(symbol=="XAUUSD")2 else 5
-private fun thPrice(value:Double,symbol:String)=if(!(value>0))"—" else String
+private fun thPrice(value:Double,symbol:String)=if(!(value>0))"—" else String.format(Locale.US,"%.${thDigits(symbol)}f",value)
+private fun thMoney(value:Double)="$"+String.format(Locale.US,"%.2f",value)
+private fun thClock(ms:Long):String { val n=maxOf(0L,(maxOf(0L,ms)+999)/1000); return String.format(Locale.US,"%02d:%02d",n/60,n%60) }
+private fun thPointUnit(symbol:String)=if(symbol.contains("JPY"))0.001 else if(symbol=="XAUUSD")0.01 else 0.00001
+private fun thTimeOfDay(time:Long)=SimpleDateFormat("HH:mm:ss.SSS",Locale.UK).format(Date(time))
+private fun thDurationLabel(durationMs:Long):String=when {
+    durationMs%60000L==0L->"M"+(durationMs/60000L)
+    durationMs>=60000L->"${durationMs/60000L}m ${durationMs%60000L/1000L}s"
+    else->"${(durationMs+999)/1000L}s"
+}
+
+@Composable fun TradeHistoryPage() {
+    BackHandler { HistoryOverlay.open=false }
+    var tab by remember { mutableStateOf("open") }
+    var selectedId by remember { mutableStateOf<Long?>(null) }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while(true) { now=System.currentTimeMillis(); delay(250) } }
+    val account=AccountStore.selected
+    val items=if(tab=="open")
+        TradeStore.openTrades.filter { it.account==account }.map { ThItem(it.id,it.symbol,it.direction,it.amount,it.payoutPct,it.openedAt,it.expiresAt,it.exactEntry,0.0,0.0,true) }
+    else
+        TradeStore.history.filter { it.trade.account==account }.map { ThItem(it.trade.id,it.trade.symbol,it.trade.direction,it.trade.amount,it.trade.payoutPct,it.trade.openedAt,it.trade.expiresAt,it.trade.exactEntry,it.close,it.profit,false) }
+    val sorted=items.sortedByDescending { it.openedAt }
+    if(selectedId!=null&&sorted.none { it.id==selectedId })selectedId=null
+    val padH=(LocalConfiguration.current.screenWidthDp*0.051f).dp
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Box(Modifier.fillMaxSize().background(Ref.Background)) {
+            Column(Modifier.fillMaxSize()) {
+                Column(Modifier.weight(1f).fillMaxWidth()) {
+                    Text("التداولات",color=ThText,fontSize=20.sp,fontWeight=FontWeight.Medium,textAlign=TextAlign.Start,modifier=Modifier.fillMaxWidth().padding(start=padH,end=padH,top=12.dp,bottom=18.dp))
+                    Row(Modifier.fillMaxWidth().padding(start=padH,end=padH,bottom=18.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        ThTab("مفتوحة",tab=="open") { tab="open"; selectedId=null }
+                        ThTab("مغلقة",tab=="closed") { tab="closed"; selectedId=null }
+                    }
+                    if(sorted.isEmpty()) {
+                        Text("لا توجد تداولات "+(if(tab=="open")"مفتوحة" else "مغلقة"),color=ThEmpty,fontSize=13.sp,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=20.dp))
+                    } else LazyColumn(Modifier.fillMaxSize()) {
+                        items(sorted,key= { it.id }) { item->
+                            TradeHistoryRow(item,selectedId==item.id,now) { selectedId=if(selectedId==item.id)null else item.id }
+                            if(selectedId==item.id)TradeHistoryDetail(item,now)
+                        }
+                    }
+                }
+                BottomNavBar(onHome={ HistoryOverlay.open=false })
+            }
+        }
+    }
+}
+
+@Composable private fun RowScope.ThTab(label:String,on:Boolean,onClick:()->Unit) {
+    Box(Modifier.weight(1f).height(38.dp).clip(RoundedCornerShape(7.dp)).background(if(on)ThTabOnBg else ThTabBg).border(1.dp,if(on)ThTabOnBorder else ThTabBorder,RoundedCornerShape(7.dp)).clickable(onClick=onClick),contentAlignment=Alignment.Center) {
+        Text(label,color=ThText,fontSize=17.sp,fontWeight=FontWeight.Medium)
+    }
+}
+
+@Composable private fun TradeHistoryRow(item:ThItem,selected:Boolean,now:Long,onToggle:()->Unit) {
+    val padH=(LocalConfiguration.current.screenWidthDp*0.051f).dp
+    val rate=PairNames.payout(item.symbol)
+    val profit=if(item.isOpen)item.amount*rate/100 else item.profit
+    val win=!item.isOpen&&item.profit>0
+    val total=if(item.isOpen)item.amount+profit else if(win)item.amount+item.profit else maxOf(0.0,item.amount+item.profit)
+    val sell=item.direction<0
+    Column(Modifier.fillMaxWidth().background(if(selected)Color.White.copy(alpha=.045f) else Color.Transparent).clickable(onClick=onToggle)) {
+        Column(Modifier.fillMaxWidth().height(51.dp).padding(horizontal=padH),verticalArrangement=Arrangement.Center) {
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                Row(Modifier.weight(1.2f),verticalAlignment=Alignment.CenterVertically) {
+                    Text("☆",color=ThStar,fontSize=19.sp)
+                    Spacer(Modifier.width(5.dp))
+                    Text(PairNames.pretty(item.symbol),color=ThAsset,fontSize=14.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
+                    Text("+$rate%",color=ThPct,fontSize=14.sp,maxLines=1)
+                }
+                Spacer(Modifier.weight(1f))
+                Text(if(item.isOpen)thClock(item.expiresAt-now) else "00:00",color=ThTime,fontSize=15.sp,textAlign=TextAlign.End,modifier=Modifier.weight(.8f))
+            }
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                Row(Modifier.weight(1.2f),verticalAlignment=Alignment.CenterVertically) {
+                    Text(if(sell)"↘" else "↗",color=ThDir,fontSize=17.sp,fontWeight=FontWeight.Black)
+                    Spacer(Modifier.width(4.dp))
+                    Text(thMoney(item.amount).replace(".00",""),color=ThAmount,fontSize=15.sp,maxLines=1)
+                }
+                Text(thMoney(total),color=ThGain,fontSize=15.sp,textAlign=TextAlign.Center,modifier=Modifier.weight(1f))
+                Text((if(item.isOpen||win)"+" else "\u2212")+thMoney(kotlin.math.abs(profit)),color=if(item.isOpen||win)ThGain else ThLoss,fontSize=15.sp,textAlign=TextAlign.End,modifier=Modifier.weight(.8f))
+            }
+        }
+    }
+}
+
+@Composable private fun RowScope.ThCell(label:String,value:String,color:Color,align:TextAlign) {
+    Column(Modifier.weight(1f)) {
+        Text(label,color=ThLabel,fontSize=13.sp,maxLines=1,textAlign=align,modifier=Modifier.fillMaxWidth())
+        Text(value,color=color,fontSize=13.sp,fontWeight=FontWeight.Medium,textAlign=align,modifier=Modifier.fillMaxWidth())
+    }
+}
+
+@Composable private fun TradeHistoryDetail(item:ThItem,now:Long) {
+    val padH=(LocalConfiguration.current.screenWidthDp*0.051f).dp
+    val padInner=(LocalConfiguration.current.screenWidthDp*0.035f).dp
+    val isOpen=item.isOpen
+    val entry=item.entry
+    val live=TradeStore.quotes[item.symbol]?.price
+    val current=if(isOpen)(if(live!=null&&live>0)live else entry) else (if(item.closePrice>0)item.closePrice else entry)
+    val duration=maxOf(1L,item.expiresAt-item.openedAt)
+    val left=if(isOpen)maxOf(0L,item.expiresAt-now) else 0L
+    val elapsed=if(isOpen)(100.0*(1.0-left.toDouble()/duration)).coerceIn(0.0,100.0) else 100.0
+    val difference=if(entry>0&&current>0)current-entry else 0.0
+    val points=if(entry>0&&current>0)kotlin.math.round(difference/thPointUnit(item.symbol)).toLong() else 0L
+    val sell=item.direction<0
+    val profit=item.profit
+    Column(Modifier.fillMaxWidth().padding(start=padH,end=padH,bottom=12.dp).clip(RoundedCornerShape(13.dp)).background(ThDetailBg).padding(horizontal=padInner).padding(top=16.dp,bottom=18.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Text("وقت الفتح:",color=ThLabel,fontSize=13.sp)
+                Text(thTimeOfDay(item.openedAt),color=ThText,fontSize=13.sp)
+            }
+            Text(thDurationLabel(duration),color=ThText,fontSize=13.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(top=14.dp))
+            Column(Modifier.weight(1f),horizontalAlignment=Alignment.End) {
+                Text("وقت الإغلاق:",color=ThLabel,fontSize=13.sp)
+                Text(thTimeOfDay(item.expiresAt),color=ThText,fontSize=13.sp)
+            }
+        }
+        Box(Modifier.padding(top=19.dp,bottom=12.dp).fillMaxWidth().height(9.dp).clip(RoundedCornerShape(8.dp)).background(ThBarBg)) {
+            Box(Modifier.fillMaxHeight().fillMaxWidth((elapsed/100).toFloat().coerceIn(0f,1f)).clip(RoundedCornerShape(8.dp)).background(ThBarFill))
+        }
+        Text(if(isOpen)"الوقت المتبقي : "+thClock(left) else "انتهت الصفقة",color=ThText,fontSize=15.sp,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth().padding(bottom=22.dp))
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(ThGridBg).padding(horizontal=padInner,vertical=17.dp)) {
+            Row(Modifier.fillMaxWidth()) {
+                ThCell("توقعاتك:",if(sell)"بيع" else "شراء",if(sell)ThText else ThGreen,TextAlign.Start)
+                ThCell("المنصرف:",thMoney(item.amount),ThText,TextAlign.Center)
+                ThCell("الربح:",thMoney(profit),if(profit<0)ThRed else ThGreen,TextAlign.End)
+            }
+            Spacer(Modifier.height(19.dp))
+            Row(Modifier.fillMaxWidth()) {
+                ThCell("سعر الفتح:",thPrice(entry,item.symbol),ThText,TextAlign.Start)
+                ThCell("الفرق:",if(points>0)"(+$points النقاط)" else if(points<0)"(\u2212${-points} النقاط)" else "(0 النقاط)",if(points>0)ThGreen else if(points<0)ThRed else ThText,TextAlign.Center)
+                ThCell("السعر الحالي:",thPrice(current,item.symbol),ThText,TextAlign.End)
+            }
+        }
+    }
+}
+
+@Composable fun BottomNavBar(onHome:()->Unit={},onOperations:()->Unit={ HistoryOverlay.open=true }) {
+    var selected by remember { mutableIntStateOf(2) }
+    Column(Modifier.background(C.BG)) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(C.Divider))
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            Row(Modifier.fillMaxWidth().background(C.BG).padding(vertical=6.dp),horizontalArrangement=Arrangement.SpaceEvenly,verticalAlignment=Alignment.CenterVertically) {
+                BottomItem("الشارت",selected==0,{selected=0;onHome()}) { ChartIcon(Modifier.size(24.dp),it) }
+                BottomItem("الدردشة",selected==1,{selected=1}) { ChatIcon(Modifier.size(24.dp),it) }
+                BottomItem("العمليات",selected==2,{selected=2;onOperations()}) { HistoryIcon(Modifier.size(24.dp),it) }
+                BottomItem("أول الاجتماعي",selected==3,{selected=3}) { SocialIcon(Modifier.size(24.dp),it) }
+                BottomItem("المزيد",selected==4,{selected=4}) { DotsIcon(Modifier.size(24.dp),it) }
+            }
+        }
+    }
+}
+@Composable fun BottomItem(label:String,selected:Boolean,onClick:()->Unit,icon:@Composable (Color)->Unit) {
+    val color=if(selected)C.Cyan else C.TextSecondary
+    Column(Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick=onClick).padding(horizontal=6.dp,vertical=4.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+        Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(if(selected)C.SurfaceRaised else Color.Transparent).border(1.dp,if(selected)C.Cyan else Color.Transparent,RoundedCornerShape(10.dp)),contentAlignment=Alignment.Center) { icon(color) }
+        Spacer(Modifier.height(3.dp));Text(label,color=color,fontSize=10.sp,textAlign=TextAlign.Center,maxLines=1)
+    }
+}
+
+@Composable private fun ChartIcon(modifier:Modifier=Modifier,color:Color=C.TextPrimary) { Canvas(modifier) {
+    val w=size.width;val h=size.height;val stroke=w*.075f
+    drawLine(color,Offset(w*.12f,h*.12f),Offset(w*.12f,h*.88f),stroke,StrokeCap.Round)
+    drawLine(color,Offset(w*.12f,h*.88f),Offset(w*.90f,h*.88f),stroke,StrokeCap.Round)
+    for((x,range) in listOf(.34f to (.40f to .68f),.57f to (.28f to .57f),.80f to (.18f to .43f))) {
+        val top=h*range.first;val bottom=h*range.second
+        drawLine(color,Offset(w*x,top-h*.10f),Offset(w*x,bottom+h*.10f),stroke*.65f,StrokeCap.Round)
+        drawRoundRect(color,Offset(w*(x-.055f),top),Size(w*.11f,bottom-top),CornerRadius(w*.02f))
+    }
+} }
+@Composable private fun ChatIcon(modifier:Modifier=Modifier,color:Color=C.TextPrimary) { Canvas(modifier) {
+    val w=size.width;val h=size.height;val stroke=w*.075f
+    val bubble=Path().apply {
+        moveTo(w*.23f,h*.16f);lineTo(w*.77f,h*.16f)
+        quadraticBezierTo(w*.90f,h*.16f,w*.90f,h*.29f);lineTo(w*.90f,h*.63f)
+        quadraticBezierTo(w*.90f,h*.76f,w*.77f,h*.76f);lineTo(w*.43f,h*.76f)
+        lineTo(w*.20f,h*.92f);lineTo(w*.20f,h*.75f)
+        quadraticBezierTo(w*.10f,h*.73f,w*.10f,h*.63f);lineTo(w*.10f,h*.29f)
+        quadraticBezierTo(w*.10f,h*.16f,w*.23f,h*.16f);close()
+    }
+    drawPath(bubble,color,style=Stroke(stroke,cap=StrokeCap.Round,join=StrokeJoin.Round))
+    for(x in listOf(.32f,.50f,.68f))drawCircle(color,w*.04f,Offset(w*x,h*.46f))
+} }
+@Composable private fun HistoryIcon(modifier:Modifier=Modifier,color:Color=C.TextPrimary) { Canvas(modifier) {
+    val w=size.width;val h=size.height;val stroke=w*.075f
+    drawRoundRect(color,Offset(w*.18f,h*.10f),Size(w*.64f,h*.80f),CornerRadius(w*.08f),style=Stroke(stroke))
+    for(y in listOf(.32f,.51f,.70f)) {
+        drawCircle(color,w*.025f,Offset(w*.31f,h*y))
+        drawLine(color,Offset(w*.43f,h*y),Offset(w*.69f,h*y),stroke*.8f,StrokeCap.Round)
+    }
+} }
+
+@Composable fun DownArrow(modifier:Modifier=Modifier,color:Color=C.TextSecondary) { Canvas(modifier) { drawPath(Path().apply { moveTo(0f,0f);lineTo(size.width,0f);lineTo(size.width/2,size.height);close() },color) } }
+@Composable fun DotsIcon(modifier:Modifier=Modifier,color:Color=C.TextPrimary) { Canvas(modifier) { val r=size.minDimension*.11f;val y=size.height/2;drawCircle(color,r,Offset(size.width*.15f,y));drawCircle(color,r,Offset(size.width*.5f,y));drawCircle(color,r,Offset(size.width*.85f,y)) } }
+@Composable fun WalletIcon(modifier:Modifier=Modifier,color:Color=Color.White) { Canvas(modifier) { val w=size.width;val h=size.height
+    drawRoundRect(color,Offset(w*.05f,h*.22f),Size(w*.9f,h*.62f),CornerRadius(w*.1f),style=Stroke(w*.08f))
+    drawRoundRect(color,Offset(w*.55f,h*.4f),Size(w*.4f,h*.28f),CornerRadius(w*.06f),style=Stroke(w*.07f));drawCircle(color,w*.05f,Offset(w*.73f,h*.54f))
+} }
+@Composable fun ClockIcon(modifier:Modifier=Modifier,color:Color=C.Cyan) { Canvas(modifier) { val d=size.minDimension;val cx=size.width/2;val cy=size.height/2;val s=d*.09f
+    drawCircle(color,d*.4f,Offset(cx,cy),style=Stroke(s));drawLine(color,Offset(cx,cy),Offset(cx,size.height*.25f),s,StrokeCap.Round);drawLine(color,Offset(cx,cy),Offset(size.width*.72f,cy),s,StrokeCap.Round)
+} }
+@Composable fun DollarIcon(modifier:Modifier=Modifier,color:Color=C.Cyan) { Canvas(modifier) { val d=size.minDimension;val s=d*.09f;val cx=size.width/2;val cy=size.height/2;val m=d*.16f
+    drawCircle(color,d*.4f,Offset(cx,cy),style=Stroke(s));drawLine(color,Offset(cx+m*.6f,cy-m),Offset(cx-m*.5f,cy-m*.2f),s,StrokeCap.Round);drawLine(color,Offset(cx-m*.5f,cy-m*.2f),Offset(cx+m*.5f,cy+m*.2f),s,StrokeCap.Round);drawLine(color,Offset(cx+m*.5f,cy+m*.2f),Offset(cx-m*.6f,cy+m),s,StrokeCap.Round)
+} }
+@Composable fun TradesIcon(modifier:Modifier=Modifier,color:Color=Color.White) { Canvas(modifier) { val w=size.width;val h=size.height;val s=w*.09f
+    drawLine(color,Offset(w*.3f,h*.85f),Offset(w*.3f,h*.15f),s,StrokeCap.Round);drawLine(color,Offset(w*.3f,h*.15f),Offset(w*.15f,h*.32f),s,StrokeCap.Round);drawLine(color,Offset(w*.3f,h*.15f),Offset(w*.45f,h*.32f),s,StrokeCap.Round)
+    drawLine(color,Offset(w*.7f,h*.15f),Offset(w*.7f,h*.85f),s,StrokeCap.Round);drawLine(color,Offset(w*.7f,h*.85f),Offset(w*.55f,h*.68f),s,StrokeCap.Round);drawLine(color,Offset(w*.7f,h*.85f),Offset(w*.85f,h*.68f),s,StrokeCap.Round)
+} }
+@Composable fun SignalIcon(modifier:Modifier=Modifier,color:Color=Color.White) { Canvas(modifier) { val cx=size.width/2;val cy=size.height*.75f;val s=size.minDimension*.09f
+    drawArc(color,180f,180f,false,Offset(cx-size.width*.42f,cy-size.height*.42f),Size(size.width*.84f,size.height*.84f),style=Stroke(s));drawArc(color,180f,180f,false,Offset(cx-size.width*.26f,cy-size.height*.26f),Size(size.width*.52f,size.height*.52f),style=Stroke(s));drawCircle(color,size.minDimension*.1f,Offset(cx,cy-size.height*.02f))
+} }
+@Composable fun ProIcon(modifier:Modifier=Modifier,color:Color=Color.White) { Canvas(modifier) { val w=size.width;val h=size.height
+    drawRoundRect(color,Offset(w*.08f,h*.12f),Size(w*.84f,h*.76f),CornerRadius(w*.16f),style=Stroke(w*.08f))
+    drawPath(Path().apply { moveTo(w*.24f,h*.62f);lineTo(w*.40f,h*.44f);lineTo(w*.54f,h*.56f);lineTo(w*.76f,h*.34f) },color,style=Stroke(w*.08f,cap=StrokeCap.Round))
+} }
+@Composable fun SocialIcon(modifier:Modifier=Modifier,color:Color=Color.White) { Canvas(modifier) { val cx=size.width/2;val cy=size.height/2
+    drawCircle(color,size.minDimension*.17f,Offset(cx,cy-size.height*.16f));drawArc(color,180f,180f,false,Offset(cx-size.width*.28f,cy+size.height*.04f),Size(size.width*.56f,size.height*.5f),style=Stroke(size.minDimension*.08f))
+    drawCircle(color,size.minDimension*.09f,Offset(cx-size.width*.36f,cy-size.height*.14f));drawCircle(color,size.minDimension*.09f,Offset(cx+size.width*.36f,cy-size.height*.14f))
+} }
+@Composable private fun ReferenceGlyph(kind:String,modifier:Modifier=Modifier,color:Color=Color.White) {
+    val paths=remember(kind) {
+        val data=when(kind) {
+            "time"->listOf("M9 2h6M12 2v3M18 5l2-2","M20 13a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z","M12 8v5l3 2")
+            "amount"->listOf("M4 6h15a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h12v3","M21 10h-6a3 3 0 0 0 0 6h6M16 13h.01")
+            "close"->listOf("M5 5l14 14M19 5 5 19")
+            "check"->listOf("m5 12 4 4L19 6")
+            "candles"->listOf("M3 21h18M8 5v4M6 9h4v9H6ZM17 2v4M15 6h4v10h-4Z")
+            "people"->listOf("M14 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z","M2 21v-2a6 6 0 0 1 6-6h3a6 6 0 0 1 6 6v2","M18 3a4 4 0 0 1 0 8M19 14a6 6 0 0 1 3 5v2")
+            "settings"->listOf("M3 7h12M20 7h1M3 16h3M11 16h10","M20 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z","M11 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z")
+            "temperature"->listOf("M7 4a3 3 0 0 1 6 0v10a5 5 0 1 1-6 0Z","M10 6v11M17 5h4M17 9h3M17 13h4","M12 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z")
+            "drawing"->listOf("M12 2v2M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z","M10 10 4 22M14 10l6 12M5 15q7 6 14 0M2 18l3-3M19 15l3 3")
+            "bolt"->listOf("m14 2-10 12h7l-1 8 10-13h-7Z")
+            "wallet"->listOf("M6 6H18Q21 6 21 9V17Q21 20 18 20H6Q3 20 3 17V9Q3 6 6 6Z","M3 10h18M16 15h2")
+            "download"->listOf("M12 3v12m0 0 4-4m-4 4-4-4","M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2")
+            "demo"->listOf("m12 4 10 5-10 5L2 9Z","M6 11.5V16c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5","M22 9v5")
+            "coins"->listOf("M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6","M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6")
+            else->listOf("M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2.2 0 2.9 6 1.5 6 4.3 0 1.4-1.3 2.2-3 2.2-1.4 0-2.5-.5-3-1.5M12 6v12")
+        }
+        data.map { androidx.compose.ui.graphics.vector.PathParser().parsePathString(it).toPath() }
+    }
+    Canvas(modifier) {
+        scale(size.width/24,size.height/24,pivot=Offset.Zero) {
+            val stroke=if(kind=="wallet")1.8f else 1.7f
+            val originalGlyph=kind=="wallet"||kind=="download"||kind=="demo"||kind=="coins"||kind=="dollar"
+            paths.forEach { drawPath(it,color,style=if(originalGlyph)Stroke(stroke) else Stroke(stroke,cap=StrokeCap.Round,join=StrokeJoin.Round)) }
+            if(kind=="coins")drawOval(color,Offset(5f,3f),Size(14f,6f),style=Stroke(stroke))
+            if(kind=="dollar")drawCircle(color,9f,Offset(12f,12f),style=Stroke(stroke))
+        }
+    }
+}
+
+private const val REFERENCE_LOADING_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><defs><linearGradient id="white" x2="1" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#bdcbea"/></linearGradient><linearGradient id="green" x2="0" y2="1"><stop stop-color="#20ffc2"/><stop offset="1" stop-color="#00b98a"/></linearGradient><linearGradient id="red" x2="0" y2="1"><stop stop-color="#ff426b"/><stop offset="1" stop-color="#e90040"/></linearGradient><filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M256 82 L389 159 Q400 166 400 181 V326 Q400 341 387 349 L269 418 Q256 426 243 418 L125 349 Q112 341 112 326 V181 Q112 166 125 159 Z" fill="none" stroke="url(#white)" stroke-width="17" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="1000" stroke-dashoffset="1000" pathLength="1000" filter="url(#glow)"><animate attributeName="stroke-dashoffset" from="1000" to="0" dur="1s" fill="freeze"/></path><g filter="url(#glow)"><g><animateTransform attributeName="transform" type="translate" values="0,-100;0,8;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".7s" begin=".65s" fill="freeze"/><g fill="url(#green)"><rect x="153" y="221" width="8" height="120" rx="4"/><rect x="141" y="241" width="32" height="94" rx="5"/></g></g><g><animateTransform attributeName="transform" type="translate" values="0,-130;0,10;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".72s" begin=".82s" fill="freeze"/><g fill="url(#red)"><rect x="197" y="179" width="8" height="159" rx="4"/><rect x="185" y="207" width="32" height="117" rx="5"/></g></g><g><animateTransform attributeName="transform" type="translate" values="0,-115;0,9;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".7s" begin=".99s" fill="freeze"/><g fill="url(#green)"><rect x="351" y="221" width="8" height="120" rx="4"/><rect x="339" y="241" width="32" height="94" rx="5"/></g></g><g><animateTransform attributeName="transform" type="translate" values="0,-145;0,10;0,-3;0,0" keyTimes="0;0.72;0.9;1" dur=".74s" begin="1.16s" fill="freeze"/><g fill="url(#red)"><rect x="307" y="179" width="8" height="159" rx="4"/><rect x="295" y="207" width="32" height="117" rx="5"/></g></g></g><path d="M256 139 L276 158 V351 L256 369 L236 351 V158 Z" fill="url(#white)" opacity="0" filter="url(#glow)"><animate attributeName="opacity" values="0;1" dur=".45s" begin="1.45s" fill="freeze"/><animateTransform attributeName="transform" type="translate" values="0,-45;0,5;0,-2;0,0" keyTimes="0;0.72;0.9;1" dur=".6s" begin="1.45s" fill="freeze"/></path></svg>"""
+
+private enum class DrawingKind(val title:String,val anchors:Int) {
+    HORIZONTAL("خط أفقي",1),VERTICAL("خط رأسي",1),RAY("شعاع",2),
+    RETRACEMENT("ارتدادات فيبوناتشي",2),FAN("مروحة فيبوناتشي",2),
+    TREND("خط الاتجاه",2),CHANNEL("قناة موازية",3),RECTANGLE("مستطيل",2),PITCHFORK("شوكة أندروز",3)
+}
+private data class DrawingAnchor(val time:Long,val price:Double)
+private data class DrawingLevel(val ratio:Double,val enabled:Boolean=true,val color:Long=0xFF70C8F1L)
+private data class ChartDrawing(
+    val id:Long,val symbol:String,val kind:DrawingKind,val points:List<DrawingAnchor>,
+    val name:String=kind.title,val color:Long=0xFF70C8F1L,val width:Float=1.5f,
+    val dash:Int=0,val fill:Boolean=false,val opacity:Float=.12f,
+    val extendLeft:Boolean=false,val extendRight:Boolean=false,val labels:Boolean=true,
+    val prices:Boolean=true,val locked:Boolean=false,val visible:Boolean=true,
+    val snap:Boolean=false,val frameOnly:String?=null,val reverse:Boolean=false,
+    val levels:List<DrawingLevel> = when(kind) {
+        DrawingKind.RETRACEMENT->listOf(0.0,.236,.382,.5,.618,.786,1.0).map { DrawingLevel(it) }
+        DrawingKind.FAN->listOf(.382,.5,.618).map { DrawingLevel(it) }
+        else->emptyList()
+    }
+)
+private data class DrawingRequest(val id:Long,val kind:DrawingKind,val symbol:String)
+private object ChartDrawings {
+    val objects=mutableStateMapOf<Long,ChartDrawing>()
+    var selected by mutableStateOf<Long?>(null)
+    var editing by mutableStateOf<Long?>(null)
+    var managerOpen by mutableStateOf(false)
+    var pending by mutableStateOf<DrawingRequest?>(null)
+    var loaded=false
+    fun request(kind:DrawingKind,symbol:String) { pending=DrawingRequest(nextId(),kind,symbol) }
+    fun remove(id:Long) { objects.remove(id);if(selected==id)selected=null;if(editing==id)editing=null }
+    fun duplicate(d:ChartDrawing) {
+        val n=d.copy(id=nextId(),name=d.name+" — نسخة",locked=false,visible=true)
+        objects[n.id]=n;selected=n.id
+    }
+    fun visible(symbol:String,frame:String)=objects.values.filter { it.symbol==symbol&&it.visible&&(it.frameOnly==null||it.frameOnly==frame) }.sortedBy { it.id }
+}
+private val DrawingPalette=listOf(0xFF70C8F1L,0xFFFFFFFFL,0xFFFFD34DL,0xFF39CF8AL,0xFFFF667AL,0xFFB38CFFL,0xFFFF963DL,0xFF4192FFL)
+private fun drawingJson(d:ChartDrawing):JSONObject {
+    val points=JSONArray();d.points.forEach { points.put(JSONObject().put("time",it.time).put("price",it.price)) }
+    val levels=JSONArray();d.levels.forEach { levels.put(JSONObject().put("ratio",it.ratio).put("enabled",it.enabled).put("color",it.color)) }
+    return JSONObject().put("id",d.id).put("symbol",d.symbol).put("kind",d.kind.name).put("points",points)
+        .put("name",d.name).put("color",d.color).put("width",d.width.toDouble()).put("dash",d.dash)
+        .put("fill",d.fill).put("opacity",d.opacity.toDouble()).put("left",d.extendLeft).put("right",d.extendRight)
+        .put("labels",d.labels).put("prices",d.prices).put("locked",d.locked).put("visible",d.visible)
+        .put("snap",d.snap).put("frame",d.frameOnly ?: "").put("reverse",d.reverse).put("levels",levels)
+}
+private fun readDrawing(j:JSONObject):ChartDrawing? = try {
+    val kind=DrawingKind.valueOf(j.getString("kind"));val a=j.getJSONArray("points")
+    val points=(0 until a.length()).map { val p=a.getJSONObject(it);DrawingAnchor(p.getLong("time"),p.getDouble("price")) }
+    val symbol=j.getString("symbol")
+    if(symbol.isBlank()||!validDrawingPoints(kind,points))null
+    else {
+        val initial=ChartDrawing(j.getLong("id"),symbol,kind,points)
+        val lv=j.optJSONArray("levels")
+        val levels=if(lv==null)initial.levels else (0 until min(lv.length(),24)).mapNotNull { i->
+            val l=lv.optJSONObject(i) ?: return@mapNotNull null;val r=l.optDouble("ratio",Double.NaN)
+            if(!r.isFinite()||r !in -10.0..10.0)null else DrawingLevel(r,l.optBoolean("enabled",true),l.optLong("color",initial.color))
+        }
+        initial.copy(name=j.optString("name",kind.title).take(80),color=j.optLong("color",initial.color),
+            width=j.optDouble("width",1.5).toFloat().takeIf { it.isFinite()&&it in .5f..6f } ?: 1.5f,
+            dash=j.optInt("dash",0).coerceIn(0,2),fill=j.optBoolean("fill",false),
+            opacity=j.optDouble("opacity",.12).toFloat().takeIf { it.isFinite()&&it in 0f..1f } ?: .12f,
+            extendLeft=j.optBoolean("left",false),extendRight=j.optBoolean("right",false),
+            labels=j.optBoolean("labels",true),prices=j.optBoolean("prices",true),locked=j.optBoolean("locked",false),
+            visible=j.optBoolean("visible",true),snap=j.optBoolean("snap",false),
+            frameOnly=j.optString("frame","").takeIf { it in ChartTimeframes },reverse=j.optBoolean("reverse",false),levels=levels)
+    }
+} catch(_:Exception) { null }
+@Composable private fun ChartDrawingPreferences() {
+    val context=LocalContext.current.applicationContext
+    val prefs=remember(context) { context.getSharedPreferences("chart_drawings_v1",Context.MODE_PRIVATE) }
+    fun save() {
+        val array=JSONArray();ChartDrawings.objects.values.sortedBy { it.id }.forEach { array.put(drawingJson(it)) }
+        prefs.edit().putString("objects",array.toString()).apply()
+    }
+    DisposableEffect(prefs) {
+        if(!ChartDrawings.loaded) {
+            try {
+                val list=JSONArray(prefs.getString("objects","[]") ?: "[]")
+                for(i in 0 until list.length())list.optJSONObject(i)?.let { readDrawing(it) }?.let { d->
+                    ChartDrawings.objects[d.id]=d
+                    if(d.id>ids.get())ids.set(d.id)
+                }
+            } catch(_:Exception) { }
+            ChartDrawings.loaded=true
+        }
+        onDispose { save() }
+    }
+    LaunchedEffect(prefs) {
+        snapshotFlow { ChartDrawings.objects.toMap() }.collectLatest { delay(220);save() }
+    }
+}
+private data class DrawingProjection(val view:ChartViewport,val origin:Long,val interval:Long,val width:Float,val height:Float) {
+    fun screen(p:DrawingAnchor)=Offset((view.fractionFor((p.time-origin).toDouble()/interval)*width).toFloat(),((view.maxPrice-p.price)/view.priceSpan*height).toFloat())
+    fun anchor(p:Offset):DrawingAnchor {
+        val bar=view.anchorBar+(p.x/width.coerceAtLeast(1f)-view.anchorFraction)*view.visibleBars
+        val time=(origin+bar*interval).coerceIn(0.0,32_503_680_000_000.0).roundToLong()
+        return DrawingAnchor(time,(view.maxPrice-p.y/height.coerceAtLeast(1f)*view.priceSpan).coerceAtLeast(1e-12))
+    }
+}
+private data class DrawingSegment(val a:Offset,val b:Offset,val color:Long,val guide:Boolean=false)
+private data class DrawingCaption(val at:Offset,val text:String,val color:Long)
+private data class DrawingGeometry(val lines:List<DrawingSegment>,val areas:List<List<Offset>>,val captions:List<DrawingCaption>,val handles:List<Offset>)
+private fun drawingClip(a:Offset,b:Offset,w:Float,h:Float,low:Double=0.0,high:Double=1.0):Pair<Offset,Offset>? {
+    if(!a.x.isFinite()||!a.y.isFinite()||!b.x.isFinite()||!b.y.isFinite()||w<=0||h<=0)return null
+    val dx=(b.x-a.x).toDouble();val dy=(b.y-a.y).toDouble()
+    if(abs(dx)+abs(dy)<1e-7)return null
+    var lo=low;var hi=high
+    fun slab(start:Double,delta:Double,limit:Double):Boolean {
+        if(abs(delta)<1e-10)return start in 0.0..limit
+        var x=-start/delta;var y=(limit-start)/delta
+        if(x>y) { val t=x;x=y;y=t }
+        lo=max(lo,x);hi=min(hi,y);return lo<=hi
+    }
+    if(!slab(a.x.toDouble(),dx,w.toDouble())||!slab(a.y.toDouble(),dy,h.toDouble()))return null
+    if(!lo.isFinite()||!hi.isFinite())return null
+    return Offset((a.x+dx*lo).toFloat(),(a.y+dy*lo).toFloat()) to Offset((a.x+dx*hi).toFloat(),(a.y+dy*hi).toFloat())
+}
+private fun drawingGeometry(d:ChartDrawing,p:DrawingProjection):DrawingGeometry {
+    val points=d.points.map { p.screen(it) };val a=points[0];val b=points.getOrElse(1) { a }
+    val lines=mutableListOf<DrawingSegment>();val areas=mutableListOf<List<Offset>>();val text=mutableListOf<DrawingCaption>()
+    val lo=if(d.extendLeft)Double.NEGATIVE_INFINITY else 0.0;val hi=if(d.extendRight)Double.POSITIVE_INFINITY else 1.0
+    fun line(x:Offset,y:Offset,l:Double=0.0,r:Double=1.0,color:Long=d.color,guide:Boolean=false) {
+        drawingClip(x,y,p.width,p.height,l,r)?.let { lines.add(DrawingSegment(it.first,it.second,color,guide)) }
+    }
+    fun caption(at:Offset,label:String,color:Long=d.color) {
+        if(at.x.isFinite()&&at.y.isFinite()&&at.y in 0f..p.height)text.add(DrawingCaption(Offset(at.x.coerceIn(4f,max(4f,p.width-4f)),at.y),label,color))
+    }
+    fun price(value:Double)=priceText(value,priceDecimals(nicePriceStep(p.view.priceSpan/5)))
+    when(d.kind) {
+        DrawingKind.HORIZONTAL->{
+            line(Offset(0f,a.y),Offset(p.width,a.y))
+            if(d.labels||d.prices)caption(Offset(8f,a.y),listOfNotNull(d.name.takeIf { d.labels },price(d.points[0].price).takeIf { d.prices }).joinToString("  "))
+        }
+        DrawingKind.VERTICAL->{
+            line(Offset(a.x,0f),Offset(a.x,p.height))
+            if(d.labels)caption(Offset(a.x+6f,p.height-24f),candleTimeText(d.points[0].time,p.interval))
+        }
+        DrawingKind.RAY->line(a,b,0.0,Double.POSITIVE_INFINITY)
+        DrawingKind.TREND->line(a,b,lo,hi)
+        DrawingKind.RECTANGLE->{
+            val left=if(d.extendLeft)0f else min(a.x,b.x);val right=if(d.extendRight)p.width else max(a.x,b.x)
+            val top=min(a.y,b.y);val bottom=max(a.y,b.y)
+            val corners=listOf(Offset(left,top),Offset(right,top),Offset(right,bottom),Offset(left,bottom))
+            if(d.fill)areas.add(corners)
+            corners.indices.forEach { line(corners[it],corners[(it+1)%4]) }
+        }
+        DrawingKind.RETRACEMENT->{
+            line(a,b,guide=true)
+            val left=if(d.extendLeft)0f else min(a.x,b.x);val right=if(d.extendRight)p.width else max(a.x,b.x)
+            val levels=d.levels.filter { it.enabled }.map { level->
+                val ratio=if(d.reverse)1.0-level.ratio else level.ratio
+                val value=d.points[1].price+(d.points[0].price-d.points[1].price)*ratio
+                val y=p.screen(DrawingAnchor(d.points[1].time,value)).y
+                line(Offset(left,y),Offset(right,y),color=level.color)
+                if(d.labels||d.prices)caption(Offset(left+5f,y),listOfNotNull((shortAmount(level.ratio*100)+"%").takeIf { d.labels },price(value).takeIf { d.prices }).joinToString("  "),level.color)
+                y
+            }.sorted()
+            if(d.fill)levels.zipWithNext().forEach { (y1,y2)->areas.add(listOf(Offset(left,y1),Offset(right,y1),Offset(right,y2),Offset(left,y2))) }
+        }
+        DrawingKind.FAN->{
+            line(a,b,guide=true)
+            d.levels.filter { it.enabled }.forEach { level->
+                val r=if(d.reverse)level.ratio else 1.0-level.ratio
+                val end=Offset(b.x,a.y+(b.y-a.y)*r.toFloat())
+                line(a,end,if(d.extendLeft)Double.NEGATIVE_INFINITY else 0.0,Double.POSITIVE_INFINITY,color=level.color)
+                if(d.labels)caption(end,shortAmount(level.ratio*100)+"%",level.color)
+            }
+            if(d.fill) {
+                val active=d.levels.filter { it.enabled }.map { if(d.reverse)it.ratio else 1-it.ratio }.sorted()
+                if(active.size>=2) {
+                    val dx=b.x-a.x
+                    if(abs(dx)>.001f) {
+                        val edge=if(dx>0)p.width else 0f;val t=(edge-a.x)/dx
+                        areas.add(listOf(a,Offset(edge,a.y+(b.y-a.y)*active.first().toFloat()*t),Offset(edge,a.y+(b.y-a.y)*active.last().toFloat()*t)))
+                    }
+                }
+            }
+        }
+        DrawingKind.CHANNEL->{
+            val c=points[2];val dx=b.x-a.x
+            val shift=if(abs(dx)>.001f)Offset(0f,c.y-a.y-(b.y-a.y)*(c.x-a.x)/dx) else Offset(c.x-a.x,0f)
+            val a2=a+shift;val b2=b+shift
+            line(a,b,lo,hi);line(a2,b2,lo,hi);line(a+shift*.5f,b+shift*.5f,lo,hi,guide=true)
+            if(d.fill) {
+                val first=drawingClip(a,b,p.width,p.height,lo,hi)
+                val second=drawingClip(a2,b2,p.width,p.height,lo,hi)
+                if(abs(dx)>.001f) {
+                    val left=if(d.extendLeft&&dx>0||d.extendRight&&dx<0)0f else min(a.x,b.x)
+                    val right=if(d.extendRight&&dx>0||d.extendLeft&&dx<0)p.width else max(a.x,b.x)
+                    fun at(x:Float)=Offset(x,a.y+(b.y-a.y)*(x-a.x)/dx)
+                    areas.add(listOf(at(left),at(right),at(right)+shift,at(left)+shift))
+                } else if(first!=null&&second!=null)areas.add(listOf(first.first,first.second,second.second,second.first))
+            }
+        }
+        DrawingKind.PITCHFORK->{
+            val c=points[2];val middle=(b+c)*.5f;val direction=middle-a
+            line(b,c,guide=true)
+            val l=if(d.extendLeft)Double.NEGATIVE_INFINITY else 0.0
+            val r=if(d.extendRight)Double.POSITIVE_INFINITY else 1.0
+            line(a,middle,l,r);line(b,b+direction,l,r);line(c,c+direction,l,r)
+            if(d.fill) {
+                val end=if(d.extendRight) {
+                    val length=max(p.width,p.height)*4f
+                    direction*(length/direction.getDistance().coerceAtLeast(1f))
+                } else direction
+                val start=if(d.extendLeft)-end else Offset.Zero
+                areas.add(listOf(b+start,b+end,c+end,c+start))
+            }
+        }
+    }
+    if(d.labels&&d.kind in listOf(DrawingKind.RAY,DrawingKind.TREND,DrawingKind.CHANNEL,DrawingKind.RECTANGLE,DrawingKind.PITCHFORK))caption(a+Offset(7f,-10f),d.name)
+    return DrawingGeometry(lines,areas,text,points)
+}
+private fun drawingDistance(point:Offset,a:Offset,b:Offset):Float {
+    val v=b-a;val length=v.x*v.x+v.y*v.y
+    val t=if(length<.0001f)0f else (((point.x-a.x)*v.x+(point.y-a.y)*v.y)/length).coerceIn(0f,1f)
+    return (point-(a+v*t)).getDistance()
+}
+private data class DrawingHit(val id:Long,val handle:Int=-1)
+private fun drawingHit(position:Offset,projection:DrawingProjection,objects:List<ChartDrawing>,tolerance:Float):DrawingHit? {
+    val selected=objects.firstOrNull { it.id==ChartDrawings.selected }
+    if(selected!=null&&!selected.locked) {
+        val handles=selected.points.map { projection.screen(it) }
+        handles.indices.minByOrNull { (handles[it]-position).getDistance() }?.let { index->
+            if((handles[index]-position).getDistance()<=tolerance*1.35f)return DrawingHit(selected.id,index)
+        }
+    }
+    val ordered=objects.asReversed()
+    return ordered.firstNotNullOfOrNull { d->
+        val g=drawingGeometry(d,projection)
+        if(g.lines.any { drawingDistance(position,it.a,it.b)<=tolerance })DrawingHit(d.id) else null
+    }
+}
+private fun DrawScope.drawChartDrawings(objects:List<ChartDrawing>,projection:DrawingProjection) {
+    clipRect(0f,0f,size.width,size.height) {
+        objects.forEach { d->
+            val g=drawingGeometry(d,projection);val color=Color(d.color)
+            val effect=when(d.dash) { 1->PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(),5.dp.toPx()));2->PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(),4.dp.toPx()));else->null }
+            g.areas.forEach { points->
+                if(points.size>=3&&points.all { it.x.isFinite()&&it.y.isFinite() }) {
+                    val path=Path().apply { moveTo(points[0].x,points[0].y);points.drop(1).forEach { lineTo(it.x,it.y) };close() }
+                    drawPath(path,color.copy(alpha=d.opacity))
+                }
+            }
+            g.lines.forEach { segment->
+                drawLine(Color(segment.color).copy(alpha=if(segment.guide).55f else 1f),segment.a,segment.b,
+                    (if(segment.guide)min(1f,d.width) else d.width).dp.toPx(),StrokeCap.Butt,
+                    pathEffect=if(segment.guide)PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(),4.dp.toPx())) else effect)
+            }
+            val paint=NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { textSize=10.sp.toPx();typeface=Typeface.DEFAULT;textAlign=NativePaint.Align.LEFT }
+            g.captions.forEach { caption->
+                paint.color=Color(caption.color).toArgb()
+                val textWidth=paint.measureText(caption.text)
+                val x=caption.at.x.coerceIn(3.dp.toPx(),max(3.dp.toPx(),size.width-textWidth-3.dp.toPx()))
+                val y=(caption.at.y-4.dp.toPx()).coerceIn(paint.textSize,size.height.coerceAtLeast(paint.textSize))
+                drawContext.canvas.nativeCanvas.drawText(caption.text,x,y,paint)
+            }
+            if(ChartDrawings.selected==d.id&&!d.locked)g.handles.forEach { point->
+                if(point.x in 0f..size.width&&point.y in 0f..size.height) {
+                    drawCircle(Color(0xFF222E43),6.dp.toPx(),point)
+                    drawCircle(color,6.dp.toPx(),point,style=Stroke(1.7.dp.toPx()))
+                }
+            }
+        }
+    }
+}
+private fun drawingSnap(point:DrawingAnchor,bars:List<Candle>):DrawingAnchor {
+    val nearest=bars.minByOrNull { abs(it.time-point.time) } ?: return point
+    val price=listOf(nearest.open,nearest.high,nearest.low,nearest.close).minByOrNull { abs(it-point.price) }!!.toDouble()
+    return DrawingAnchor(nearest.time,price)
+}
+private fun validDrawingPoints(kind:DrawingKind,points:List<DrawingAnchor>):Boolean {
+    if(points.size!=kind.anchors||points.any { it.time !in 0L..32_503_680_000_000L||!it.price.isFinite()||it.price<=0.0 })return false
+    if(points.size<2)return true
+    val a=points[0];val b=points[1]
+    return when(kind) {
+        DrawingKind.FAN,DrawingKind.CHANNEL->a.time!=b.time
+        DrawingKind.TREND,DrawingKind.RAY->a!=b
+        DrawingKind.RECTANGLE->a.time!=b.time&&a.price!=b.price
+        DrawingKind.PITCHFORK->{
+            val c=points[2]
+            b!=c&&(abs(a.time.toDouble()-(b.time.toDouble()+c.time)/2.0)>.5||abs(a.price-(b.price+c.price)/2)>1e-12)
+        }
+        else->true
+    }
+}
+private data class DrawingDrag(val original:ChartDrawing,val handle:Int,val projection:DrawingProjection) {
+    fun moved(delta:Offset,bars:List<Candle>):ChartDrawing {
+        if(original.locked||!delta.x.isFinite()||!delta.y.isFinite())return original
+        if(handle<0) {
+            val dt=(delta.x/projection.width.coerceAtLeast(1f)*projection.view.visibleBars*projection.interval).roundToLong()
+                .coerceIn(-original.points.minOf { it.time },32_503_680_000_000L-original.points.maxOf { it.time })
+            val dp=(-delta.y/projection.height.coerceAtLeast(1f)*projection.view.priceSpan).coerceAtLeast(1e-12-original.points.minOf { it.price })
+            return original.copy(points=original.points.map { DrawingAnchor(it.time+dt,it.price+dp) })
+        }
+        val points=original.points.mapIndexed { index,anchor->
+            if(handle>=0&&index!=handle)anchor else {
+                val shifted=projection.anchor(projection.screen(anchor)+delta)
+                if(original.snap&&handle>=0)drawingSnap(shifted,bars) else shifted
+            }
+        }
+        return if(validDrawingPoints(original.kind,points))original.copy(points=points) else original
+    }
+}
+private fun createChartDrawing(request:DrawingRequest,projection:DrawingProjection):ChartDrawing {
+    fun at(x:Float,y:Float)=projection.anchor(Offset(projection.width*x,projection.height*y))
+    val a=at(.25f,.68f);val b=at(.64f,.40f);val c=at(.62f,.72f)
+    val points=when(request.kind) {
+        DrawingKind.HORIZONTAL->listOf(at(.50f,.54f))
+        DrawingKind.VERTICAL->listOf(at(.46f,.55f))
+        DrawingKind.PITCHFORK->listOf(at(.22f,.68f),at(.48f,.32f),at(.65f,.62f))
+        else->listOf(a,b,c).take(request.kind.anchors)
+    }
+    return ChartDrawing(nextId(),request.symbol,request.kind,points,
+        extendRight=request.kind in listOf(DrawingKind.RETRACEMENT,DrawingKind.CHANNEL,DrawingKind.PITCHFORK),
+        fill=request.kind==DrawingKind.RECTANGLE)
+}
+@Composable private fun DrawingGlyph(kind:DrawingKind,modifier:Modifier=Modifier,color:Color=Color.White) {
+    Canvas(modifier) {
+        val w=size.width;val h=size.height;val stroke=1.5.dp.toPx()
+        fun point(x:Float,y:Float)=Offset(w*x,h*y)
+        fun line(x1:Float,y1:Float,x2:Float,y2:Float)=drawLine(color,point(x1,y1),point(x2,y2),stroke,StrokeCap.Round)
+        fun dot(x:Float,y:Float)=drawCircle(color,1.9.dp.toPx(),point(x,y))
+        when(kind) {
+            DrawingKind.HORIZONTAL->{line(.15f,.5f,.85f,.5f);dot(.15f,.5f);dot(.85f,.5f)}
+            DrawingKind.VERTICAL->{line(.5f,.12f,.5f,.88f);dot(.5f,.12f);dot(.5f,.88f)}
+            DrawingKind.RAY->{line(.16f,.84f,.90f,.10f);dot(.16f,.84f)}
+            DrawingKind.TREND->{line(.16f,.84f,.84f,.16f);dot(.16f,.84f);dot(.84f,.16f)}
+            DrawingKind.RETRACEMENT->{listOf(.15f,.40f,.65f,.9f).forEach { line(.1f,it,.9f,it) };line(.15f,.9f,.85f,.15f);dot(.15f,.9f);dot(.85f,.15f)}
+            DrawingKind.FAN->{listOf(Offset(.18f,.12f),Offset(.55f,.18f),Offset(.85f,.45f),Offset(.90f,.85f)).forEach { line(.18f,.85f,it.x,it.y) };dot(.18f,.85f)}
+            DrawingKind.CHANNEL->{line(.1f,.55f,.85f,.10f);line(.15f,.9f,.90f,.45f);dot(.1f,.55f);dot(.90f,.45f)}
+            DrawingKind.RECTANGLE->{line(.15f,.15f,.85f,.15f);line(.85f,.15f,.85f,.85f);line(.85f,.85f,.15f,.85f);line(.15f,.85f,.15f,.15f);dot(.15f,.85f);dot(.85f,.15f)}
+            DrawingKind.PITCHFORK->{line(.12f,.70f,.70f,.12f);line(.30f,.88f,.88f,.30f);line(.12f,.88f,.85f,.15f);dot(.12f,.88f)}
+        }
+    }
+}
+@Composable private fun DrawingsDialog(onDismiss:()->Unit) {
+    val symbol by TradeStore.currentSymbol.collectAsState()
+    val configuration=LocalConfiguration.current
+    val available=ChartDrawings.objects.values.count { it.symbol==symbol }
+    val rowHeight=(configuration.screenWidthDp*.082f).dp.coerceIn(30.dp,48.dp)
+    val headerHeight=(configuration.screenWidthDp*.15f).dp.coerceIn(52.dp,70.dp)
+    val itemFont=(configuration.screenWidthDp*.035f).coerceIn(14f,18f).sp
+    val glyphSize=(configuration.screenWidthDp*.036f).dp.coerceIn(16.dp,24.dp)
+    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            val shape=RoundedCornerShape(14.dp)
+            Column(Modifier.fillMaxWidth(.89f).heightIn(max=(configuration.screenHeightDp*.82f).dp)
+                .clip(shape).background(Color(0xFF222E43)).border(1.dp,Color(0xFF38485E),shape)) {
+                Row(Modifier.fillMaxWidth().height(headerHeight).padding(start=21.dp,end=14.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Text("الرسومات",color=Color(0xFFF1F4F8),fontSize=15.sp,modifier=Modifier.weight(1f),style=TextStyle(textDirection=TextDirection.Rtl))
+                    if(available>0)DrawingButton("إدارة ($available)") { onDismiss();ChartDrawings.managerOpen=true }
+                    Box(Modifier.size(34.dp).clickable(onClick=onDismiss),contentAlignment=Alignment.Center) { ReferenceGlyph("close",Modifier.size(24.dp),Color(0xFFA8C0D2)) }
+                }
+                Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()).padding(top=10.dp,bottom=7.dp)) {
+                    DrawingKind.values().forEach { kind->
+                        Row(Modifier.fillMaxWidth().height(rowHeight).clickable { ChartDrawings.request(kind,symbol);onDismiss() }.padding(horizontal=23.dp),verticalAlignment=Alignment.CenterVertically) {
+                            DrawingGlyph(kind,Modifier.size(glyphSize))
+                            Spacer(Modifier.width(16.dp))
+                            Text(kind.title,color=Color(0xFFF1F4F8),fontSize=itemFont,style=TextStyle(textDirection=TextDirection.Rtl),maxLines=1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+@Composable private fun DrawingButton(title:String,active:Boolean=false,danger:Boolean=false,onClick:()->Unit) {
+    Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if(active)Color(0xFF385875) else if(danger)Color(0xFF743447) else Color(0xFF2C3C53))
+        .clickable(onClick=onClick).padding(horizontal=10.dp,vertical=9.dp),contentAlignment=Alignment.Center) {
+        Text(title,color=Color.White,fontSize=12.sp,maxLines=1,style=TextStyle(textDirection=TextDirection.Content))
+    }
+}
+@Composable private fun DrawingToolbar(symbol:String,frame:String,modifier:Modifier=Modifier) {
+    val d=ChartDrawings.selected?.let { ChartDrawings.objects[it] }?.takeIf { it.symbol==symbol&&it.visible&&(it.frameOnly==null||it.frameOnly==frame) } ?: return
+    Row(modifier.clip(RoundedCornerShape(9.dp)).background(Color(0xF2222E43)).border(1.dp,Color(0xFF52667F),RoundedCornerShape(9.dp))
+        .horizontalScroll(rememberScrollState()).padding(5.dp),horizontalArrangement=Arrangement.spacedBy(5.dp),verticalAlignment=Alignment.CenterVertically) {
+        Text(d.name,color=Color.White,fontSize=11.sp,modifier=Modifier.padding(horizontal=6.dp))
+        DrawingButton("إعدادات") { ChartDrawings.editing=d.id }
+        DrawingButton(if(d.locked)"فتح القفل" else "قفل",d.locked) { ChartDrawings.objects[d.id]=d.copy(locked=!d.locked) }
+        DrawingButton("نسخ") { ChartDrawings.duplicate(d) }
+        DrawingButton("إخفاء") { ChartDrawings.objects[d.id]=d.copy(visible=false);ChartDrawings.selected=null }
+        DrawingButton("حذف",danger=true) { ChartDrawings.remove(d.id) }
+        DrawingButton("الكل") { ChartDrawings.managerOpen=true }
+        DrawingButton("×") { ChartDrawings.selected=null }
+    }
+}
+@Composable private fun DrawingManagerDialog(symbol:String,onDismiss:()->Unit) {
+    val objects=ChartDrawings.objects.values.filter { it.symbol==symbol }.sortedByDescending { it.id }
+    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Column(Modifier.fillMaxWidth(.93f).heightIn(max=(LocalConfiguration.current.screenHeightDp*.78f).dp)
+                .clip(RoundedCornerShape(14.dp)).background(Color(0xFF222E43)).padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Text("إدارة الرسومات — $symbol",color=Color.White,fontSize=16.sp,modifier=Modifier.weight(1f))
+                    DrawingButton("إغلاق",onClick=onDismiss)
+                }
+                if(objects.isEmpty())Text("لا توجد رسومات لهذا الزوج",color=C.TextSecondary,fontSize=14.sp)
+                Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    objects.forEach { d->
+                        Column(Modifier.fillMaxWidth().background(Color(0xFF293A51),RoundedCornerShape(8.dp)).padding(9.dp),verticalArrangement=Arrangement.spacedBy(7.dp)) {
+                            Text(d.name+(if(d.locked)" • مقفل" else "")+(d.frameOnly?.let { " • $it" } ?: ""),color=Color(d.color),fontSize=14.sp)
+                            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                                DrawingButton("إعدادات") { ChartDrawings.editing=d.id;onDismiss() }
+                                DrawingButton(if(d.visible)"إخفاء" else "إظهار") { ChartDrawings.objects[d.id]=d.copy(visible=!d.visible) }
+                                DrawingButton("تحديد") { ChartDrawings.objects[d.id]=d.copy(visible=true,frameOnly=d.frameOnly?.let { ChartSettings.frame });ChartDrawings.selected=d.id;onDismiss() }
+                                DrawingButton("حذف",danger=true) { ChartDrawings.remove(d.id) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+private fun drawingNumber(text:String):Double? {
+    val normalized=buildString { text.trim().forEach { c->append(when { c==','||c=='،'||c=='٫'->'.';Character.digit(c,10)>=0->('0'.code+Character.digit(c,10)).toChar();else->c }) } }
+    return normalized.toDoubleOrNull()?.takeIf { it.isFinite() }
+}
+private fun drawingDateFormat()=SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US).apply { timeZone=TimeZone.getTimeZone("GMT+3");isLenient=false }
+private fun drawingDate(text:String):Long? = try {
+    val value=text.trim();val position=java.text.ParsePosition(0);val date=drawingDateFormat().parse(value,position)
+    date?.time?.takeIf { position.index==value.length&&it in 0L..32_503_680_000_000L }
+} catch(_:Exception) { null }
+@Composable private fun DrawingField(label:String,value:String,numeric:Boolean=false,onChange:(String)->Unit) {
+    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+        Text(label,color=Color(0xFFBCCBDD),fontSize=12.sp)
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            BasicTextField(value=value,onValueChange=onChange,singleLine=true,textStyle=TextStyle(color=Color.White,fontSize=14.sp,textDirection=TextDirection.Content),
+                cursorBrush=SolidColor(C.Cyan),keyboardOptions=KeyboardOptions(keyboardType=if(numeric)KeyboardType.Decimal else KeyboardType.Text),
+                modifier=Modifier.fillMaxWidth().background(Color(0xFF172336),RoundedCornerShape(6.dp)).border(1.dp,Color(0xFF475B73),RoundedCornerShape(6.dp)).padding(10.dp))
+        }
+    }
+}
+@Composable private fun DrawingToggle(label:String,checked:Boolean,onToggle:()->Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick=onToggle).padding(vertical=6.dp),verticalAlignment=Alignment.CenterVertically) {
+        Text(label,color=Color.White,fontSize=13.sp,modifier=Modifier.weight(1f))
+        PlatformSwitch(checked,onToggle)
+    }
+}
+@Composable private fun DrawingSettingsDialog(original:ChartDrawing,onDismiss:()->Unit) {
+    var draft by remember(original.id) { mutableStateOf(original) }
+    var tab by remember(original.id) { mutableIntStateOf(0) }
+    var error by remember(original.id) { mutableStateOf("") }
+    val prices=remember(original.id) { mutableStateListOf<String>().apply { addAll(original.points.map { it.price.toString() }) } }
+    val times=remember(original.id) { mutableStateListOf<String>().apply { addAll(original.points.map { drawingDateFormat().format(Date(it.time)) }) } }
+    val ratios=remember(original.id) { mutableStateListOf<String>().apply { addAll(original.levels.map { it.ratio.toString() }) } }
+    val hasLevels=original.kind==DrawingKind.RETRACEMENT||original.kind==DrawingKind.FAN
+    val supportsExtension=original.kind in listOf(DrawingKind.TREND,DrawingKind.CHANNEL,DrawingKind.RETRACEMENT,DrawingKind.PITCHFORK,DrawingKind.RECTANGLE)
+    val supportsFill=original.kind in listOf(DrawingKind.CHANNEL,DrawingKind.RETRACEMENT,DrawingKind.FAN,DrawingKind.PITCHFORK,DrawingKind.RECTANGLE)
+    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Column(Modifier.fillMaxWidth(.94f).heightIn(max=(LocalConfiguration.current.screenHeightDp*.87f).dp)
+                .clip(RoundedCornerShape(14.dp)).background(Color(0xFF222E43)).padding(15.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Text("إعدادات ${original.kind.title}",color=Color.White,fontSize=16.sp,modifier=Modifier.weight(1f))
+                    DrawingButton("×",onClick=onDismiss)
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                    listOf("النمط","الإحداثيات","المستويات","الظهور").forEachIndexed { index,label->
+                        if(index!=2||hasLevels)DrawingButton(label,tab==index) { tab=index;error="" }
+                    }
+                }
+                Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                    when(tab) {
+                        0->{
+                            DrawingField("الاسم",draft.name) { draft=draft.copy(name=it.take(80)) }
+                            Text("لون الرسم",color=Color.White,fontSize=13.sp)
+                            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(9.dp)) {
+                                DrawingPalette.forEach { color->Box(Modifier.size(27.dp).clip(CircleShape).background(Color(color))
+                                    .border(if(draft.color==color)3.dp else 1.dp,if(draft.color==color)Color.White else Color.Transparent,CircleShape)
+                                    .clickable { draft=draft.copy(color=color,levels=draft.levels.map { it.copy(color=color) }) }) }
+                            }
+                            Text("سمك الخط",color=Color.White,fontSize=13.sp)
+                            Row(horizontalArrangement=Arrangement.spacedBy(5.dp)) { listOf(1f,1.5f,2f,3f,4f).forEach { width->DrawingButton(width.toString(),draft.width==width) { draft=draft.copy(width=width) } } }
+                            Row(horizontalArrangement=Arrangement.spacedBy(5.dp)) { listOf("متصل","متقطع","منقط").forEachIndexed { i,label->DrawingButton(label,draft.dash==i) { draft=draft.copy(dash=i) } } }
+                            DrawingToggle("إظهار التسميات",draft.labels) { draft=draft.copy(labels=!draft.labels) }
+                            if(original.kind==DrawingKind.HORIZONTAL||original.kind==DrawingKind.RETRACEMENT)DrawingToggle("إظهار الأسعار",draft.prices) { draft=draft.copy(prices=!draft.prices) }
+                            if(supportsExtension) {
+                                DrawingToggle("امتداد إلى اليسار",draft.extendLeft) { draft=draft.copy(extendLeft=!draft.extendLeft) }
+                                DrawingToggle("امتداد إلى اليمين",draft.extendRight) { draft=draft.copy(extendRight=!draft.extendRight) }
+                            }
+                            if(original.kind==DrawingKind.FAN)DrawingToggle("امتداد المروحة إلى الخلف",draft.extendLeft) { draft=draft.copy(extendLeft=!draft.extendLeft) }
+                            if(hasLevels)DrawingToggle("عكس اتجاه فيبوناتشي",draft.reverse) { draft=draft.copy(reverse=!draft.reverse) }
+                            if(supportsFill) {
+                                DrawingToggle("تعبئة الخلفية",draft.fill) { draft=draft.copy(fill=!draft.fill) }
+                                if(draft.fill) {
+                                    Text("كثافة التعبئة",color=Color.White,fontSize=13.sp)
+                                    Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(5.dp)) { listOf(.05f,.12f,.25f,.4f).forEach { opacity->DrawingButton("${(opacity*100).roundToInt()}%",draft.opacity==opacity) { draft=draft.copy(opacity=opacity) } } }
+                                }
+                            }
+                            DrawingToggle("قفل التحريك والمقابض",draft.locked) { draft=draft.copy(locked=!draft.locked) }
+                            DrawingToggle("التقاط المقابض لأقرب شمعة وسعر OHLC",draft.snap) { draft=draft.copy(snap=!draft.snap) }
+                        }
+                        1->{
+                            Text("إحداثيات ثابتة بالوقت والسعر • المنطقة الزمنية UTC+3",color=Color(0xFFBCCBDD),fontSize=12.sp)
+                            original.points.indices.forEach { index->
+                                Text("النقطة ${index+1}",color=C.Cyan,fontSize=14.sp)
+                                if(original.kind!=DrawingKind.HORIZONTAL)DrawingField("الوقت: yyyy-MM-dd HH:mm:ss",times[index]) { times[index]=it;error="" }
+                                if(original.kind!=DrawingKind.VERTICAL)DrawingField("السعر",prices[index],true) { prices[index]=it;error="" }
+                            }
+                            Text(when(original.kind) {
+                                DrawingKind.CHANNEL->"النقطتان 1 و2 لخط الأساس، والنقطة 3 تحدد البعد الموازي."
+                                DrawingKind.PITCHFORK->"النقطة 1 بداية الخط الأوسط، والنقطتان 2 و3 قمتا الشوكة؛ يمر الوسط بمنتصفهما."
+                                DrawingKind.HORIZONTAL->"الخط يمتد عبر الشارت عند السعر المحدد."
+                                DrawingKind.VERTICAL->"الخط يثبت عند الوقت المحدد."
+                                DrawingKind.RAY->"الشعاع يبدأ من النقطة 1 ويمتد بلا نهاية باتجاه النقطة 2."
+                                DrawingKind.RETRACEMENT->"0% عند نهاية الحركة (2)، و100% عند بدايتها (1)، ما لم يُفعّل العكس."
+                                DrawingKind.FAN->"أشعة من النقطة 1 تمر بمستويات التصحيح عند زمن النقطة 2."
+                                else->"اسحب جسم الرسم لنقله بالكامل أو المقابض لتعديل النقاط."
+                            },color=Color(0xFFBCCBDD),fontSize=12.sp)
+                        }
+                        2->{
+                            Text("النسبة كعدد عشري: 0.618 = 61.8%، و1.618 = 161.8%",color=Color(0xFFBCCBDD),fontSize=12.sp)
+                            draft.levels.forEachIndexed { index,level->
+                                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                                    Box(Modifier.weight(1f)) { DrawingField("المستوى ${index+1}",ratios[index],true) { ratios[index]=it;error="" } }
+                                    DrawingButton(if(level.enabled)"✓" else "—",level.enabled) { draft=draft.copy(levels=draft.levels.mapIndexed { i,l->if(i==index)l.copy(enabled=!l.enabled) else l }) }
+                                    Box(Modifier.size(24.dp).clip(CircleShape).background(Color(level.color)).clickable {
+                                        val color=DrawingPalette[(DrawingPalette.indexOf(level.color)+1).mod(DrawingPalette.size)]
+                                        draft=draft.copy(levels=draft.levels.mapIndexed { i,l->if(i==index)l.copy(color=color) else l })
+                                    })
+                                    DrawingButton("×") { ratios.removeAt(index);draft=draft.copy(levels=draft.levels.filterIndexed { i,_->i!=index }) }
+                                }
+                            }
+                            if(draft.levels.size<24)DrawingButton("إضافة مستوى") { ratios.add("1.618");draft=draft.copy(levels=draft.levels+DrawingLevel(1.618,color=draft.color)) }
+                        }
+                        3->{
+                            DrawingToggle("إظهار الرسم",draft.visible) { draft=draft.copy(visible=!draft.visible) }
+                            DrawingToggle("إظهار على الفريم الحالي فقط (${ChartSettings.frame})",draft.frameOnly!=null) { draft=draft.copy(frameOnly=if(draft.frameOnly==null)ChartSettings.frame else null) }
+                            Text("يُحفظ الرسم لهذا الزوج فقط. عند إظهار الرسم على جميع الفريمات تظل نقاطه مرتبطة بالوقت والسعر الأصليين.",color=Color(0xFFBCCBDD),fontSize=13.sp)
+                            Text("الضغط يحدد الرسم، والسحب ينقله، والضغط المطوّل أو المزدوج يفتح إعداداته. الرسم المقفل لا يتحرك.",color=Color(0xFFBCCBDD),fontSize=13.sp)
+                        }
+                    }
+                }
+                if(error.isNotEmpty())Text(error,color=Color(0xFFFF8A96),fontSize=12.sp)
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                    DrawingButton("حفظ",active=true) {
+                        val anchors=original.points.indices.map { i->
+                            val price=if(original.kind==DrawingKind.VERTICAL)original.points[i].price else drawingNumber(prices[i])
+                            val time=if(original.kind==DrawingKind.HORIZONTAL||times[i]==drawingDateFormat().format(Date(original.points[i].time)))original.points[i].time else drawingDate(times[i])
+                            if(price==null||price<=0.0||time==null)null else DrawingAnchor(time,price)
+                        }
+                        val levels=ratios.map { drawingNumber(it) }
+                        val points=anchors.filterNotNull()
+                        val badShape=points.size==original.kind.anchors&&!validDrawingPoints(original.kind,points)
+                        when {
+                            anchors.any { it==null }->error="أدخل سعرًا موجبًا ووقتًا صحيحًا بالتنسيق الموضح."
+                            badShape->error="النقاط متطابقة أو لا تسمح بتكوين هذا الرسم؛ عدّل الإحداثيات."
+                            levels.any { it==null||it !in -10.0..10.0 }->error="نسب المستويات يجب أن تكون بين -10 و10."
+                            hasLevels&&draft.levels.none { it.enabled }->error="فعّل مستوى واحدًا على الأقل."
+                            else->{
+                                ChartDrawings.objects[original.id]=draft.copy(name=draft.name.ifBlank { original.kind.title },points=points,levels=draft.levels.mapIndexed { i,l->l.copy(ratio=levels[i]!!) })
+                                if(!draft.visible)ChartDrawings.selected=null
+                                onDismiss()
+                            }
+                        }
+                    }
+                    DrawingButton("إلغاء",onClick=onDismiss)
+                    DrawingButton("حذف",danger=true) { ChartDrawings.remove(original.id);onDismiss() }
+                }
+            }
+        }
+    }
+}
