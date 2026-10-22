@@ -27,16 +27,16 @@ import kotlin.math.min
 
 /**
  * Standalone Android-framework implementation; no XML, Compose or external libraries.
- * Change the package above to your application's package.
  * Required in AndroidManifest.xml, OUTSIDE <application>:
  * <uses-permission android:name="android.permission.INTERNET" />
  * Register INSIDE <application>:
- * <activity android:name=".LoginActivity" android:exported="false"
- *     android:windowSoftInputMode="adjustResize" />
- *
- * Hero artwork is downloaded from HTTPS and cached on disk. It is not embedded.
- * Authentication is intentionally not simulated: override the four callbacks below
- * to connect your backend, Google Identity flow and destination activities.
+ * <activity android:name=".LoginActivity" android:exported="true"
+ *     android:windowSoftInputMode="adjustResize">
+ *     <intent-filter>
+ *         <action android:name="android.intent.action.MAIN" />
+ *         <category android:name="android.intent.category.LAUNCHER" />
+ *     </intent-filter>
+ * </activity>
  */
 open class LoginActivity : Activity() {
     companion object {
@@ -55,9 +55,7 @@ open class LoginActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         actionBar?.hide()
-        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.rgb(2, 8, 24)))
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-        hideSystemBars()
         screen = LoginScreen(this)
         val scroll = ScrollView(this).apply {
             setBackgroundColor(Color.rgb(2, 8, 24))
@@ -76,30 +74,11 @@ open class LoginActivity : Activity() {
         loadHero()
     }
 
-    @Suppress("DEPRECATION")
-    private fun hideSystemBars() {
-        if (Build.VERSION.SDK_INT >= 30) {
-            window.setDecorFitsSystemWindows(false)
-            window.insetsController?.let {
-                it.hide(WindowInsets.Type.systemBars())
-                it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
-        } else {
-            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-        }
-    }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) hideSystemBars()
-    }
-
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putString(STATE_EMAIL, screen.email.text.toString())
-        outState.putBoolean(STATE_REMEMBER, screen.remember)
+        if (::screen.isInitialized) {
+            outState.putString(STATE_EMAIL, screen.email.text.toString())
+            outState.putBoolean(STATE_REMEMBER, screen.remember)
+        }
         // Deliberately do not persist the password.
         super.onSaveInstanceState(outState)
     }
