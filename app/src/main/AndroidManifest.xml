@@ -8,20 +8,21 @@
         android:icon="@drawable/icon"
         android:label="QUBEX"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Material3.Dark.NoActionBar">
+        android:theme="@style/Theme.Qubex">
 
-        <!-- شاشة تسجيل الدخول / إنشاء الحساب = نقطة البداية -->
+        <!-- شاشة تسجيل الدخول = نقطة البداية -->
         <activity
             android:name=".LoginActivity"
             android:exported="true"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- الشاشة الرئيسية (لم تعد نقطة البداية) -->
+        <!-- الشاشة الرئيسية -->
         <activity
             android:name=".MainActivity"
             android:exported="false"
