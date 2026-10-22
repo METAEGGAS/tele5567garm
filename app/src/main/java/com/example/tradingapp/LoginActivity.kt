@@ -27,7 +27,7 @@ import kotlin.math.min
 open class LoginActivity : Activity() {
     companion object {
         private const val HERO_URL =
-            "https://i.ibb.co/fYshkrrj/file-000000001a2c82469485a64af801b707.png"
+            "https://i.ibb.co/rKvzFXQd/file-0000000016848246a932b72ca8476b79.png"
         private const val STATE_EMAIL = "qubex.email"
         private const val STATE_REMEMBER = "qubex.remember"
     }
@@ -43,16 +43,17 @@ open class LoginActivity : Activity() {
         actionBar?.hide()
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         
-        // جعل شريط الحالة وشريط التنقل شفافين
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
+        // لون موحد لشريط الحالة العلوي والسفلي
+        window.statusBarColor = Color.rgb(2, 8, 24)
+        window.navigationBarColor = Color.rgb(2, 8, 24)
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.rgb(2, 8, 24)))
         
         screen = LoginScreen(this)
         
         // استخدام FrameLayout بدلاً من ScrollView لضمان ثبات الشاشة
         val container = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(2, 8, 24))
-            // إضافة مسافة لشريط الحالة العلوي وشريط التنقل السفلي
+            // مسافة لشريط الحالة العلوي والسفلي
             setPadding(0, getStatusBarHeight(this@LoginActivity), 0, getNavigationBarHeight(this@LoginActivity))
             addView(screen, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -293,9 +294,9 @@ open class LoginActivity : Activity() {
             val w = MeasureSpec.getSize(widthMeasureSpec)
             val h = MeasureSpec.getSize(heightMeasureSpec)
             
+            // الحساب هنا يعتمد على الارتفاع المتاح لضمان عدم قص التصميم
             val factorX = w / 491f
             val factorY = h / 1098f
-            
             factor = min(factorX, factorY)
             
             setMeasuredDimension(w, h)
@@ -320,16 +321,12 @@ open class LoginActivity : Activity() {
         }
 
         override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
-            val w = right - left
-            val h = bottom - top
-            val offsetX = (w - (491f * factor)) / 2f
-            val offsetY = (h - (1098f * factor)) / 2f
-
+            // إزالة التوسيط لتعود الشاشة تبدأ من الأعلى كما كانت
             for (i in 0 until childCount) {
                 val child = getChildAt(i)
                 val box = child.tag as FloatArray
-                val x = (box[0] * factor + offsetX).toInt()
-                val y = (box[1] * factor + offsetY).toInt()
+                val x = (box[0] * factor).toInt()
+                val y = (box[1] * factor).toInt()
                 child.layout(x, y, x + child.measuredWidth, y + child.measuredHeight)
             }
         }
@@ -339,8 +336,7 @@ open class LoginActivity : Activity() {
             canvas.drawColor(backgroundColor)
             val save = canvas.save()
             
-            // توسيط الرسم ليتطابق مع العناصر
-            canvas.translate((width - (491f * factor)) / 2f, (height - (1098f * factor)) / 2f)
+            // إزالة التوسيط لتعود الشاشة تبدأ من الأعلى
             canvas.scale(factor, factor)
             
             hero?.let { bitmap ->
