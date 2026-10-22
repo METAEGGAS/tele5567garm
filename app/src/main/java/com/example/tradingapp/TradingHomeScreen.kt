@@ -10,14 +10,11 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.*
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -53,11 +49,8 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.*
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -95,7 +88,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -111,23 +103,6 @@ const val AVATAR_FRAME_URL = "https://i.ibb.co/5xvxC8Kw/file-00000000d4f882439f8
 const val CHART_BG_URL = "https://i.ibb.co/zWHWPv92/file-0000000090c48211944cf52560e3482a.png"
 const val GIFT_ICON_URL = "https://cdn-icons-png.flaticon.com/128/18546/18546266.png"
 
-private const val SELL_TRADE_ICON_URL="https://i.ibb.co/211vdkBD/IMG.png"
-private const val BUY_TRADE_ICON_URL="https://i.ibb.co/Lhg3BSqL/IMG.png"
-
-// Local chrome palette: unrelated screens and trading logic keep their original theme.
-private object TradingChrome {
-    val Background=Color(0xFFE8EAED)
-    val Field=Color(0xFFF4F5F7)
-    val Border=Color(0xFFD2D7DF)
-    val Ink=Color(0xFF202B3C)
-    val Muted=Color(0xFF647184)
-    val Accent=Color(0xFF2563EB)
-    val Chart=Color(0xFFF1F2F4)
-    val Grid=Color(0xFFB8C0CB)
-    val Buy=Color(0xFF129B72)
-    val Sell=Color(0xFFDF4655)
-}
-
 object C {
     val BG=Color(0xFF141126); val Surface=Color(0xFF24203D); val SurfaceRaised=Color(0xFF30284F)
     val Cyan=Color(0xFF58D9F5); 
@@ -137,7 +112,7 @@ object C {
     val TextSecondary=Color(0xFFA9A5C6); val Divider=Color(0xFF3D355A); val Grid=Color(0xFF67558D)
     val PriceTag=Cyan; val PkBg=BG; val PkSurface=Surface; val PkTab=Surface; val PkTabOn=Cyan
     val PkStarOn=Color(0xFFFFD700); val PkPct=Green; val NotifyGreen=Color(0xFF0EA751)
-    val BarBg=Color(0xFF344766); val BarOpenGreen=Color(0xFF00E676); val ChartBg=TradingChrome.Chart
+    val BarBg=Color(0xFF344766); val BarOpenGreen=Color(0xFF00E676); val ChartBg=Color(0xFF3C3861)
 }
 private object Ref {
     val Background=Color(0xFF2B2659); val Border=Color(0xFF223252)
@@ -160,12 +135,7 @@ private object Ref {
 }
 private const val MINUTE_MS=60_000L
 private const val MIN_PRICE_SPAN=0.00001
-private const val LIVE_CANDLE_FRACTION=.50 // موضع الشمعة النشطة عند 50% من عرض الشارت
-private const val CHART_CONTENT_SCALE=.92 // تباعد الشموع الأصلي مستقل عن مقياس الواجهة
-private const val FIXED_CHART_SCALE=.80f
-private const val HISTORICAL_CANDLE_TARGET=10_000
-private const val HISTORICAL_PAGE_SIZE=500
-private const val CHART_CANDLE_CAPACITY=HISTORICAL_CANDLE_TARGET+1 // التاريخ + الشمعة الحية
+private const val LIVE_CANDLE_FRACTION=.85 // يجعل الشمعة في أقصى اليمين
 private fun candleBodyWidth(spacing:Float,gapPx:Float):Float {
     if(!spacing.isFinite()||spacing<=0f)return 0f
     val unit=gapPx.coerceAtLeast(.001f)
@@ -460,12 +430,8 @@ object BiquoteApi {
         val txt=get("/api/${symbol.uppercase(Locale.US)}",listOf("allowStale" to "false")) ?: return@withContext null
         try { JSONObject(txt).optDouble("mid",Double.NaN).takeIf { it.isFinite()&&it>0 } } catch(_:Exception) { null }
     }
-    suspend fun ohlc(symbol:String,interval:String="1m",limit:Int=300,to:Long?=null):List<Candle> = withContext(Dispatchers.IO) {
-        currentCoroutineContext().ensureActive()
-        val params=mutableListOf("interval" to interval,"limit" to limit.coerceIn(1,HISTORICAL_PAGE_SIZE).toString())
-        if(to!=null)params.add("to" to java.time.Instant.ofEpochMilli(to).toString())
-        val txt=get("/api/${symbol.uppercase(Locale.US)}/ohlc",params) ?: return@withContext emptyList()
-        currentCoroutineContext().ensureActive()
+    suspend fun ohlc(symbol:String,interval:String="1m",limit:Int=300):List<Candle> = withContext(Dispatchers.IO) {
+        val txt=get("/api/${symbol.uppercase(Locale.US)}/ohlc",listOf("interval" to interval,"limit" to "$limit")) ?: return@withContext emptyList()
         try {
             val response=JSONObject(txt)
             val a=response.optJSONArray("bars") ?: return@withContext emptyList()
@@ -479,53 +445,14 @@ object BiquoteApi {
             }.sortedBy { it.time }
         } catch(e:Exception) { emptyList() }
     }
-    internal suspend fun chartHistory(symbol:String,frame:String,recent:Boolean=false,onSource:(List<Candle>)->Unit={}):List<Candle> {
+    internal suspend fun chartHistory(symbol:String,frame:String,recent:Boolean=false):List<Candle> {
         val ms=chartFrameMillis(frame)
         if(ms<MINUTE_MS) return emptyList()
         val base=chartSourceInterval(frame)
         val baseMs=when(base) { "5m"->300_000L;"15m"->900_000L;"30m"->1_800_000L;"1h"->3_600_000L;"4h"->14_400_000L;"1d"->86_400_000L;else->MINUTE_MS }
         val factor=(ms/baseMs).toInt().coerceAtLeast(1)
-        val source=ohlc(symbol,base,if(recent)maxOf(8,factor*4) else HISTORICAL_PAGE_SIZE)
-        onSource(source)
+        val source=ohlc(symbol,base,if(recent)maxOf(8,factor*4) else 1000)
         return aggregateChartBars(source,ms,baseMs)
-    }
-    // ISO-8601 `to` is an exclusive backwards cursor; duplicate/ignored cursors stop safely.
-    internal suspend fun loadHistoricalPages(symbol:String,frame:String,initialSource:List<Candle>,onPage:(List<Candle>,Int)->Unit):Int {
-        val ms=chartFrameMillis(frame)
-        if(ms<MINUTE_MS)return 0 // المصدر لا يوفر OHLC تاريخياً لفريمات الثواني.
-        val base=chartSourceInterval(frame)
-        val baseMs=when(base) { "5m"->300_000L;"15m"->900_000L;"30m"->1_800_000L;"1h"->3_600_000L;"4h"->14_400_000L;"1d"->86_400_000L;else->MINUTE_MS }
-        val cutoff=FeedClock.now()/ms*ms
-        val source=java.util.TreeMap<Long,Candle>()
-        initialSource.filter { it.time<cutoff }.forEach { source[it.time]=it.copy(isClosed=true) }
-        var cursor=if(initialSource.isEmpty())cutoff-1L else initialSource.minOf { it.time }-1L
-        val seeded=aggregateChartBars(source.values.toList(),ms,baseMs).filter { it.time<cutoff }.takeLast(HISTORICAL_CANDLE_TARGET)
-        var count=seeded.size
-        if(seeded.isNotEmpty())onPage(seeded,count)
-        if(count>=HISTORICAL_CANDLE_TARGET)return count
-        val maxPages=((HISTORICAL_CANDLE_TARGET*(ms/baseMs)+HISTORICAL_PAGE_SIZE-1)/HISTORICAL_PAGE_SIZE).toInt()+8
-        repeat(maxPages) {
-            currentCoroutineContext().ensureActive()
-            var page=emptyList<Candle>()
-            var attempt=0
-            while(page.isEmpty()&&attempt<3) {
-                page=ohlc(symbol,base,HISTORICAL_PAGE_SIZE,cursor)
-                currentCoroutineContext().ensureActive()
-                attempt++
-                if(page.isEmpty()&&attempt<3)delay(350L*attempt)
-            }
-            val older=page.filter { it.time<=cursor&&it.time<cutoff }
-            if(older.isEmpty())return count
-            older.forEach { source[it.time]=it.copy(isClosed=true) }
-            val bars=aggregateChartBars(source.values.toList(),ms,baseMs).filter { it.time<cutoff }.takeLast(HISTORICAL_CANDLE_TARGET)
-            if(bars.size>count) { count=bars.size;onPage(bars,count) }
-            if(count>=HISTORICAL_CANDLE_TARGET)return count
-            val oldest=older.minOf { it.time }
-            if(oldest<=0L||oldest-1L>=cursor)return count
-            cursor=oldest-1L
-            delay(100)
-        }
-        return count
     }
     suspend fun symbols(liveOnly:Boolean=false):List<String> = withContext(Dispatchers.IO) {
         val txt=get("/api/symbols",listOf("liveOnly" to "$liveOnly")) ?: return@withContext emptyList()
@@ -715,7 +642,7 @@ private fun openTrade(direction:Int,symbol:String,payout:Int) {
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().background(C.BG)) {
             TopBar()
-            Box(Modifier.fillMaxWidth().height(1.dp).background(TradingChrome.Border))
+            Box(Modifier.fillMaxWidth().height(1.dp).background(C.Divider))
             LiveCandlestickChart(Modifier.weight(1f).fillMaxWidth()) { pickerOpen=true }
             TradePanel()
             ExtraIndicatorPanes()
@@ -724,25 +651,24 @@ private fun openTrade(direction:Int,symbol:String,payout:Int) {
         val message=TradeMessage.text
         if(message.isNotEmpty()) Box(Modifier.align(Alignment.TopCenter).padding(top=110.dp,start=18.dp,end=18.dp).shadow(12.dp,RoundedCornerShape(10.dp)).background(Color(0xFF202638),RoundedCornerShape(10.dp)).border(1.dp,Color(0xFFF05B67),RoundedCornerShape(10.dp)).padding(horizontal=18.dp,vertical=13.dp)) { Text(message,color=Color.White,fontSize=14.sp,fontWeight=FontWeight.SemiBold,textAlign=TextAlign.Center) }
     }
-    LaunchedEffect(HistoryOverlay.open) { if(HistoryOverlay.open)pickerOpen=false }
-    if(pickerOpen&&!HistoryOverlay.open)PairPickerSheet { pickerOpen=false }
+    if(pickerOpen)PairPickerSheet { pickerOpen=false }
     InsufficientBalanceDialog()
     if(HistoryOverlay.open)TradeHistoryPage()
 }
 
 @Composable fun TopBar() {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Row(Modifier.fillMaxWidth().background(TradingChrome.Background).padding(horizontal=12.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().background(C.BG).padding(horizontal=12.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
             Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(C.Yellow),contentAlignment=Alignment.Center) { WalletIcon(Modifier.size(26.dp),Color(0xFF312740)) }
             Spacer(Modifier.width(8.dp))
             BalanceAnchor()
             Spacer(Modifier.weight(1f))
             Box {
                 CachedTradingImage(url=GIFT_ICON_URL,contentDescription="هدية",contentScale=ContentScale.Fit,modifier=Modifier.size(36.dp))
-                Box(Modifier.align(Alignment.TopEnd).offset(3.dp,(-3).dp).size(14.dp).clip(CircleShape).background(TradingChrome.Background).border(1.dp,TradingChrome.Border,CircleShape)) { Canvas(Modifier.fillMaxSize()) {
+                Box(Modifier.align(Alignment.TopEnd).offset(3.dp,(-3).dp).size(14.dp).clip(CircleShape).background(C.BG).border(1.dp,C.Divider,CircleShape)) { Canvas(Modifier.fillMaxSize()) {
                     val m=size.minDimension*.22f; val cx=size.width/2; val cy=size.height/2
-                    drawLine(TradingChrome.Ink,Offset(cx-m,cy-m),Offset(cx+m,cy+m),1.dp.toPx(),StrokeCap.Round)
-                    drawLine(TradingChrome.Ink,Offset(cx+m,cy-m),Offset(cx-m,cy+m),1.dp.toPx(),StrokeCap.Round)
+                    drawLine(Color.White,Offset(cx-m,cy-m),Offset(cx+m,cy+m),1.dp.toPx(),StrokeCap.Round)
+                    drawLine(Color.White,Offset(cx+m,cy-m),Offset(cx-m,cy+m),1.dp.toPx(),StrokeCap.Round)
                 } }
             }
             Spacer(Modifier.width(10.dp))
@@ -766,19 +692,18 @@ private class ReferencePopupPosition(private val above:Boolean,private val densi
 @Composable private fun BalanceAnchor() {
     var expanded by remember { mutableStateOf(false) }
     val density=LocalDensity.current; val config=LocalConfiguration.current
-    LaunchedEffect(HistoryOverlay.open) { if(HistoryOverlay.open)expanded=false }
     Box {
-        Row(Modifier.clip(RoundedCornerShape(12.dp)).background(TradingChrome.Field).border(1.dp,TradingChrome.Border,RoundedCornerShape(12.dp)).clickable { expanded=!expanded }.padding(horizontal=14.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically) {
+        Row(Modifier.clip(RoundedCornerShape(12.dp)).background(C.Surface).clickable { expanded=!expanded }.padding(horizontal=14.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically) {
             Column {
                 Row(verticalAlignment=Alignment.CenterVertically) {
-                    Text(if(AccountStore.selected=="demo")"QT Demo" else "QT Real",color=TradingChrome.Muted,fontSize=10.sp); Spacer(Modifier.width(6.dp))
-                    Text("حلال",color=C.Green,fontSize=10.sp,modifier=Modifier.alpha(0f)); Spacer(Modifier.width(6.dp)); Text(CurrencyStore.selected,color=TradingChrome.Muted,fontSize=10.sp)
+                    Text(if(AccountStore.selected=="demo")"QT Demo" else "QT Real",color=C.TextSecondary,fontSize=10.sp); Spacer(Modifier.width(6.dp))
+                    Text("حلال",color=C.Green,fontSize=10.sp,modifier=Modifier.alpha(0f)); Spacer(Modifier.width(6.dp)); Text(CurrencyStore.selected,color=C.TextSecondary,fontSize=10.sp)
                 }
-                Text(CurrencyStore.display(AccountStore.balance()),color=TradingChrome.Ink,fontSize=20.sp,fontWeight=FontWeight.Bold)
+                Text(CurrencyStore.display(AccountStore.balance()),color=C.TextPrimary,fontSize=20.sp,fontWeight=FontWeight.Bold)
             }
-            Spacer(Modifier.width(10.dp)); DownArrow(Modifier.size(10.dp),TradingChrome.Muted)
+            Spacer(Modifier.width(10.dp)); DownArrow(Modifier.size(10.dp))
         }
-        if(expanded&&!HistoryOverlay.open)Popup(popupPositionProvider=remember(density.density) { ReferencePopupPosition(false,density.density) },onDismissRequest={expanded=false},properties=PopupProperties(focusable=true)) {
+        if(expanded)Popup(popupPositionProvider=remember(density.density) { ReferencePopupPosition(false,density.density) },onDismissRequest={expanded=false},properties=PopupProperties(focusable=true)) {
             val width=min(248f,config.screenWidthDp*.78f).dp
             Column(Modifier.width(width).shadow(20.dp,RoundedCornerShape(12.dp)).background(Ref.Menu,RoundedCornerShape(12.dp)).border(1.dp,Ref.Border,RoundedCornerShape(12.dp)).padding(10.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 AccountRow("real") { AccountStore.select("real"); expanded=false }
@@ -858,16 +783,17 @@ private fun mergeReferenceBars(list:MutableList<Candle>,incoming:List<Candle>,bu
 
 private fun referenceBlend(perFrame:Double,dt:Double)=
     1.0-(1.0-perFrame).pow(dt.coerceIn(0.0,.06)*60.0)
-private fun referenceDisplayCandle(previous:Candle?,target:Candle,dt:Double):Candle {
+private fun referenceDisplayCandle(previous:Candle?,target:Candle,previousClose:Double?,dt:Double):Candle {
     if(previous==null)return target
     if(previous.time!=target.time) {
-        val open=target.open
+        val open=previousClose ?: target.open
         return target.copy(open=open,high=open,low=open,close=open)
     }
-    val blend=referenceBlend(.12,dt)
+    val blend=referenceBlend(.20,dt)
     fun mix(from:Double,to:Double)=from+(to-from)*blend
     val open=mix(previous.open,target.open)
-    val close=mix(previous.close,target.close)
+    val mixedClose=mix(previous.close,target.close)
+    val close=if(abs(target.close-mixedClose)<1e-7)target.close else mixedClose
     return target.copy(open=open,close=close,
         high=maxOf(mix(previous.high,target.high),open,close),
         low=minOf(mix(previous.low,target.low),open,close))
@@ -887,8 +813,7 @@ private fun updateCandleFromTick(list:MutableList<Candle>,price:Double,time:Long
     if(last!=null&&bucket>last.time&&!last.isClosed) {
         list[list.lastIndex]=last.copy(isClosed=true)
     }
-    val open=if(last!=null&&bucket==last.time+intervalMs)last.close else price
-    val changed=mergeCandle(list,Candle(open,max(open,price),min(open,price),price,bucket))
+    val changed=mergeCandle(list,Candle(price,price,price,price,bucket))
     cursor.time=time;cursor.price=price
     return changed
 }
@@ -921,8 +846,7 @@ private fun verticalTarget(view:ChartViewport,candles:List<Candle>,origin:Long,i
     val low=visible.minOf { it.low.toDouble() }; val high=visible.maxOf { it.high.toDouble() }
     // توزيع متوازن: 12% حشو من الأعلى والأسفل
     val padding = max(0.0005, (high - low) * 0.12) 
-    val priceSpan=(high-low+padding*2).coerceAtLeast(MIN_PRICE_SPAN)
-    return (high+low)/2 to priceSpan
+    return (high+low)/2 to (high-low+padding*2).coerceAtLeast(MIN_PRICE_SPAN)
 }
 private fun nicePriceStep(raw:Double):Double {
     if(!raw.isFinite()||raw<=0)return .001
@@ -1724,17 +1648,9 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
     var origin by remember { mutableLongStateOf(0L) }
     var viewport by remember { mutableStateOf(ChartViewport(60.0,0.0,LIVE_CANDLE_FRACTION,1.0,MIN_PRICE_SPAN)) }
     var bsTarget by remember { mutableDoubleStateOf(60.0) }
-    // Vertical-only magnification. Never change candle timestamps, widths or X anchors.
-    var candleHeightScale by remember { mutableDoubleStateOf(1.0) }
     var followLive by remember { mutableStateOf(true) }
     var interacting by remember { mutableStateOf(false) }
-    // Scale the complete inner chart, never its allocated screen area.
-    val chartContentScale=FIXED_CHART_SCALE
-    var chartContainerSize by remember { mutableStateOf(IntSize.Zero) }
-    val chartSize by remember { derivedStateOf {
-        IntSize((chartContainerSize.width/chartContentScale).roundToInt().coerceAtLeast(1),
-            (chartContainerSize.height/chartContentScale).roundToInt().coerceAtLeast(1))
-    } }
+    var chartSize by remember { mutableStateOf(IntSize.Zero) }
     var secondsLeft by remember { mutableIntStateOf(60) }
     var clockText by remember { mutableStateOf(clockNow()) }
     var nowMs by remember { mutableLongStateOf(FeedClock.now()) }
@@ -1743,35 +1659,20 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
     var loadError by remember { mutableStateOf(false) }
     var retryKey by remember { mutableIntStateOf(0) }
     var everLoaded by remember { mutableStateOf(false) }
-    var historyLoaded by remember(sym,frame) { mutableIntStateOf(0) }
-    var historyLoading by remember(sym,frame) { mutableStateOf(false) }
     val resultHits=remember { mutableListOf<Pair<Long,Rect>>() }
     val density=LocalDensity.current
     val axisTextPx=with(density) { 9.sp.toPx() }; val tagTextPx=with(density) { 10.sp.toPx() }
-    val axisPaint=remember(axisTextPx) { NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=TradingChrome.Muted.toArgb();textSize=axisTextPx;textAlign=NativePaint.Align.RIGHT;typeface=Typeface.DEFAULT } }
-    val timePaint=remember(axisTextPx) { NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=TradingChrome.Muted.toArgb();textSize=axisTextPx;textAlign=NativePaint.Align.CENTER } }
-    val tagPaint=remember(tagTextPx) { NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=TradingChrome.Ink.toArgb();textSize=tagTextPx;textAlign=NativePaint.Align.CENTER;typeface=Typeface.DEFAULT_BOLD } }
-    val detailPaint=remember(axisTextPx) { NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=TradingChrome.Accent.toArgb();textSize=axisTextPx;textAlign=NativePaint.Align.CENTER } }
+    val axisPaint=remember(axisTextPx) { NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=Color.White.toArgb();textSize=axisTextPx;textAlign=NativePaint.Align.RIGHT;typeface=Typeface.DEFAULT } }
+    val timePaint=remember(axisTextPx) { NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=C.TextSecondary.toArgb();textSize=axisTextPx;textAlign=NativePaint.Align.CENTER } }
+    val tagPaint=remember(tagTextPx) { NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=C.BG.toArgb();textSize=tagTextPx;textAlign=NativePaint.Align.CENTER;typeface=Typeface.DEFAULT_BOLD } }
+    val detailPaint=remember(axisTextPx) { NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { color=C.Cyan.toArgb();textSize=axisTextPx;textAlign=NativePaint.Align.CENTER } }
     fun ppw()=(chartSize.width-6f-PAD).coerceAtLeast(1f)
-    fun clampVisible(v:Double,contentScale:Float=chartContentScale):Double {
+    fun clampVisible(v:Double):Double {
         val perMin=((ppw()/(max(3f,16f*3.704f)+8f))*.9f).toDouble()
         val perMax=(ppw()/(max(3f,16f*.207f)+8f)).toDouble()
         val minBars=ppw()/perMax; val maxBars=ppw()/perMin
-        val lower=max(MIN_VISIBLE_BARS_LIMIT,minBars)/contentScale
-        val upper=(min(MAX_VISIBLE_BARS_LIMIT,maxBars)/contentScale).coerceAtLeast(lower)
+        val lower=max(MIN_VISIBLE_BARS_LIMIT,minBars); val upper=min(MAX_VISIBLE_BARS_LIMIT,maxBars).coerceAtLeast(lower)
         return v.coerceIn(lower,upper)
-    }
-    fun chartVerticalTarget(view:ChartViewport,bars:List<Candle>):Pair<Double,Double> {
-        val(center,span)=verticalTarget(view,bars,origin,intervalMs)
-        return center to (span/chartContentScale/candleHeightScale).coerceAtLeast(MIN_PRICE_SPAN)
-    }
-    fun changeCandleHeight(requested:Double) {
-        if(!requested.isFinite()||candles.isEmpty()||isLoading||loadError)return
-        val next=requested.coerceIn(.25,8.0)
-        if(next==candleHeightScale)return
-        val previous=candleHeightScale
-        candleHeightScale=next
-        viewport=viewport.copy(priceSpan=(viewport.priceSpan*previous/next).coerceAtLeast(MIN_PRICE_SPAN))
     }
     fun beginPinch() {
         if(candles.isEmpty())return
@@ -1879,7 +1780,8 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
             }
             if(!isLoading&&candles.isNotEmpty()) {
                 val target=candles.last()
-                displayCandle=referenceDisplayCandle(displayCandle,target,dt)
+                displayCandle=referenceDisplayCandle(displayCandle,target,
+                    candles.getOrNull(candles.lastIndex-1)?.close,dt)
                 var vp=viewport
                 if(autoScrollEnabled&&followLive&&!interacting&&abs(inertia)<.000001) {
                     val live=barPosition(target.time,origin)
@@ -1889,7 +1791,7 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                 }
                 val visible=candles.toMutableList()
                 displayCandle?.takeIf { it.time==target.time }?.let { visible[visible.lastIndex]=it }
-                val(pc,span)=chartVerticalTarget(vp,visible)
+                val(pc,span)=verticalTarget(vp,visible,origin,intervalMs)
                 val ease=referenceBlend(.12,dt)
                 viewport=vp.copy(centerPrice=vp.centerPrice+(pc-vp.centerPrice)*ease,
                     priceSpan=(vp.priceSpan+(span-vp.priceSpan)*ease).coerceAtLeast(MIN_PRICE_SPAN))
@@ -1900,13 +1802,13 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
         if(ChartSettings.autoScrollEnabled&&candles.isNotEmpty()) {
             followLive=true;inertia=0.0
             val v=viewport.copy(anchorBar=barPosition(candles.last().time,origin),anchorFraction=LIVE_CANDLE_FRACTION)
-            val(center,span)=chartVerticalTarget(v,candles)
+            val(center,span)=verticalTarget(v,candles,origin,intervalMs)
             viewport=v.copy(centerPrice=center,priceSpan=span)
         }
     }
     LaunchedEffect(chartType) {
         if(candles.isNotEmpty()) {
-            val(center,span)=chartVerticalTarget(viewport,candles)
+            val(center,span)=verticalTarget(viewport,candles,origin,intervalMs)
             viewport=viewport.copy(centerPrice=center,priceSpan=span)
         }
     }
@@ -1914,30 +1816,19 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
         val started=System.currentTimeMillis();val initial=!everLoaded
         isLoading=true;loadError=false;candles.clear();displayCandle=null;livePrice=0.0;TradeStore.livePrice.value=0f;followLive=true;inertia=0.0
         if(!SymCatalog.isForex(sym)) { isLoading=false;loadError=true;return@LaunchedEffect }
-        val liveCursor=ChartTickCursor()
-        fun applyLivePrice(price:Double) {
-            val tickTime=FeedClock.now()
-            TradeStore.quote(sym,price)
-            livePrice=price
-            updateCandleFromTick(candles,price,tickTime,intervalMs,liveCursor)
-        }
         var success=false
-        var initialSource=emptyList<Candle>()
         repeat(10) {
             if(!success) {
-                val bars=BiquoteApi.chartHistory(sym,frame,onSource={ initialSource=it })
+                val bars=BiquoteApi.chartHistory(sym,frame)
                 currentCoroutineContext().ensureActive()
                 if(bars.isNotEmpty()) {
                     origin=bars.first().time;mergeReferenceBars(candles,bars,bulk=true)
-                    while(candles.size>CHART_CANDLE_CAPACITY)candles.removeAt(0)
+                    while(candles.size>1500)candles.removeAt(0)
                     if(candles.isNotEmpty()) {
-                        viewport=initialViewport(candles,origin,intervalMs,clampVisible(ppw()/(8.0*density.density*CHART_CONTENT_SCALE))).let {
-                            it.copy(priceSpan=(it.priceSpan/chartContentScale/candleHeightScale).coerceAtLeast(MIN_PRICE_SPAN))
-                        };bsTarget=viewport.visibleBars
+                        viewport=initialViewport(candles,origin,intervalMs,clampVisible((ppw()/(8f*density.density)).toDouble()));bsTarget=viewport.visibleBars;livePrice=candles.last().close
                         success=true
-                        val price=BiquoteApi.tick(sym)
+                        BiquoteApi.tick(sym)?.let { TradeStore.quote(sym,it) }
                         currentCoroutineContext().ensureActive()
-                        price?.let { applyLivePrice(it) }
                     }
                 } else delay(1500)
             }
@@ -1946,36 +1837,20 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
         isLoading=false
         if(!success) { loadError=true;return@LaunchedEffect }
         everLoaded=true
-        launch {
-            historyLoading=true;historyLoaded=0
-            try {
-                historyLoaded=BiquoteApi.loadHistoricalPages(sym,frame,initialSource) { bars,count->
-                    // Prepend older bars without changing origin or the user's viewport/live candle.
-                    mergeReferenceBars(candles,bars,bulk=false)
-                    while(candles.size>CHART_CANDLE_CAPACITY)candles.removeAt(0)
-                    historyLoaded=count
-                }
-            } finally { historyLoading=false }
-        }
-        // تحديث التاريخ مستقل حتى لا يحجب وصول السعر اللحظي أو يستبدل الشمعة النشطة.
-        launch {
-            while(isActive) {
-                delay(5000)
+        var lastRefresh=0L
+        while(isActive) {
+            val elapsed=android.os.SystemClock.elapsedRealtime()
+            if(elapsed-lastRefresh>=5000L) {
                 val lastBars=BiquoteApi.chartHistory(sym,frame,recent=true)
                 currentCoroutineContext().ensureActive()
-                val currentBucket=FeedClock.now()/intervalMs*intervalMs
-                val liveBucket=if(liveCursor.time>0L)liveCursor.time/intervalMs*intervalMs else currentBucket
-                val closedBars=lastBars.filter { it.time<minOf(currentBucket,liveBucket) }
-                if(closedBars.isNotEmpty())mergeReferenceBars(candles,closedBars,bulk=false)
-                while(candles.size>CHART_CANDLE_CAPACITY)candles.removeAt(0)
+                if(lastBars.isEmpty())continue
+                mergeReferenceBars(candles,lastBars,bulk=false)
+                lastRefresh=android.os.SystemClock.elapsedRealtime()
             }
-        }
-        while(isActive) {
-            val price=BiquoteApi.tick(sym)
+            BiquoteApi.tick(sym)?.let { TradeStore.quote(sym,it);livePrice=it }
             currentCoroutineContext().ensureActive()
-            price?.let { applyLivePrice(it) }
-            while(candles.size>CHART_CANDLE_CAPACITY)candles.removeAt(0)
-            delay(250)
+            while(candles.size>1500)candles.removeAt(0)
+            delay(1000)
         }
     }
 
@@ -1991,22 +1866,9 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
     }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Box(modifier.background(C.ChartBg).clipToBounds().onSizeChanged { chartContainerSize=it }) {
-            // Virtual size grows when zooming out. The layer maps all rendering AND
-            // pointer coordinates together, including native text and trade hits.
-            Box(Modifier.matchParentSize().layout { measurable,constraints->
-                val width=constraints.maxWidth;val height=constraints.maxHeight
-                val virtualWidth=(width/chartContentScale).roundToInt().coerceAtLeast(1)
-                val virtualHeight=(height/chartContentScale).roundToInt().coerceAtLeast(1)
-                val content=measurable.measure(Constraints.fixed(virtualWidth,virtualHeight))
-                layout(width,height) {
-                    content.placeWithLayer(0,0) {
-                        transformOrigin=TransformOrigin(0f,0f)
-                        scaleX=width.toFloat()/virtualWidth;scaleY=height.toFloat()/virtualHeight
-                    }
-                }
-            }) {
-            Box(Modifier.matchParentSize().background(TradingChrome.Chart))
+        Box(modifier.background(C.ChartBg).onSizeChanged { chartSize=it }) {
+            CachedTradingImage(url=CHART_BG_URL,contentDescription=null,contentScale=ContentScale.Crop,modifier=Modifier.matchParentSize())
+            Box(Modifier.matchParentSize().background(Color.Black.copy(alpha=.25f)))
             if(isLoading) {
                 ReferenceChartLoading(Modifier.matchParentSize(),sym+"-"+frame+"-"+retryKey,!everLoaded)
             } else if(loadError) {
@@ -2014,7 +1876,7 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                     Text("لا توجد بيانات حقيقية",color=C.Red,fontSize=14.sp,fontWeight=FontWeight.Bold)
                     Text("تحقق من الاتصال وتوفر بيانات هذا الفريم، ثم اضغط لإعادة المحاولة",color=C.TextSecondary,fontSize=11.sp)
                 }
-            } else Canvas(Modifier.fillMaxSize()
+            } else Canvas(Modifier.fillMaxSize().onSizeChanged { chartSize=it }
                 .pointerInput(Unit) {
                     var lastTapId:Long?=null;var lastTapTime=0L
                     try { awaitEachGesture {
@@ -2080,7 +1942,7 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                 val pFirst=ceil(view.minPrice/step).toLong();val pLast=floor(view.maxPrice/step).toLong()
                 if(pLast>=pFirst&&pLast-pFirst<1000)for(t in pFirst..pLast) {
                     val price=t*step;val y=yFor(price)
-                    drawLine(TradingChrome.Grid.copy(alpha=.34f),Offset(0f,y),Offset(w,y),1.dp.toPx())
+                    drawLine(C.Grid.copy(alpha=.34f),Offset(0f,y),Offset(w,y),1.dp.toPx())
                     if(y>=axisTextPx&&y<=h-axisTextPx/2)native.drawText(priceText(price,decimals),w-5.dp.toPx(),baseline(y,axisPaint),axisPaint)
                 }
                 val cols=(w/64.dp.toPx()).toInt().coerceAtLeast(2);val timeStep=niceTimeStep(view.visibleBars/cols)
@@ -2088,7 +1950,7 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
                 val tFirst=ceil(left/timeStep).toLong();val tLast=floor(right/timeStep).toLong()
                 if(tLast>=tFirst&&tLast-tFirst<1000)for(t in tFirst..tLast) {
                     val minute=t*timeStep;val x=xFor((minute-om).toDouble())
-                    drawLine(TradingChrome.Grid.copy(alpha=.28f),Offset(x,0f),Offset(x,h),1.dp.toPx())
+                    drawLine(C.Grid.copy(alpha=.28f),Offset(x,0f),Offset(x,h),1.dp.toPx())
                     val label=candleTimeText(minute*intervalMs,intervalMs);val half=timePaint.measureText(label)/2
                     if(x-half>=0&&x+half<=w)native.drawText(label,x,baseline(h-7.dp.toPx(),timePaint),timePaint)
                 }
@@ -2146,22 +2008,11 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
             }
             PairHeader(Modifier.align(Alignment.TopStart).padding(start=4.dp,top=8.dp),onOpenPairPicker)
             Column(Modifier.align(Alignment.TopStart).padding(start=14.dp,top=60.dp)) {
-                Text("$clockText UTC+3",color=TradingChrome.Muted,fontSize=11.sp)
-                if(historyLoading)Text("تحميل التاريخ  $historyLoaded / 10,000",color=TradingChrome.Accent.copy(alpha=.8f),fontSize=9.sp)
-                else if(historyLoaded in 1 until HISTORICAL_CANDLE_TARGET)Text("التاريخ المتاح من المصدر: $historyLoaded شمعة",color=TradingChrome.Muted,fontSize=9.sp)
+                Text("$clockText UTC+3",color=C.TextSecondary,fontSize=11.sp)
             }
             ExtraIndicatorOverlayHeadings(Modifier.align(Alignment.TopStart).padding(start=14.dp,top=88.dp))
             DrawingToolbar(sym,frame,Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start=6.dp,end=6.dp,bottom=28.dp))
             TopNotificationOverlay(Modifier.align(Alignment.TopStart))
-            }
-            CandleHeightControls(
-                scale=candleHeightScale,
-                enabled=!isLoading&&!loadError&&candles.isNotEmpty(),
-                onIncrease={changeCandleHeight(candleHeightScale*1.25)},
-                onDecrease={changeCandleHeight(candleHeightScale/1.25)},
-                onReset={changeCandleHeight(1.0)},
-                modifier=Modifier.align(Alignment.BottomEnd).padding(end=10.dp,bottom=76.dp)
-            )
         }
     }
     if(ChartDrawings.managerOpen)DrawingManagerDialog(sym) { ChartDrawings.managerOpen=false }
@@ -2169,110 +2020,51 @@ private fun DrawScope.drawIndicatorOverlays(bars:List<Candle>,view:ChartViewport
     if(editingDrawing!=null)DrawingSettingsDialog(editingDrawing) { ChartDrawings.editing=null }
 }
 
-private data class MarkerPlacement(val trade:OpenTrade,val dot:Offset,val box:Rect,val alpha:Float)
-@Composable private fun CandleHeightControls(scale:Double,enabled:Boolean,onIncrease:()->Unit,onDecrease:()->Unit,onReset:()->Unit,modifier:Modifier=Modifier) {
-    Column(modifier.shadow(5.dp,RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp)).background(TradingChrome.Background.copy(alpha=.97f)).border(1.dp,TradingChrome.Border,RoundedCornerShape(14.dp)).padding(3.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-        CandleHeightStep("+","تكبير طول الشموع",enabled&&scale<8.0,onIncrease)
-        Box(Modifier.width(44.dp).height(28.dp).semantics { contentDescription="إعادة طول الشموع الافتراضي" }.clickable(enabled=enabled,onClick=onReset),contentAlignment=Alignment.Center) {
-            Text(String.format(Locale.US,"%.0f%%",scale*100),color=TradingChrome.Muted,fontSize=10.sp,fontWeight=FontWeight.SemiBold)
-        }
-        CandleHeightStep("−","تصغير طول الشموع",enabled&&scale>.25,onDecrease)
-    }
-}
-@Composable private fun CandleHeightStep(label:String,description:String,enabled:Boolean,onClick:()->Unit) {
-    Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(TradingChrome.Field).semantics { contentDescription=description }.clickable(enabled=enabled,onClick=onClick).alpha(if(enabled)1f else .35f),contentAlignment=Alignment.Center) {
-        Text(label,color=TradingChrome.Ink,fontSize=25.sp,fontWeight=FontWeight.Medium)
-    }
-}
-
+private data class MarkerPlacement(val trade:OpenTrade,val y:Float,val dot:Float,val dotY:Float,val right:Float,val left:Float,val width:Float)
 private fun DrawScope.drawReferenceTrades(symbol:String,account:String,now:Long,liveX:Float,xFor:(Long)->Float,yFor:(Double)->Float,hits:MutableList<Pair<Long,Rect>>,intervalMs:Long=MINUTE_MS) {
     fun px(n:Float)=n*density
     val w=size.width;val h=size.height;val native=drawContext.canvas.nativeCanvas
-    if(w<=px(32f)||h<=px(32f))return
-    val amountPaint=NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { typeface=Typeface.DEFAULT_BOLD;textSize=px(11f);textAlign=NativePaint.Align.LEFT }
-    val clockPaint=NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { typeface=Typeface.create("sans-serif-medium",Typeface.NORMAL);textSize=px(9f);textAlign=NativePaint.Align.LEFT }
+    val amountPaint=NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply { typeface=Typeface.create("Arial",Typeface.BOLD);textSize=px(10f);textAlign=NativePaint.Align.LEFT }
     val places=mutableListOf<MarkerPlacement>()
-    val trades=TradeStore.openTrades.filter { it.symbol==symbol&&it.account==account }.sortedWith(compareBy<OpenTrade> { it.openedAt }.thenBy { it.id })
-    val newest=trades.lastOrNull()
-    if(newest!=null) {
-        val expiryX=xFor(newest.expiresAt)
-        if(expiryX in px(8f)..(w-px(8f))) {
-            drawLine(Color.White.copy(alpha=.26f),Offset(expiryX,px(70f)),Offset(expiryX,h-px(30f)),px(.8f),
-                pathEffect=PathEffect.dashPathEffect(floatArrayOf(px(3f),px(5f))))
-            drawCircle(C.Surface,px(8f),Offset(expiryX,h-px(38f)))
-            drawCircle(C.Cyan.copy(alpha=.8f),px(8f),Offset(expiryX,h-px(38f)),style=Stroke(px(1f)))
-            drawLine(C.Cyan,Offset(expiryX,h-px(42f)),Offset(expiryX,h-px(38f)),px(1f),StrokeCap.Round)
-            drawLine(C.Cyan,Offset(expiryX,h-px(38f)),Offset(expiryX+px(3f),h-px(36f)),px(1f),StrokeCap.Round)
-        }
-    }
-    for(tr in trades) {
-        val dot=Offset(xFor(tr.openedAt),yFor(tr.exactEntry))
-        if(dot.y<0f||dot.y>h||dot.x>w+px(8f)||max(dot.x,xFor(tr.expiresAt))<0f)continue
-        val amount="$"+shortAmount(tr.amount)
-        val width=max(px(76f),amountPaint.measureText(amount)+px(32f)).coerceAtMost(w-px(12f))
-        val height=px(34f)
-        val minTop=min(px(92f),(h-height-px(8f)).coerceAtLeast(px(6f)))
-        val maxTop=(h-height-px(34f)).coerceAtLeast(minTop)
-        val preferredLeft=(min(dot.x,liveX)-width-px(10f)).coerceIn(px(6f),(w-width-px(6f)).coerceAtLeast(px(6f)))
-        var chosen=Rect(preferredLeft,(dot.y-height/2).coerceIn(minTop,maxTop),preferredLeft+width,(dot.y-height/2).coerceIn(minTop,maxTop)+height)
-        // Try alternate vertical and horizontal lanes without moving the real entry anchor.
-        var bestOverlap=Float.POSITIVE_INFINITY
-        for(lane in 0..3) {
-            val left=(preferredLeft-lane*(width+px(8f))).coerceIn(px(6f),(w-width-px(6f)).coerceAtLeast(px(6f)))
-            for(slot in 0..16) {
-                val row=if(slot==0)0 else if(slot%2==1)(slot+1)/2 else -slot/2
-                val top=(dot.y-height/2+row*(height+px(6f))).coerceIn(minTop,maxTop)
-                val candidate=Rect(left,top,left+width,top+height)
-                var overlap=0f
-                for(other in places) {
-                    val r=other.box
-                    overlap+=max(0f,min(candidate.right+px(3f),r.right)-max(candidate.left-px(3f),r.left))*max(0f,min(candidate.bottom+px(3f),r.bottom)-max(candidate.top-px(3f),r.top))
-                }
-                if(overlap<bestOverlap) { bestOverlap=overlap;chosen=candidate }
-                if(overlap==0f)break
-            }
-            if(bestOverlap==0f)break
-        }
-        val entrance=((now-tr.openedAt).toFloat()/240f).coerceIn(0f,1f)
-        places.add(MarkerPlacement(tr,dot,chosen,entrance))
+    val trades=TradeStore.openTrades.filter { it.symbol==symbol&&it.account==account }.sortedWith(compareBy<OpenTrade> { it.candleTime }.thenBy { it.openedAt }.thenBy { it.id })
+    if(w>0f&&h>0f)for(tr in trades) {
+        val dot=xFor(tr.openedAt/intervalMs*intervalMs)
+        val dotY=yFor(tr.exactEntry)
+        if(dotY<px(-40f)||dotY>h+px(40f))continue
+        val width=amountPaint.measureText("$"+shortAmount(tr.amount))+px(16f)
+        val right=min(dot,liveX)-px(6f)
+        places.add(MarkerPlacement(tr,dotY,dot,dotY,right,right-width,width))
     }
     for(p in places) {
-        val tr=p.trade;val color=if(tr.direction>0)Color(0xFF2EBD85) else Color(0xFFFF596F)
-        val expiryX=xFor(tr.expiresAt).coerceIn(0f,w)
-        val start=p.dot.x.coerceIn(0f,w)
-        if(expiryX>start)drawLine(color.copy(alpha=.5f*p.alpha),Offset(start,p.dot.y),Offset(expiryX,p.dot.y),px(1f),
-            pathEffect=PathEffect.dashPathEffect(floatArrayOf(px(4f),px(4f))))
-        val edge=Offset(if(p.dot.x>=p.box.center.x)p.box.right else p.box.left,p.box.center.y)
-        drawLine(color.copy(alpha=.65f*p.alpha),edge,p.dot,px(1f))
-        if(p.dot.x in 0f..w) {
-            drawCircle(color.copy(alpha=.12f*p.alpha),px(9f),p.dot)
-            drawCircle(C.Surface.copy(alpha=p.alpha),px(4.8f),p.dot)
-            drawCircle(color.copy(alpha=p.alpha),px(3.3f),p.dot)
-            drawCircle(Color.White.copy(alpha=.95f*p.alpha),px(1.3f),p.dot)
-        }
+        val color=if(p.trade.direction>0)Color(0xFF4CAF50) else Color(0xFFF44336)
+        drawLine(color.copy(alpha=.6f),Offset(p.right,p.dotY),Offset(p.dot, p.dotY),px(1f))
+        drawCircle(color,px(4f),Offset(p.dot,p.dotY));drawCircle(Color(0xFFEAFFF5),px(1.5f),Offset(p.dot,p.dotY))
     }
     for(p in places) {
-        val tr=p.trade;val up=tr.direction>0;val color=if(up)Color(0xFF2EBD85) else Color(0xFFFF596F)
-        val box=p.box;val slide=px(5f)*(1f-p.alpha);val top=box.top+slide
-        val radius=CornerRadius(px(7f))
-        drawRoundRect(Color.Black.copy(alpha=.2f*p.alpha),Offset(box.left,top+px(3f)),Size(box.width,box.height),radius)
-        drawRoundRect(Brush.verticalGradient(listOf(Color(0xFF26344A).copy(alpha=p.alpha),Color(0xFF151D30).copy(alpha=p.alpha)),startY=top,endY=top+box.height),Offset(box.left,top),Size(box.width,box.height),radius)
-        drawRoundRect(color.copy(alpha=.75f*p.alpha),Offset(box.left,top),Size(box.width,box.height),radius,style=Stroke(px(.9f)))
-        drawLine(color.copy(alpha=p.alpha),Offset(box.left+px(2f),top+px(9f)),Offset(box.left+px(2f),top+box.height-px(9f)),px(2f),StrokeCap.Round)
-        val ax=box.left+px(12f);val ay=top+px(12f)
+        val tr=p.trade;val up=tr.direction>0;val l=p.left;val y=p.y
         val arrow=Path().apply {
-            if(up) { moveTo(ax,ay-px(4f));lineTo(ax+px(4f),ay+px(2f));lineTo(ax-px(4f),ay+px(2f)) }
-            else { moveTo(ax,ay+px(4f));lineTo(ax+px(4f),ay-px(2f));lineTo(ax-px(4f),ay-px(2f)) };close()
+            if(up) { moveTo(l+px(3f),y-px(14f));lineTo(l+px(6.6f),y-px(8f));lineTo(l-px(.6f),y-px(8f)) }
+            else { moveTo(l+px(3f),y-px(6f));lineTo(l+px(6.6f),y-px(12f));lineTo(l-px(.6f),y-px(12f)) };close()
         }
-        drawPath(arrow,color.copy(alpha=p.alpha))
-        amountPaint.color=Color.White.copy(alpha=p.alpha).toArgb()
-        native.drawText("$"+shortAmount(tr.amount),box.left+px(23f),top+px(15f),amountPaint)
-        clockPaint.color=Color(0xFFB9C9DF).copy(alpha=p.alpha).toArgb()
-        val seconds=ceil((tr.expiresAt-now).coerceAtLeast(0L)/1000.0).toLong()
-        native.drawText(String.format(Locale.US,"%02d:%02d",seconds/60,seconds%60),box.left+px(23f),top+px(28f),clockPaint)
-        val progress=((now-tr.openedAt).toFloat()/(tr.expiresAt-tr.openedAt).coerceAtLeast(1L)).coerceIn(0f,1f)
-        drawLine(color.copy(alpha=.22f*p.alpha),Offset(box.left+px(8f),top+box.height-px(2f)),Offset(box.right-px(8f),top+box.height-px(2f)),px(1.1f),StrokeCap.Round)
-        drawLine(color.copy(alpha=p.alpha),Offset(box.left+px(8f),top+box.height-px(2f)),Offset(box.left+px(8f)+(box.width-px(16f))*(1f-progress),top+box.height-px(2f)),px(1.1f),StrokeCap.Round)
+        drawPath(arrow,Color.White.copy(alpha=.95f))
+        val text="$"+shortAmount(tr.amount);val aw=amountPaint.measureText(text)
+        val boxLeft=l+px(7f);val boxTop=y-px(17f)
+        val boxSize=Size(aw+px(4f),px(13f));val radius=CornerRadius(px(3.5f))
+        for(layer in 3 downTo 1) {
+            val spread=px(layer*.6f)
+            drawRoundRect(Color.Black.copy(alpha=.045f),Offset(boxLeft-spread,boxTop+px(1.5f)-spread),Size(boxSize.width+2*spread,boxSize.height+2*spread),CornerRadius(radius.x+spread))
+        }
+        val topColor=if(up)Color(0xFF327C55) else Color(0xFF913C46)
+        val bottomColor=if(up)Color(0xFF153E2B) else Color(0xFF49202A)
+        drawRoundRect(Brush.verticalGradient(listOf(topColor,bottomColor),startY=boxTop,endY=boxTop+boxSize.height),Offset(boxLeft,boxTop),boxSize,radius)
+        val outline=(if(up)Color(0xFF70C491) else Color(0xFFEA8991)).copy(alpha=.8f)
+        drawRoundRect(outline,Offset(boxLeft+px(.4f),boxTop+px(.4f)),Size(boxSize.width-px(.8f),boxSize.height-px(.8f)),CornerRadius(px(3.1f)),style=Stroke(px(.8f)))
+        drawLine(Color.White.copy(alpha=.20f),Offset(boxLeft+px(3f),boxTop+px(1.2f)),Offset(boxLeft+boxSize.width-px(3f),boxTop+px(1.2f)),px(.6f),StrokeCap.Round)
+        amountPaint.color=(if(up)Color(0xFFFFE600) else C.Red).toArgb()
+        native.drawText(text,l+px(9f),y-px(7f),amountPaint)
+        val left=ceil((tr.expiresAt-now).coerceAtLeast(0)/1000.0).toLong()
+        amountPaint.color=Color(0xFFC6D2E4).copy(alpha=.72f).toArgb()
+        native.drawText(String.format(Locale.US,"%02d:%02d",left/60,left%60),l+px(9f),y+px(8f),amountPaint)
     }
     val label=android.text.TextPaint(NativePaint.ANTI_ALIAS_FLAG).apply { typeface=Typeface.create("Tahoma",Typeface.NORMAL);textSize=px(9f);color=Color.White.toArgb() }
     val labelText="النتيجة (ربح/خسارة)"
@@ -2282,7 +2074,7 @@ private fun DrawScope.drawReferenceTrades(symbol:String,account:String,now:Long,
         val tr=result.trade
         if(tr.symbol!=symbol||tr.account!=account||result.visibleUntil<=now)continue
         val y=yFor(tr.exactEntry);if(y<px(-30f)||y>h+px(30f))continue
-        val ex=min(xFor(tr.openedAt),w-px(67f));val bw=px(126f);val bh=px(48f)
+        val ex=min(xFor(tr.openedAt/intervalMs*intervalMs),w-px(67f));val bw=px(126f);val bh=px(48f)
         val top=(y-px(24f)).coerceIn(px(10f),(h-px(72f)).coerceAtLeast(px(10f)))
         val left=if(ex-px(9f)-bw>=px(6f))ex-px(9f)-bw else min(ex+px(9f),w-bw-px(8f))
         val rightOfDot=left>ex;val win=result.profit>0
@@ -2323,24 +2115,24 @@ private fun DrawScope.drawReferenceTrades(symbol:String,account:String,now:Long,
 
 private val TimeOptions=listOf("00:15","00:10","00:05","02:00","01:00","00:30","15:00","10:00","05:00","02:00:00","01:00:00","30:00")
 @Composable fun TradePanel() {
-    Column(Modifier.fillMaxWidth().background(TradingChrome.Background)) {
+    Column(Modifier.fillMaxWidth().background(C.BG)) {
         Spacer(Modifier.height(6.dp));SentimentBar();Spacer(Modifier.height(8.dp));TradeInputs()
-        Spacer(Modifier.height(8.dp));TradeButtons();Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp));TradeButtons();Spacer(Modifier.height(4.dp))
     }
 }
 @Composable fun SentimentBar() {
     var buy by remember { mutableIntStateOf(33) }
     LaunchedEffect(Unit) { while(isActive) { delay(2200);buy=Random.nextInt(30,37) } }
     Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),verticalAlignment=Alignment.CenterVertically) {
-        Text("$buy%",color=TradingChrome.Buy,fontSize=12.sp,fontWeight=FontWeight.Bold);Spacer(Modifier.width(8.dp))
+        Text("$buy%",color=C.Green,fontSize=12.sp,fontWeight=FontWeight.Bold);Spacer(Modifier.width(8.dp))
         BoxWithConstraints(Modifier.weight(1f).height(16.dp)) {
             val width=maxWidth
             Row(Modifier.fillMaxWidth().height(10.dp).align(Alignment.Center).clip(RoundedCornerShape(5.dp))) {
-                Box(Modifier.weight(buy.toFloat()).fillMaxHeight().background(TradingChrome.Buy));Box(Modifier.weight((100-buy).toFloat()).fillMaxHeight().background(TradingChrome.Sell))
+                Box(Modifier.weight(buy.toFloat()).fillMaxHeight().background(C.Green));Box(Modifier.weight((100-buy).toFloat()).fillMaxHeight().background(C.Red))
             }
             Box(Modifier.align(Alignment.CenterStart).offset(x=width*(buy/100f)-1.25.dp).width(2.5.dp).height(16.dp).clip(RoundedCornerShape(2.dp)).background(C.Cyan))
         }
-        Spacer(Modifier.width(8.dp));Text("${100-buy}%",color=TradingChrome.Sell,fontSize=12.sp,fontWeight=FontWeight.Bold)
+        Spacer(Modifier.width(8.dp));Text("${100-buy}%",color=C.Red,fontSize=12.sp,fontWeight=FontWeight.Bold)
     }
 }
 @Composable fun TradeInputs() {
@@ -2353,28 +2145,27 @@ private val TimeOptions=listOf("00:15","00:10","00:05","02:00","01:00","00:30","
     var manualOpen by remember { mutableStateOf(false) }
     val density=LocalDensity.current;val config=LocalConfiguration.current
     Column(modifier) {
-        Text("الزمن",color=TradingChrome.Muted,fontSize=12.sp,fontWeight=FontWeight.SemiBold);Spacer(Modifier.height(6.dp))
+        Text("الزمن",color=C.TextSecondary,fontSize=12.sp);Spacer(Modifier.height(6.dp))
         Box {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                Box(Modifier.fillMaxWidth().height(54.dp).shadow(1.dp,RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp)).background(TradingChrome.Field).border(1.dp,if(expanded)TradingChrome.Accent else TradingChrome.Border,RoundedCornerShape(14.dp)).clickable { expanded=!expanded }) {
-                    Text(TradeSettings.duration,color=TradingChrome.Ink,fontSize=15.sp,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center,style=TextStyle(textDirection=TextDirection.Ltr),modifier=Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal=38.dp),maxLines=1)
-                    ClockIcon(Modifier.align(Alignment.CenterStart).padding(start=12.dp).size(20.dp),TradingChrome.Accent)
-                    DownArrow(Modifier.align(Alignment.CenterEnd).padding(end=12.dp).size(9.dp,6.dp),TradingChrome.Muted)
+                Box(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(10.dp)).background(C.Surface).border(1.dp,C.Divider,RoundedCornerShape(10.dp)).clickable { expanded=!expanded }) {
+                    Text(TradeSettings.duration,color=C.TextPrimary,fontSize=14.sp,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center,style=TextStyle(textDirection=TextDirection.Ltr),modifier=Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal=38.dp),maxLines=1)
+                    ReferenceGlyph("time",Modifier.align(Alignment.CenterStart).padding(start=12.dp).size(20.dp),C.Yellow)
                 }
             }
             if(expanded)Popup(popupPositionProvider=remember(density.density) { ReferencePopupPosition(true,density.density) },onDismissRequest={expanded=false},properties=PopupProperties(focusable=true)) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                    Column(Modifier.width(min(248,config.screenWidthDp-16).coerceAtLeast(1).dp).shadow(24.dp,RoundedCornerShape(14.dp)).background(TradingChrome.Background,RoundedCornerShape(14.dp)).border(1.dp,TradingChrome.Border,RoundedCornerShape(14.dp)).padding(9.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.width(min(248,config.screenWidthDp-16).coerceAtLeast(1).dp).shadow(24.dp,RoundedCornerShape(14.dp)).background(Ref.Background,RoundedCornerShape(14.dp)).border(1.dp,Ref.Border,RoundedCornerShape(14.dp)).padding(9.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Column(verticalArrangement=Arrangement.spacedBy(7.dp)) {
                             TimeOptions.chunked(3).forEach { row->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
-                                row.forEach { time->Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(10.dp)).background(if(time==TradeSettings.duration)TradingChrome.Accent else TradingChrome.Field).clickable { TradeSettings.duration=time;expanded=false },contentAlignment=Alignment.Center) {
-                                    Text(time,color=if(time==TradeSettings.duration)Color.White else TradingChrome.Ink,fontSize=14.sp,fontWeight=FontWeight.SemiBold,maxLines=1)
+                                row.forEach { time->Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(10.dp)).background(if(time==TradeSettings.duration)Ref.TimeOn else Ref.TimeButton).clickable { TradeSettings.duration=time;expanded=false },contentAlignment=Alignment.Center) {
+                                    Text(time,color=Color.White,fontSize=14.sp,fontWeight=FontWeight.SemiBold,maxLines=1)
                                 } }
                             } }
                         }
-                        Box(Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(10.dp)).background(TradingChrome.Field).clickable {
+                        Box(Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(10.dp)).background(Ref.TimeButton).clickable {
                             expanded=false;manualOpen=true
-                        },contentAlignment=Alignment.Center) { Text("ضبط يدوياً",color=TradingChrome.Accent,fontSize=14.sp,fontWeight=FontWeight.Bold) }
+                        },contentAlignment=Alignment.Center) { Text("ضبط يدوياً",color=Color.White,fontSize=14.sp,fontWeight=FontWeight.Bold) }
                     }
                 }
             }
@@ -2399,8 +2190,8 @@ private val TimeOptions=listOf("00:15","00:10","00:05","02:00","01:00","00:30","
     }
     Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-            Column(Modifier.padding(20.dp).widthIn(max=360.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(TradingChrome.Background).border(1.dp,TradingChrome.Border,RoundedCornerShape(14.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-                Text("ضبط الوقت يدوياً",color=TradingChrome.Ink,fontSize=17.sp,fontWeight=FontWeight.Bold)
+            Column(Modifier.padding(20.dp).widthIn(max=360.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ref.Menu).border(1.dp,Ref.Border,RoundedCornerShape(14.dp)).padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+                Text("ضبط الوقت يدوياً",color=C.TextPrimary,fontSize=17.sp,fontWeight=FontWeight.Bold)
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                         ManualTimePart("ساعة",hours,{hours=it;error=false},Modifier.weight(1f),focus)
@@ -2411,7 +2202,7 @@ private val TimeOptions=listOf("00:15","00:10","00:05","02:00","01:00","00:30","
                 if(error)Text("أدخل وقتاً أكبر من صفر، والدقائق والثواني من 0 إلى 59",color=C.Red,fontSize=12.sp)
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                     Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(8.dp)).background(Ref.TimeOn).clickable { save() },contentAlignment=Alignment.Center) { Text("حفظ",color=Color.White,fontWeight=FontWeight.Bold) }
-                    Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(8.dp)).background(TradingChrome.Field).clickable(onClick=onDismiss),contentAlignment=Alignment.Center) { Text("إلغاء",color=TradingChrome.Ink) }
+                    Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(8.dp)).background(Ref.TimeButton).clickable(onClick=onDismiss),contentAlignment=Alignment.Center) { Text("إلغاء",color=Color.White) }
                 }
             }
         }
@@ -2420,13 +2211,13 @@ private val TimeOptions=listOf("00:15","00:10","00:05","02:00","01:00","00:30","
 }
 @Composable private fun ManualTimePart(label:String,value:String,onChange:(String)->Unit,modifier:Modifier=Modifier,focus:FocusRequester?=null,onDone:(()->Unit)?=null) {
     Column(modifier,horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        Text(label,color=TradingChrome.Muted,fontSize=12.sp)
+        Text(label,color=C.TextSecondary,fontSize=12.sp)
         BasicTextField(value=value,onValueChange={text->if(text.length<=(if(label=="ساعة")6 else 2)&&text.all { it in '0'..'9' })onChange(text)},
             modifier=Modifier.fillMaxWidth().height(48.dp).then(if(focus!=null)Modifier.focusRequester(focus) else Modifier),
-            singleLine=true,cursorBrush=SolidColor(TradingChrome.Accent),textStyle=TextStyle(color=TradingChrome.Ink,fontSize=18.sp,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center),
+            singleLine=true,cursorBrush=SolidColor(C.Cyan),textStyle=TextStyle(color=C.TextPrimary,fontSize=18.sp,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center),
             keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number,imeAction=if(onDone==null)ImeAction.Next else ImeAction.Done),
             keyboardActions=KeyboardActions(onDone={onDone?.invoke()}),
-            decorationBox={inner->Box(Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).background(TradingChrome.Field).border(1.dp,TradingChrome.Border,RoundedCornerShape(8.dp)).padding(8.dp),contentAlignment=Alignment.Center) { inner() }})
+            decorationBox={inner->Box(Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).background(C.Surface).border(1.dp,C.Divider,RoundedCornerShape(8.dp)).padding(8.dp),contentAlignment=Alignment.Center) { inner() }})
     }
 }
 private val DollarPrefixTransformation=VisualTransformation { text->
@@ -2437,15 +2228,14 @@ private val DollarPrefixTransformation=VisualTransformation { text->
 }
 @Composable private fun AmountInput(modifier:Modifier=Modifier) {
     val focusManager=LocalFocusManager.current
-    var focused by remember { mutableStateOf(false) }
     Column(modifier) {
-        Text("المبلغ",color=TradingChrome.Muted,fontSize=12.sp,fontWeight=FontWeight.SemiBold);Spacer(Modifier.height(6.dp))
+        Text("المبلغ",color=C.TextSecondary,fontSize=12.sp);Spacer(Modifier.height(6.dp))
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-            Box(Modifier.fillMaxWidth().height(54.dp).shadow(1.dp,RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp)).background(TradingChrome.Field).border(1.dp,if(focused)TradingChrome.Accent else TradingChrome.Border,RoundedCornerShape(14.dp))) {
+            Box(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(10.dp)).background(C.Surface).border(1.dp,C.Divider,RoundedCornerShape(10.dp))) {
                 BasicTextField(TradeSettings.amount,{value->
                     if(value.isEmpty()||Regex("[0-9]*(?:\\.[0-9]*)?").matches(value))TradeSettings.amount=value
-                },modifier=Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal=38.dp).onFocusChanged { focused=it.isFocused;if(!it.isFocused)TradeSettings.amount=TradeSettings.amount },singleLine=true,cursorBrush=SolidColor(TradingChrome.Accent),visualTransformation=DollarPrefixTransformation,textStyle=TextStyle(color=TradingChrome.Ink,fontSize=15.sp,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center,textDirection=TextDirection.Ltr),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={TradeSettings.amount=TradeSettings.amount;focusManager.clearFocus()}))
-                DollarIcon(Modifier.align(Alignment.CenterStart).padding(start=12.dp).size(20.dp),TradingChrome.Accent)
+                },modifier=Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal=38.dp).onFocusChanged { if(!it.isFocused)TradeSettings.amount=TradeSettings.amount },singleLine=true,cursorBrush=SolidColor(C.Cyan),visualTransformation=DollarPrefixTransformation,textStyle=TextStyle(color=C.TextPrimary,fontSize=14.sp,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center,textDirection=TextDirection.Ltr),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={TradeSettings.amount=TradeSettings.amount;focusManager.clearFocus()}))
+                ReferenceGlyph("amount",Modifier.align(Alignment.CenterStart).padding(start=12.dp).size(20.dp),C.Yellow)
             }
         }
     }
@@ -2467,28 +2257,13 @@ private val DollarPrefixTransformation=VisualTransformation { text->
 @Composable fun TradeButtons() {
     val sym by TradeStore.currentSymbol.collectAsState();val payout=remember(sym) { SymCatalog.payout(sym) }
     Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-        TradeButton("شراء",TradingChrome.Buy,payout,Modifier.weight(1f)) { openTrade(1,sym,payout) }
-        TradeButton("بيع",TradingChrome.Sell,payout,Modifier.weight(1f)) { openTrade(-1,sym,payout) }
+        TradeButton("شراء",C.Green,payout,Modifier.weight(1f)) { openTrade(1,sym,payout) }
+        TradeButton("بيع",C.Red,payout,Modifier.weight(1f)) { openTrade(-1,sym,payout) }
     }
 }
 @Composable private fun TradeButton(label:String,color:Color,payout:Int,modifier:Modifier=Modifier,onClick:()->Unit) {
-    val interaction=remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val buttonScale by animateFloatAsState(if(pressed).98f else 1f,label="trade-button-press")
-    val shape=RoundedCornerShape(16.dp)
-    Box(modifier.height(58.dp).graphicsLayer { scaleX=buttonScale;scaleY=buttonScale }.shadow(if(pressed)1.dp else 4.dp,shape).clip(shape)
-        .background(Brush.verticalGradient(listOf(lerp(color,Color.White,.08f),lerp(color,Color.Black,.12f))))
-        .border(1.dp,Color.White.copy(alpha=.22f),shape).clickable(interactionSource=interaction,indication=LocalIndication.current,onClick=onClick).padding(horizontal=12.dp),contentAlignment=Alignment.Center) {
-        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha=.16f)),contentAlignment=Alignment.Center) {
-                var iconFailed by remember(label) { mutableStateOf(false) }
-                if(iconFailed)Text(if(label=="شراء")"↗" else "↘",color=Color.White,fontSize=23.sp,fontWeight=FontWeight.Bold)
-                else CachedTradingImage(url=if(label=="شراء")BUY_TRADE_ICON_URL else SELL_TRADE_ICON_URL,contentDescription=null,modifier=Modifier.size(25.dp),onError={iconFailed=true})
-            }
-            Text(label,color=Color.White,fontSize=16.sp,fontWeight=FontWeight.Bold,maxLines=1)
-            Spacer(Modifier.weight(1f))
-            Text("$payout%",color=Color.White,fontSize=12.sp,fontWeight=FontWeight.Bold,maxLines=1)
-        }
+    Box(modifier.height(48.dp).clip(RoundedCornerShape(12.dp)).background(color).clickable(onClick=onClick),contentAlignment=Alignment.Center) {
+        Row(verticalAlignment=Alignment.CenterVertically) { Text(label,color=Color.White,fontSize=15.sp,fontWeight=FontWeight.Bold);Spacer(Modifier.width(8.dp));Text("$payout%",color=Color.White,fontSize=13.sp,fontWeight=FontWeight.Bold) }
     }
 }
 
@@ -2581,116 +2356,58 @@ private val DollarPrefixTransformation=VisualTransformation { text->
 
 object HistoryOverlay { var open by mutableStateOf(false) }
 
-private fun thFreshQuote(quote:Quote?,now:Long)=
-    quote!=null&&quote.sourceTime>0L&&now-quote.sourceTime in -5000L..15000L
+private val ThText=Color(0xFFF5F6FB)
+private val ThTabBg=Color(0xFF202230); private val ThTabBorder=Color(0xFF3B3D4B)
+private val ThTabOnBg=Color(0xFF30425F); private val ThTabOnBorder=Color(0xFF168BD0)
+private val ThAsset=Color(0xFF8C9DB9); private val ThStar=Color(0xFFE99B31)
+private val ThPct=Color(0xFF71B982); private val ThTime=Color(0xFFF6F6FB)
+private val ThAmount=Color(0xFFF4F5F8); private val ThDir=Color(0xFFFF351D)
+private val ThGain=Color(0xFF79BD87); private val ThLoss=Color(0xFFF05B67)
+private val ThEmpty=Color(0xFF929BB0); private val ThDetailBg=Color(0xFF1D2131)
+private val ThGridBg=Color(0xFF202333); private val ThBarBg=Color(0xFF344766)
+private val ThBarFill=Color(0xFF398BD0); private val ThLabel=Color(0xFFF2F3F8)
+private val ThGreen=Color(0xFF48A75C); private val ThRed=Color(0xFFF05B5B)
 
-private val ThText=C.TextPrimary
-private val ThTabBg=C.Surface; private val ThTabBorder=C.Divider
-private val ThTabOnBg=C.SurfaceRaised; private val ThTabOnBorder=C.Cyan
-private val ThAsset=C.TextPrimary; private val ThStar=C.Yellow
-private val ThPct=C.Green; private val ThTime=C.TextPrimary
-private val ThAmount=C.TextPrimary; private val ThDir=C.Red
-private val ThGain=C.Green; private val ThLoss=C.Red
-private val ThEmpty=C.TextSecondary; private val ThDetailBg=C.Surface
-private val ThGridBg=C.BG; private val ThBarBg=C.Divider
-private val ThBarFill=C.Cyan; private val ThLabel=C.TextSecondary
-private val ThGreen=C.Green; private val ThRed=C.Red
-
-private class ThItem(val id:Long,val symbol:String,val direction:Int,val amount:Double,val payoutPct:Int,val openedAt:Long,val expiresAt:Long,val entry:Double,val closePrice:Double,val profit:Double,val isOpen:Boolean,val closedAt:Long=0L)
+private class ThItem(val id:Long,val symbol:String,val direction:Int,val amount:Double,val payoutPct:Int,val openedAt:Long,val expiresAt:Long,val entry:Double,val closePrice:Double,val profit:Double,val isOpen:Boolean)
 
 private fun thDigits(symbol:String)=if(symbol.contains("JPY"))3 else if(symbol=="XAUUSD")2 else 5
 private fun thPrice(value:Double,symbol:String)=if(!(value>0))"—" else String.format(Locale.US,"%.${thDigits(symbol)}f",value)
 private fun thMoney(value:Double)="$"+String.format(Locale.US,"%.2f",value)
 private fun thClock(ms:Long):String { val n=maxOf(0L,(maxOf(0L,ms)+999)/1000); return String.format(Locale.US,"%02d:%02d",n/60,n%60) }
 private fun thPointUnit(symbol:String)=if(symbol.contains("JPY"))0.001 else if(symbol=="XAUUSD")0.01 else 0.00001
-private fun thTimeOfDay(time:Long)=SimpleDateFormat("HH:mm:ss.SSS",Locale.UK).apply { timeZone=TimeZone.getTimeZone("GMT+3") }.format(Date(time))
+private fun thTimeOfDay(time:Long)=SimpleDateFormat("HH:mm:ss.SSS",Locale.UK).format(Date(time))
 private fun thDurationLabel(durationMs:Long):String=when {
     durationMs%60000L==0L->"M"+(durationMs/60000L)
     durationMs>=60000L->"${durationMs/60000L}m ${durationMs%60000L/1000L}s"
     else->"${(durationMs+999)/1000L}s"
 }
 
-private enum class HistoryPeriod(val label:String) {
-    DAY("نتائج اليوم"),WEEK("نتائج الاسبوع"),MONTH("نتائج الشهر")
-}
-private fun historyPeriodBounds(period:HistoryPeriod,now:Long):Pair<Long,Long> {
-    val calendar=Calendar.getInstance(TimeZone.getTimeZone("GMT+3"),Locale.US).apply {
-        timeInMillis=now;firstDayOfWeek=Calendar.MONDAY
-        set(Calendar.HOUR_OF_DAY,0);set(Calendar.MINUTE,0);set(Calendar.SECOND,0);set(Calendar.MILLISECOND,0)
-    }
-    when(period) {
-        HistoryPeriod.DAY->Unit
-        HistoryPeriod.WEEK->calendar.add(Calendar.DAY_OF_MONTH,-((calendar.get(Calendar.DAY_OF_WEEK)-Calendar.MONDAY+7)%7))
-        HistoryPeriod.MONTH->calendar.set(Calendar.DAY_OF_MONTH,1)
-    }
-    val start=calendar.timeInMillis
-    when(period) {
-        HistoryPeriod.DAY->calendar.add(Calendar.DAY_OF_MONTH,1)
-        HistoryPeriod.WEEK->calendar.add(Calendar.DAY_OF_MONTH,7)
-        HistoryPeriod.MONTH->calendar.add(Calendar.MONTH,1)
-    }
-    return start to calendar.timeInMillis
-}
-
 @Composable fun TradeHistoryPage() {
     BackHandler { HistoryOverlay.open=false }
     var tab by remember { mutableStateOf("open") }
     var selectedId by remember { mutableStateOf<Long?>(null) }
-    var period by remember { mutableStateOf(HistoryPeriod.DAY) }
-    var periodMenu by remember { mutableStateOf(false) }
-    var now by remember { mutableLongStateOf(FeedClock.now()) }
-    LaunchedEffect(Unit) { while(isActive) { now=FeedClock.now(); delay(250) } }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while(true) { now=System.currentTimeMillis(); delay(250) } }
     val account=AccountStore.selected
-    val(start,end)=historyPeriodBounds(period,now)
-    val periodOpen=TradeStore.openTrades.filter { it.account==account&&it.openedAt>=start&&it.openedAt<end }
-    val periodClosed=TradeStore.history.filter { it.trade.account==account&&it.closedAt>=start&&it.closedAt<end }
-    val openCount=periodOpen.size
-    val closedCount=periodClosed.size
-    val invested=periodOpen.sumOf { it.amount }
-    val netProfit=periodClosed.sumOf { it.profit }
     val items=if(tab=="open")
-        periodOpen.map { ThItem(it.id,it.symbol,it.direction,it.amount,it.payoutPct,it.openedAt,it.expiresAt,it.exactEntry,0.0,0.0,true) }
+        TradeStore.openTrades.filter { it.account==account }.map { ThItem(it.id,it.symbol,it.direction,it.amount,it.payoutPct,it.openedAt,it.expiresAt,it.exactEntry,0.0,0.0,true) }
     else
-        periodClosed.map { ThItem(it.trade.id,it.trade.symbol,it.trade.direction,it.trade.amount,it.trade.payoutPct,it.trade.openedAt,it.trade.expiresAt,it.trade.exactEntry,it.close,it.profit,false,it.closedAt) }
+        TradeStore.history.filter { it.trade.account==account }.map { ThItem(it.trade.id,it.trade.symbol,it.trade.direction,it.trade.amount,it.trade.payoutPct,it.trade.openedAt,it.trade.expiresAt,it.trade.exactEntry,it.close,it.profit,false) }
     val sorted=items.sortedByDescending { it.openedAt }
     if(selectedId!=null&&sorted.none { it.id==selectedId })selectedId=null
     val padH=(LocalConfiguration.current.screenWidthDp*0.051f).dp
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Box(Modifier.fillMaxSize().background(C.BG).clickable(
-            interactionSource=remember { MutableInteractionSource() },indication=null,onClick={})) {
+        Box(Modifier.fillMaxSize().background(Ref.Background)) {
             Column(Modifier.fillMaxSize()) {
                 Column(Modifier.weight(1f).fillMaxWidth()) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal=padH,vertical=18.dp),verticalAlignment=Alignment.CenterVertically) {
-                        HistoryIcon(Modifier.size(24.dp),C.Cyan)
-                        Box(Modifier.weight(1f).padding(horizontal=8.dp)) {
-                            Row(Modifier.clip(RoundedCornerShape(9.dp)).clickable { periodMenu=!periodMenu }.padding(vertical=9.dp,horizontal=5.dp),verticalAlignment=Alignment.CenterVertically) {
-                                Text(period.label,color=ThText,fontSize=18.sp,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.weight(1f,fill=false))
-                                Spacer(Modifier.width(7.dp));DownArrow(Modifier.size(10.dp),C.Cyan)
-                            }
-                            if(periodMenu)Popup(alignment=Alignment.TopStart,onDismissRequest={periodMenu=false},properties=PopupProperties(focusable=true)) {
-                                Column(Modifier.width(188.dp).shadow(16.dp,RoundedCornerShape(12.dp)).background(C.Surface,RoundedCornerShape(12.dp)).border(1.dp,C.Divider,RoundedCornerShape(12.dp)).padding(6.dp)) {
-                                    HistoryPeriod.values().forEach { option->
-                                        Text(option.label,color=if(period==option)C.Cyan else ThText,fontSize=14.sp,fontWeight=FontWeight.SemiBold,
-                                            modifier=Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if(period==option)C.SurfaceRaised else Color.Transparent)
-                                                .clickable { period=option;periodMenu=false;selectedId=null }.padding(horizontal=13.dp,vertical=13.dp))
-                                    }
-                                }
-                            }
-                        }
-                        Text(if(account=="demo")"الحساب التجريبي" else "الحساب الحقيقي",color=C.Cyan,fontSize=10.sp,
-                            modifier=Modifier.background(C.SurfaceRaised,RoundedCornerShape(6.dp)).padding(horizontal=10.dp,vertical=6.dp))
-                    }
-                    Row(Modifier.padding(horizontal=padH).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(C.Surface).border(1.dp,C.Divider,RoundedCornerShape(12.dp)).padding(14.dp)) {
-                        ThCell("المبلغ في الصفقات المفتوحة",thMoney(invested),C.TextPrimary,TextAlign.Start)
-                        ThCell("صافي الصفقات المغلقة",(if(netProfit>0)"+" else "")+thMoney(netProfit),if(netProfit>0)C.Green else if(netProfit<0)C.Red else C.TextPrimary,TextAlign.End)
-                    }
-                    Row(Modifier.fillMaxWidth().padding(start=padH,end=padH,top=16.dp,bottom=16.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        ThTab("مفتوحة  $openCount",tab=="open") { tab="open"; selectedId=null }
-                        ThTab("مغلقة  $closedCount",tab=="closed") { tab="closed"; selectedId=null }
+                    Text("التداولات",color=ThText,fontSize=20.sp,fontWeight=FontWeight.Medium,textAlign=TextAlign.Start,modifier=Modifier.fillMaxWidth().padding(start=padH,end=padH,top=12.dp,bottom=18.dp))
+                    Row(Modifier.fillMaxWidth().padding(start=padH,end=padH,bottom=18.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        ThTab("مفتوحة",tab=="open") { tab="open"; selectedId=null }
+                        ThTab("مغلقة",tab=="closed") { tab="closed"; selectedId=null }
                     }
                     if(sorted.isEmpty()) {
                         Text("لا توجد تداولات "+(if(tab=="open")"مفتوحة" else "مغلقة"),color=ThEmpty,fontSize=13.sp,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=20.dp))
-                    } else LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(bottom=16.dp)) {
+                    } else LazyColumn(Modifier.fillMaxSize()) {
                         items(sorted,key= { it.id }) { item->
                             TradeHistoryRow(item,selectedId==item.id,now) { selectedId=if(selectedId==item.id)null else item.id }
                             if(selectedId==item.id)TradeHistoryDetail(item,now)
@@ -2711,43 +2428,32 @@ private fun historyPeriodBounds(period:HistoryPeriod,now:Long):Pair<Long,Long> {
 
 @Composable private fun TradeHistoryRow(item:ThItem,selected:Boolean,now:Long,onToggle:()->Unit) {
     val padH=(LocalConfiguration.current.screenWidthDp*0.051f).dp
-    val rate=item.payoutPct
+    val rate=PairNames.payout(item.symbol)
     val profit=if(item.isOpen)item.amount*rate/100 else item.profit
-    val resultColor=if(item.isOpen)C.Cyan else if(profit>0)C.Green else if(profit<0)C.Red else C.TextSecondary
+    val win=!item.isOpen&&item.profit>0
+    val total=if(item.isOpen)item.amount+profit else if(win)item.amount+item.profit else maxOf(0.0,item.amount+item.profit)
     val sell=item.direction<0
-    val pending=item.isOpen&&item.expiresAt<=now
-    val total=if(item.isOpen)item.amount+profit else maxOf(0.0,item.amount+item.profit)
-    val progress=if(item.isOpen)((now-item.openedAt).toDouble()/(item.expiresAt-item.openedAt).coerceAtLeast(1L)).toFloat().coerceIn(0f,1f) else 1f
-    Column(Modifier.fillMaxWidth().padding(horizontal=padH,vertical=5.dp)
-        .clip(RoundedCornerShape(12.dp)).background(if(selected)C.SurfaceRaised else C.Surface)
-        .border(1.dp,if(selected)C.Cyan else C.Divider,RoundedCornerShape(12.dp))
-        .clickable(onClick=onToggle).padding(13.dp)) {
-        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-            Box(Modifier.size(34.dp).background((if(sell)C.Red else C.Green).copy(alpha=.10f),RoundedCornerShape(9.dp)),contentAlignment=Alignment.Center) {
-                Text(if(sell)"↘" else "↗",color=if(sell)C.Red else C.Green,fontSize=23.sp,fontWeight=FontWeight.Bold)
+    Column(Modifier.fillMaxWidth().background(if(selected)Color.White.copy(alpha=.045f) else Color.Transparent).clickable(onClick=onToggle)) {
+        Column(Modifier.fillMaxWidth().height(51.dp).padding(horizontal=padH),verticalArrangement=Arrangement.Center) {
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                Row(Modifier.weight(1.2f),verticalAlignment=Alignment.CenterVertically) {
+                    Text("☆",color=ThStar,fontSize=19.sp)
+                    Spacer(Modifier.width(5.dp))
+                    Text(PairNames.pretty(item.symbol),color=ThAsset,fontSize=14.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
+                    Text("+$rate%",color=ThPct,fontSize=14.sp,maxLines=1)
+                }
+                Spacer(Modifier.weight(1f))
+                Text(if(item.isOpen)thClock(item.expiresAt-now) else "00:00",color=ThTime,fontSize=15.sp,textAlign=TextAlign.End,modifier=Modifier.weight(.8f))
             }
-            Column(Modifier.weight(1f).padding(horizontal=10.dp)) {
-                Text(PairNames.pretty(item.symbol),color=ThAsset,fontSize=15.sp,fontWeight=FontWeight.SemiBold,maxLines=1,overflow=TextOverflow.Ellipsis)
-                Text((if(sell)"بيع" else "شراء")+"  •  $rate%",color=C.TextSecondary,fontSize=11.sp)
-            }
-            Column(horizontalAlignment=Alignment.End) {
-                Text(if(pending)"بانتظار سعر الإغلاق" else if(item.isOpen)thClock(item.expiresAt-now) else if(profit>0)"رابحة" else if(profit<0)"خاسرة" else "تعادل",
-                    color=resultColor,fontSize=12.sp,fontWeight=FontWeight.SemiBold)
-                Text(thDurationLabel(item.expiresAt-item.openedAt)+"  "+if(selected)"▴" else "▾",color=C.TextSecondary,fontSize=11.sp)
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        Box(Modifier.fillMaxWidth().height(1.dp).background(C.Divider))
-        Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth()) {
-            ThCell("المبلغ",thMoney(item.amount),ThAmount,TextAlign.Start)
-            ThCell(if(item.isOpen)"العائد المحتمل" else "العائد",thMoney(total),if(item.isOpen)C.TextPrimary else resultColor,TextAlign.Center)
-            ThCell(if(item.isOpen)"الربح المحتمل" else "النتيجة",(if(profit>0)"+" else "")+thMoney(profit),resultColor,TextAlign.End)
-        }
-        if(item.isOpen) {
-            Spacer(Modifier.height(11.dp))
-            Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(3.dp)).background(C.Divider)) {
-                Box(Modifier.fillMaxHeight().fillMaxWidth(progress).background(C.Cyan))
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                Row(Modifier.weight(1.2f),verticalAlignment=Alignment.CenterVertically) {
+                    Text(if(sell)"↘" else "↗",color=ThDir,fontSize=17.sp,fontWeight=FontWeight.Black)
+                    Spacer(Modifier.width(4.dp))
+                    Text(thMoney(item.amount).replace(".00",""),color=ThAmount,fontSize=15.sp,maxLines=1)
+                }
+                Text(thMoney(total),color=ThGain,fontSize=15.sp,textAlign=TextAlign.Center,modifier=Modifier.weight(1f))
+                Text((if(item.isOpen||win)"+" else "\u2212")+thMoney(kotlin.math.abs(profit)),color=if(item.isOpen||win)ThGain else ThLoss,fontSize=15.sp,textAlign=TextAlign.End,modifier=Modifier.weight(.8f))
             }
         }
     }
@@ -2765,17 +2471,15 @@ private fun historyPeriodBounds(period:HistoryPeriod,now:Long):Pair<Long,Long> {
     val padInner=(LocalConfiguration.current.screenWidthDp*0.035f).dp
     val isOpen=item.isOpen
     val entry=item.entry
-    val quote=TradeStore.quotes[item.symbol]
-    val current=if(isOpen)quote?.price ?: Double.NaN else item.closePrice
-    val quoteIsFresh=thFreshQuote(quote,now)
+    val live=TradeStore.quotes[item.symbol]?.price
+    val current=if(isOpen)(if(live!=null&&live>0)live else entry) else (if(item.closePrice>0)item.closePrice else entry)
     val duration=maxOf(1L,item.expiresAt-item.openedAt)
     val left=if(isOpen)maxOf(0L,item.expiresAt-now) else 0L
     val elapsed=if(isOpen)(100.0*(1.0-left.toDouble()/duration)).coerceIn(0.0,100.0) else 100.0
-    val hasPrice=entry>0&&current.isFinite()&&current>0
-    val difference=if(hasPrice)current-entry else 0.0
-    val points=if(hasPrice)kotlin.math.round(difference/thPointUnit(item.symbol)).toLong() else 0L
+    val difference=if(entry>0&&current>0)current-entry else 0.0
+    val points=if(entry>0&&current>0)kotlin.math.round(difference/thPointUnit(item.symbol)).toLong() else 0L
     val sell=item.direction<0
-    val profit=if(isOpen)item.amount*item.payoutPct/100 else item.profit
+    val profit=item.profit
     Column(Modifier.fillMaxWidth().padding(start=padH,end=padH,bottom=12.dp).clip(RoundedCornerShape(13.dp)).background(ThDetailBg).padding(horizontal=padInner).padding(top=16.dp,bottom=18.dp)) {
         Row(Modifier.fillMaxWidth()) {
             Column(Modifier.weight(1f)) {
@@ -2784,26 +2488,25 @@ private fun historyPeriodBounds(period:HistoryPeriod,now:Long):Pair<Long,Long> {
             }
             Text(thDurationLabel(duration),color=ThText,fontSize=13.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(top=14.dp))
             Column(Modifier.weight(1f),horizontalAlignment=Alignment.End) {
-                Text(if(isOpen)"موعد الانتهاء:" else "وقت الإغلاق:",color=ThLabel,fontSize=13.sp)
-                Text(thTimeOfDay(if(isOpen)item.expiresAt else item.closedAt.takeIf { it>0L } ?: item.expiresAt),color=ThText,fontSize=13.sp)
+                Text("وقت الإغلاق:",color=ThLabel,fontSize=13.sp)
+                Text(thTimeOfDay(item.expiresAt),color=ThText,fontSize=13.sp)
             }
         }
         Box(Modifier.padding(top=19.dp,bottom=12.dp).fillMaxWidth().height(9.dp).clip(RoundedCornerShape(8.dp)).background(ThBarBg)) {
             Box(Modifier.fillMaxHeight().fillMaxWidth((elapsed/100).toFloat().coerceIn(0f,1f)).clip(RoundedCornerShape(8.dp)).background(ThBarFill))
         }
-        Text(if(isOpen&&left==0L)"بانتظار أول سعر من المصدر بعد الانتهاء" else if(isOpen)"الوقت المتبقي : "+thClock(left) else "انتهت الصفقة",color=ThText,fontSize=14.sp,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth().padding(bottom=12.dp))
-        Text("Biquote • سعر المصدر دون تعديل",color=C.TextSecondary,fontSize=10.sp,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth().alpha(if(isOpen&&!quoteIsFresh)0f else 1f).padding(bottom=12.dp))
+        Text(if(isOpen)"الوقت المتبقي : "+thClock(left) else "انتهت الصفقة",color=ThText,fontSize=15.sp,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth().padding(bottom=22.dp))
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(ThGridBg).padding(horizontal=padInner,vertical=17.dp)) {
             Row(Modifier.fillMaxWidth()) {
-                ThCell("توقعاتك:",if(sell)"بيع" else "شراء",if(sell)ThRed else ThGreen,TextAlign.Start)
+                ThCell("توقعاتك:",if(sell)"بيع" else "شراء",if(sell)ThText else ThGreen,TextAlign.Start)
                 ThCell("المنصرف:",thMoney(item.amount),ThText,TextAlign.Center)
-                ThCell(if(isOpen)"الربح المحتمل:" else "النتيجة:",thMoney(profit),if(isOpen)C.Cyan else if(profit<0)ThRed else if(profit>0)ThGreen else ThText,TextAlign.End)
+                ThCell("الربح:",thMoney(profit),if(profit<0)ThRed else ThGreen,TextAlign.End)
             }
             Spacer(Modifier.height(19.dp))
             Row(Modifier.fillMaxWidth()) {
                 ThCell("سعر الفتح:",thPrice(entry,item.symbol),ThText,TextAlign.Start)
-                ThCell("الفرق:",if(!hasPrice)"—" else if(points>0)"(+$points النقاط)" else if(points<0)"(\u2212${-points} النقاط)" else "(0 النقاط)",if(points>0)ThGreen else if(points<0)ThRed else ThText,TextAlign.Center)
-                ThCell(if(isOpen)"آخر سعر:" else "سعر الإغلاق:",thPrice(current,item.symbol),ThText,TextAlign.End)
+                ThCell("الفرق:",if(points>0)"(+$points النقاط)" else if(points<0)"(\u2212${-points} النقاط)" else "(0 النقاط)",if(points>0)ThGreen else if(points<0)ThRed else ThText,TextAlign.Center)
+                ThCell("السعر الحالي:",thPrice(current,item.symbol),ThText,TextAlign.End)
             }
         }
     }
@@ -2811,10 +2514,10 @@ private fun historyPeriodBounds(period:HistoryPeriod,now:Long):Pair<Long,Long> {
 
 @Composable fun BottomNavBar(onHome:()->Unit={},onOperations:()->Unit={ HistoryOverlay.open=true }) {
     var selected by remember { mutableIntStateOf(2) }
-    Column(Modifier.background(TradingChrome.Background)) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(TradingChrome.Border))
+    Column(Modifier.background(C.BG)) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(C.Divider))
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-            Row(Modifier.fillMaxWidth().background(TradingChrome.Background).padding(vertical=6.dp),horizontalArrangement=Arrangement.SpaceEvenly,verticalAlignment=Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().background(C.BG).padding(vertical=6.dp),horizontalArrangement=Arrangement.SpaceEvenly,verticalAlignment=Alignment.CenterVertically) {
                 BottomItem("الشارت",selected==0,{selected=0;onHome()}) { ChartIcon(Modifier.size(24.dp),it) }
                 BottomItem("الدردشة",selected==1,{selected=1}) { ChatIcon(Modifier.size(24.dp),it) }
                 BottomItem("العمليات",selected==2,{selected=2;onOperations()}) { HistoryIcon(Modifier.size(24.dp),it) }
@@ -2825,9 +2528,9 @@ private fun historyPeriodBounds(period:HistoryPeriod,now:Long):Pair<Long,Long> {
     }
 }
 @Composable fun BottomItem(label:String,selected:Boolean,onClick:()->Unit,icon:@Composable (Color)->Unit) {
-    val color=if(selected)TradingChrome.Accent else TradingChrome.Muted
+    val color=if(selected)C.Cyan else C.TextSecondary
     Column(Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick=onClick).padding(horizontal=6.dp,vertical=4.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-        Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(if(selected)TradingChrome.Accent.copy(alpha=.09f) else Color.Transparent).border(1.dp,if(selected)TradingChrome.Accent.copy(alpha=.25f) else Color.Transparent,RoundedCornerShape(10.dp)),contentAlignment=Alignment.Center) { icon(color) }
+        Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(if(selected)C.SurfaceRaised else Color.Transparent).border(1.dp,if(selected)C.Cyan else Color.Transparent,RoundedCornerShape(10.dp)),contentAlignment=Alignment.Center) { icon(color) }
         Spacer(Modifier.height(3.dp));Text(label,color=color,fontSize=10.sp,textAlign=TextAlign.Center,maxLines=1)
     }
 }
