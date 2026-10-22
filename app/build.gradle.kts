@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.tradingapp"
+    namespace = "com.qubex.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.tradingapp"
+        applicationId = "com.qubex.app"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
@@ -45,7 +45,12 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.activity:activity-compose:1.8.2")
 
-    // Compose
+    // ⬇️⬇️⬇️ أضفنا هذين السطرين لدعم AppCompatActivity و Theme.MaterialComponents
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("com.google.android.material:material:1.11.0")
+    // ⬆️⬆️⬆️
+
+    // Compose (اتركها كما هي — MainActivity قد يستخدمها)
     implementation(platform("androidx.compose:compose-bom:2024.02.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -53,8 +58,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // Coil - لتحميل الصور من الإنترنت
+    // Coil
     implementation("io.coil-kt:coil-compose:2.6.0")
-implementation("io.coil-kt:coil-svg:2.6.0")
-
+    implementation("io.coil-kt:coil-svg:2.6.0")
 }
