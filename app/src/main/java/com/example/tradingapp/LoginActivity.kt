@@ -1,6 +1,5 @@
 package com.qubex.app
 
-import android.app.Activity
 import android.content.Context
 import android.graphics.*
 import android.os.Build
@@ -16,6 +15,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
@@ -27,18 +27,18 @@ import kotlin.math.min
 
 /**
  * Standalone Android-framework implementation; no XML, Compose or external libraries.
- * Change the package above to your application's package.
  * Required in AndroidManifest.xml, OUTSIDE <application>:
  * <uses-permission android:name="android.permission.INTERNET" />
  * Register INSIDE <application>:
- * <activity android:name=".LoginActivity" android:exported="false"
- *     android:windowSoftInputMode="adjustResize" />
- *
- * Hero artwork is downloaded from HTTPS and cached on disk. It is not embedded.
- * Authentication is intentionally not simulated: override the four callbacks below
- * to connect your backend, Google Identity flow and destination activities.
+ * <activity android:name=".LoginActivity" android:exported="true"
+ *     android:windowSoftInputMode="adjustResize">
+ *     <intent-filter>
+ *         <action android:name="android.intent.action.MAIN" />
+ *         <category android:name="android.intent.category.LAUNCHER" />
+ *     </intent-filter>
+ * </activity>
  */
-open class LoginActivity : Activity() {
+open class LoginActivity : AppCompatActivity() {
     companion object {
         private const val HERO_URL =
             "https://i.ibb.co/fYshkrrj/file-000000001a2c82469485a64af801b707.png"
@@ -54,7 +54,7 @@ open class LoginActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        actionBar?.hide()
+        supportActionBar?.hide()
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.rgb(2, 8, 24)))
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         hideSystemBars()
@@ -76,15 +76,16 @@ open class LoginActivity : Activity() {
         loadHero()
     }
 
-    @Suppress("DEPRECATION")
     private fun hideSystemBars() {
         if (Build.VERSION.SDK_INT >= 30) {
             window.setDecorFitsSystemWindows(false)
             window.insetsController?.let {
                 it.hide(WindowInsets.Type.systemBars())
-                it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                it.systemBarsBehavior =
+                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
         } else {
+            @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
                 View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
@@ -98,8 +99,10 @@ open class LoginActivity : Activity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putString(STATE_EMAIL, screen.email.text.toString())
-        outState.putBoolean(STATE_REMEMBER, screen.remember)
+        if (::screen.isInitialized) {
+            outState.putString(STATE_EMAIL, screen.email.text.toString())
+            outState.putBoolean(STATE_REMEMBER, screen.remember)
+        }
         // Deliberately do not persist the password.
         super.onSaveInstanceState(outState)
     }
@@ -231,12 +234,15 @@ open class LoginActivity : Activity() {
         private val toggle = hit("Show password") {
             revealPassword = !revealPassword
             val cursor = password.selectionStart
-            password.transformationMethod = if (revealPassword) null else PasswordTransformationMethod.getInstance()
+            password.transformationMethod =
+                if (revealPassword) null else PasswordTransformationMethod.getInstance()
             password.setSelection(cursor.coerceIn(0, password.length()))
             toggleDescription()
             invalidate()
         }
-        private val checkbox = hit("Remember me, checked") { remember = !remember; checkboxDescription() }
+        private val checkbox = hit("Remember me, checked") {
+            remember = !remember; checkboxDescription()
+        }
         private val forgot = hit("Forgot password") { onForgotPasswordRequested() }
         private val login = hit("Log In") { submit() }
         private val google = hit("Continue with Google") { onGoogleLoginRequested() }
@@ -270,7 +276,8 @@ open class LoginActivity : Activity() {
             toggle.contentDescription = if (revealPassword) "Hide password" else "Show password"
         }
         private fun checkboxDescription() {
-            checkbox.contentDescription = if (remember) "Remember me, checked" else "Remember me, unchecked"
+            checkbox.contentDescription =
+                if (remember) "Remember me, checked" else "Remember me, unchecked"
         }
 
         private fun field(hintText: String, secret: Boolean) = EditText(context).apply {
@@ -330,15 +337,16 @@ open class LoginActivity : Activity() {
 
         private fun measureBox(view: View, l: Float, t: Float, r: Float, b: Float) {
             view.tag = floatArrayOf(l, t, r, b)
-            view.measure(MeasureSpec.makeMeasureSpec(((r-l)*factor).toInt(), MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(((b-t)*factor).toInt(), MeasureSpec.EXACTLY))
+            view.measure(
+                MeasureSpec.makeMeasureSpec(((r - l) * factor).toInt(), MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(((b - t) * factor).toInt(), MeasureSpec.EXACTLY))
         }
         override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
             for (i in 0 until childCount) {
                 val child = getChildAt(i)
                 val box = child.tag as FloatArray
-                val x = (box[0]*factor).toInt()
-                val y = (box[1]*factor).toInt()
+                val x = (box[0] * factor).toInt()
+                val y = (box[1] * factor).toInt()
                 child.layout(x, y, x + child.measuredWidth, y + child.measuredHeight)
             }
         }
@@ -349,15 +357,15 @@ open class LoginActivity : Activity() {
             val save = canvas.save()
             canvas.scale(factor, factor)
             hero?.let { bitmap ->
-                // Preserve the complete supplied artwork, including its own logo and slogan.
                 val destination = RectF(0f, 0f, 491f, 491f)
-                val fit = min(destination.width()/bitmap.width, destination.height()/bitmap.height)
+                val fit = min(destination.width() / bitmap.width, destination.height() / bitmap.height)
                 val bw = bitmap.width * fit
                 val bh = bitmap.height * fit
                 paint.shader = null
                 paint.alpha = 255
                 canvas.drawBitmap(bitmap, null,
-                    RectF((491f-bw)/2f, (491f-bh)/2f, (491f+bw)/2f, (491f+bh)/2f), paint)
+                    RectF((491f - bw) / 2f, (491f - bh) / 2f,
+                          (491f + bw) / 2f, (491f + bh) / 2f), paint)
                 paint.shader = LinearGradient(0f, 407f, 0f, 496f,
                     intArrayOf(Color.TRANSPARENT, backgroundColor), null, Shader.TileMode.CLAMP)
                 canvas.drawRect(0f, 407f, 491f, 497f, paint)
@@ -384,7 +392,9 @@ open class LoginActivity : Activity() {
             paint.shader = null
             if (remember) {
                 stroke(white, 2.5f)
-                canvas.drawPath(Path().apply { moveTo(41f, 750f); lineTo(46f, 755f); lineTo(54f, 745f) }, paint)
+                canvas.drawPath(Path().apply {
+                    moveTo(41f, 750f); lineTo(46f, 755f); lineTo(54f, 745f)
+                }, paint)
             }
             text(canvas, "Remember me", 71f, 757f, 16f, secondary)
             text(canvas, "Forgot password?", 326f, 757f, 16f, purple)
@@ -427,9 +437,9 @@ open class LoginActivity : Activity() {
         private fun inputBox(c: Canvas, y: Float) {
             paint.style = Paint.Style.FILL
             paint.color = Color.rgb(8, 15, 33)
-            c.drawRoundRect(RectF(34f, y, 461f, y+59f), 15f, 15f, paint)
+            c.drawRoundRect(RectF(34f, y, 461f, y + 59f), 15f, 15f, paint)
             stroke(Color.rgb(31, 40, 62), 1.2f)
-            c.drawRoundRect(RectF(34f, y, 461f, y+59f), 15f, 15f, paint)
+            c.drawRoundRect(RectF(34f, y, 461f, y + 59f), 15f, 15f, paint)
         }
         private fun text(c: Canvas, value: String, x: Float, y: Float, size: Float,
                          color: Int, center: Boolean = false, bold: Boolean = false) {
@@ -452,29 +462,28 @@ open class LoginActivity : Activity() {
         }
         private fun envelope(c: Canvas, x: Float, y: Float) {
             stroke(Color.rgb(150, 164, 207), 1.7f)
-            c.drawRoundRect(RectF(x, y, x+21f, y+17f), 1.5f, 1.5f, paint)
+            c.drawRoundRect(RectF(x, y, x + 21f, y + 17f), 1.5f, 1.5f, paint)
             c.drawPath(Path().apply {
-                moveTo(x+1f, y+2f); lineTo(x+10.5f, y+9f); lineTo(x+20f, y+2f)
+                moveTo(x + 1f, y + 2f); lineTo(x + 10.5f, y + 9f); lineTo(x + 20f, y + 2f)
             }, paint)
         }
         private fun lock(c: Canvas, x: Float, y: Float) {
             stroke(Color.rgb(150, 164, 207), 1.8f)
-            c.drawRoundRect(RectF(x+1f, y+8f, x+18f, y+21f), 2f, 2f, paint)
-            c.drawArc(RectF(x+4f, y-1f, x+15f, y+14f), 180f, 180f, false, paint)
-            c.drawLine(x+9.5f, y+13f, x+9.5f, y+17f, paint)
+            c.drawRoundRect(RectF(x + 1f, y + 8f, x + 18f, y + 21f), 2f, 2f, paint)
+            c.drawArc(RectF(x + 4f, y - 1f, x + 15f, y + 14f), 180f, 180f, false, paint)
+            c.drawLine(x + 9.5f, y + 13f, x + 9.5f, y + 17f, paint)
         }
         private fun eye(c: Canvas, x: Float, y: Float) {
             stroke(Color.rgb(139, 151, 186), 1.7f)
             c.drawPath(Path().apply {
-                moveTo(x-10f, y); cubicTo(x-5f, y-10f, x+5f, y-10f, x+11f, y)
-                cubicTo(x+5f, y+10f, x-5f, y+10f, x-10f, y)
+                moveTo(x - 10f, y); cubicTo(x - 5f, y - 10f, x + 5f, y - 10f, x + 11f, y)
+                cubicTo(x + 5f, y + 10f, x - 5f, y + 10f, x - 10f, y)
             }, paint)
-            c.drawCircle(x+.5f, y, 3.5f, paint)
-            if (!revealPassword) c.drawLine(x-8f, y-8f, x+10f, y+9f, paint)
+            c.drawCircle(x + .5f, y, 3.5f, paint)
+            if (!revealPassword) c.drawLine(x - 8f, y - 8f, x + 10f, y + 9f, paint)
         }
         private fun googleMark(c: Canvas, x: Float, y: Float) {
-            // Multi-colour vector G: no icon bitmap embedded in this file.
-            val rect = RectF(x-10f, y-10f, x+10f, y+10f)
+            val rect = RectF(x - 10f, y - 10f, x + 10f, y + 10f)
             stroke(Color.rgb(66, 133, 244), 5f)
             paint.strokeCap = Paint.Cap.BUTT
             c.drawArc(rect, 0f, 45f, false, paint)
@@ -485,7 +494,7 @@ open class LoginActivity : Activity() {
             paint.color = Color.rgb(234, 67, 53)
             c.drawArc(rect, 210f, 105f, false, paint)
             paint.color = Color.rgb(66, 133, 244)
-            c.drawLine(x+10f, y, x+1f, y, paint)
+            c.drawLine(x + 10f, y, x + 1f, y, paint)
         }
     }
 }
