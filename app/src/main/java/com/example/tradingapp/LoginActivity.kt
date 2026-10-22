@@ -20,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -28,7 +27,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 
 class LoginActivity : ComponentActivity() {
 
@@ -76,7 +74,8 @@ fun LoginScreen(
     val primary = Color(0xFF6C63FF)
     val bgTop = Color(0xFF1E1B4B)
     val bgBottom = Color(0xFF0F0E1A)
-    val muted = Color(0xFF9A97B8)
+    val fieldBg = Color(0xFF232135)
+    val fieldBorder = Color(0xFF3A3757)
 
     Box(
         modifier = Modifier
@@ -91,30 +90,16 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-
-            // ====== اللوجو من الإنترنت (Coil) ======
-            AsyncImage(
-                model = "https://i.ibb.co/fYshkrrj/file-000000001a2c82469485a64af801b707.png",
-                contentDescription = "QUBEX",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp)
-            )
-
-            Spacer(Modifier.height(24.dp))
-
             Text(
                 text = if (isLogin) "مرحباً بعودتك 👋" else "إنشاء حساب جديد ✨",
                 color = Color.White,
-                fontSize = 24.sp,
+                fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(32.dp))
 
-            // ====== Tabs ======
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -125,49 +110,38 @@ fun LoginScreen(
                 TabButton("إنشاء حساب", !isLogin, Modifier.weight(1f)) { isLogin = false }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(24.dp))
 
             if (!isLogin) {
                 CustomField("الاسم", name) { name = it }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
             }
 
             CustomField("البريد الإلكتروني", email, KeyboardType.Email) { email = it }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
             CustomPasswordField("كلمة المرور", password) { password = it }
 
             if (!isLogin) {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
                 CustomPasswordField("تأكيد كلمة المرور", confirm) { confirm = it }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
 
-            // ====== تذكرني + نسيت كلمة المرور ======
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = rememberMe,
-                        onCheckedChange = { rememberMe = it },
-                        colors = CheckboxDefaults.colors(checkedColor = primary)
-                    )
-                    Text("تذكرني", color = Color(0xFFB0AEC9), fontSize = 14.sp)
-                }
-                Text(
-                    "نسيت كلمة المرور؟",
-                    color = primary,
-                    fontSize = 14.sp,
-                    modifier = Modifier.clickable { /* TODO */ }
+                Checkbox(
+                    checked = rememberMe,
+                    onCheckedChange = { rememberMe = it },
+                    colors = CheckboxDefaults.colors(checkedColor = primary)
                 )
+                Text("تذكرني", color = Color(0xFFB0AEC9), fontSize = 14.sp)
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
 
-            // ====== الزر الرئيسي ======
             Button(
                 onClick = {
                     if (isLogin) onLogin(email, password)
@@ -185,50 +159,6 @@ fun LoginScreen(
                     fontWeight = FontWeight.Bold
                 )
             }
-
-            Spacer(Modifier.height(16.dp))
-
-            // ====== فاصل "أو" ======
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Divider(
-                    modifier = Modifier.weight(1f),
-                    color = Color(0xFF3A3757),
-                    thickness = 1.dp
-                )
-                Text(
-                    "أو",
-                    color = muted,
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
-                Divider(
-                    modifier = Modifier.weight(1f),
-                    color = Color(0xFF3A3757),
-                    thickness = 1.dp
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // ====== زر Google ======
-            OutlinedButton(
-                onClick = { /* TODO: Google Sign-In */ },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color(0xFF06121E),
-                    contentColor = Color.White
-                ),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4C5671))
-            ) {
-                Text("متابعة باستخدام Google", fontSize = 15.sp, fontWeight = FontWeight.Medium)
-            }
-
-            Spacer(Modifier.height(24.dp))
         }
     }
 }
@@ -315,3 +245,4 @@ fun CustomPasswordField(
         )
     )
 }
+
