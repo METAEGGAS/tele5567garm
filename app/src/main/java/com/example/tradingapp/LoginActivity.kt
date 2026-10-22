@@ -14,7 +14,6 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.ScrollView
 import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
@@ -25,19 +24,6 @@ import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 
-/**
- * Standalone Android-framework implementation; no XML, Compose or external libraries.
- * Required in AndroidManifest.xml, OUTSIDE <application>:
- * <uses-permission android:name="android.permission.INTERNET" />
- * Register INSIDE <application>:
- * <activity android:name=".LoginActivity" android:exported="true"
- *     android:windowSoftInputMode="adjustResize">
- *     <intent-filter>
- *         <action android:name="android.intent.action.MAIN" />
- *         <category android:name="android.intent.category.LAUNCHER" />
- *     </intent-filter>
- * </activity>
- */
 open class LoginActivity : Activity() {
     companion object {
         private const val HERO_URL =
@@ -56,17 +42,24 @@ open class LoginActivity : Activity() {
         super.onCreate(savedInstanceState)
         actionBar?.hide()
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        
+        // جعل شريط الحالة وشريط التنقل شفافين
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        
         screen = LoginScreen(this)
-        val scroll = ScrollView(this).apply {
+        
+        // استخدام FrameLayout بدلاً من ScrollView لضمان ثبات الشاشة
+        val container = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(2, 8, 24))
-            isFillViewport = true
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            clipToPadding = false
+            // إضافة مسافة لشريط الحالة العلوي وشريط التنقل السفلي
+            setPadding(0, getStatusBarHeight(this@LoginActivity), 0, getNavigationBarHeight(this@LoginActivity))
             addView(screen, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
-        setContentView(scroll)
+        
+        setContentView(container)
+        
         savedInstanceState?.let {
             screen.email.setText(it.getString(STATE_EMAIL, ""))
             screen.remember = it.getBoolean(STATE_REMEMBER, true)
@@ -74,12 +67,29 @@ open class LoginActivity : Activity() {
         loadHero()
     }
 
+    private fun getStatusBarHeight(context: Context): Int {
+        var result = 0
+        val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+        if (resourceId > 0) {
+            result = context.resources.getDimensionPixelSize(resourceId)
+        }
+        return result
+    }
+
+    private fun getNavigationBarHeight(context: Context): Int {
+        var result = 0
+        val resourceId = context.resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        if (resourceId > 0) {
+            result = context.resources.getDimensionPixelSize(resourceId)
+        }
+        return result
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         if (::screen.isInitialized) {
             outState.putString(STATE_EMAIL, screen.email.text.toString())
             outState.putBoolean(STATE_REMEMBER, screen.remember)
         }
-        // Deliberately do not persist the password.
         super.onSaveInstanceState(outState)
     }
 
@@ -90,7 +100,6 @@ open class LoginActivity : Activity() {
         super.onDestroy()
     }
 
-    /** Replace this callback with your real HTTPS authentication flow. */
     protected open fun onLoginRequested(identifier: String, password: String, rememberMe: Boolean) {
         Toast.makeText(this, "Connect your authentication API in onLoginRequested()", Toast.LENGTH_LONG).show()
     }
@@ -162,9 +171,7 @@ open class LoginActivity : Activity() {
                         temporary.delete()
                     }
                 }
-            } catch (_: Exception) {
-                // Keep the form usable offline, with a tappable retry in the hero area.
-            }
+            } catch (_: Exception) { }
             val bitmap = result
             main.post {
                 if (!disposed) {
@@ -284,16 +291,15 @@ open class LoginActivity : Activity() {
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             val w = MeasureSpec.getSize(widthMeasureSpec)
-            factor = w / 491f
-            val natural = ceil(1098f * factor).toInt()
-            val mode = MeasureSpec.getMode(heightMeasureSpec)
-            val size = MeasureSpec.getSize(heightMeasureSpec)
-            val h = when (mode) {
-                MeasureSpec.EXACTLY -> size
-                MeasureSpec.AT_MOST -> min(natural, size)
-                else -> natural
-            }
+            val h = MeasureSpec.getSize(heightMeasureSpec)
+            
+            val factorX = w / 491f
+            val factorY = h / 1098f
+            
+            factor = min(factorX, factorY)
+            
             setMeasuredDimension(w, h)
+            
             email.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 16f * factor)
             password.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 16f * factor)
             measureBox(email, 96f, 543f, 407f, 601f)
@@ -309,15 +315,21 @@ open class LoginActivity : Activity() {
 
         private fun measureBox(view: View, l: Float, t: Float, r: Float, b: Float) {
             view.tag = floatArrayOf(l, t, r, b)
-            view.measure(MeasureSpec.makeMeasureSpec(((r-l)*factor).toInt(), MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(((b-t)*factor).toInt(), MeasureSpec.EXACTLY))
+            view.measure(MeasureSpec.makeMeasureSpec(((r - l) * factor).toInt(), MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(((b - t) * factor).toInt(), MeasureSpec.EXACTLY))
         }
+
         override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+            val w = right - left
+            val h = bottom - top
+            val offsetX = (w - (491f * factor)) / 2f
+            val offsetY = (h - (1098f * factor)) / 2f
+
             for (i in 0 until childCount) {
                 val child = getChildAt(i)
                 val box = child.tag as FloatArray
-                val x = (box[0]*factor).toInt()
-                val y = (box[1]*factor).toInt()
+                val x = (box[0] * factor + offsetX).toInt()
+                val y = (box[1] * factor + offsetY).toInt()
                 child.layout(x, y, x + child.measuredWidth, y + child.measuredHeight)
             }
         }
@@ -326,17 +338,20 @@ open class LoginActivity : Activity() {
             super.onDraw(canvas)
             canvas.drawColor(backgroundColor)
             val save = canvas.save()
+            
+            // توسيط الرسم ليتطابق مع العناصر
+            canvas.translate((width - (491f * factor)) / 2f, (height - (1098f * factor)) / 2f)
             canvas.scale(factor, factor)
+            
             hero?.let { bitmap ->
-                // Preserve the complete supplied artwork, including its own logo and slogan.
                 val destination = RectF(0f, 0f, 491f, 491f)
-                val fit = min(destination.width()/bitmap.width, destination.height()/bitmap.height)
+                val fit = min(destination.width() / bitmap.width, destination.height() / bitmap.height)
                 val bw = bitmap.width * fit
                 val bh = bitmap.height * fit
                 paint.shader = null
                 paint.alpha = 255
                 canvas.drawBitmap(bitmap, null,
-                    RectF((491f-bw)/2f, (491f-bh)/2f, (491f+bw)/2f, (491f+bh)/2f), paint)
+                    RectF((491f - bw) / 2f, (491f - bh) / 2f, (491f + bw) / 2f, (491f + bh) / 2f), paint)
                 paint.shader = LinearGradient(0f, 407f, 0f, 496f,
                     intArrayOf(Color.TRANSPARENT, backgroundColor), null, Shader.TileMode.CLAMP)
                 canvas.drawRect(0f, 407f, 491f, 497f, paint)
@@ -406,10 +421,11 @@ open class LoginActivity : Activity() {
         private fun inputBox(c: Canvas, y: Float) {
             paint.style = Paint.Style.FILL
             paint.color = Color.rgb(8, 15, 33)
-            c.drawRoundRect(RectF(34f, y, 461f, y+59f), 15f, 15f, paint)
+            c.drawRoundRect(RectF(34f, y, 461f, y + 59f), 15f, 15f, paint)
             stroke(Color.rgb(31, 40, 62), 1.2f)
-            c.drawRoundRect(RectF(34f, y, 461f, y+59f), 15f, 15f, paint)
+            c.drawRoundRect(RectF(34f, y, 461f, y + 59f), 15f, 15f, paint)
         }
+
         private fun text(c: Canvas, value: String, x: Float, y: Float, size: Float,
                          color: Int, center: Boolean = false, bold: Boolean = false) {
             paint.shader = null
@@ -421,6 +437,7 @@ open class LoginActivity : Activity() {
             c.drawText(value, x, y, paint)
             paint.textAlign = Paint.Align.LEFT
         }
+
         private fun stroke(color: Int, width: Float) {
             paint.shader = null
             paint.style = Paint.Style.STROKE
@@ -429,31 +446,34 @@ open class LoginActivity : Activity() {
             paint.strokeCap = Paint.Cap.ROUND
             paint.strokeJoin = Paint.Join.ROUND
         }
+
         private fun envelope(c: Canvas, x: Float, y: Float) {
             stroke(Color.rgb(150, 164, 207), 1.7f)
-            c.drawRoundRect(RectF(x, y, x+21f, y+17f), 1.5f, 1.5f, paint)
+            c.drawRoundRect(RectF(x, y, x + 21f, y + 17f), 1.5f, 1.5f, paint)
             c.drawPath(Path().apply {
-                moveTo(x+1f, y+2f); lineTo(x+10.5f, y+9f); lineTo(x+20f, y+2f)
+                moveTo(x + 1f, y + 2f); lineTo(x + 10.5f, y + 9f); lineTo(x + 20f, y + 2f)
             }, paint)
         }
+
         private fun lock(c: Canvas, x: Float, y: Float) {
             stroke(Color.rgb(150, 164, 207), 1.8f)
-            c.drawRoundRect(RectF(x+1f, y+8f, x+18f, y+21f), 2f, 2f, paint)
-            c.drawArc(RectF(x+4f, y-1f, x+15f, y+14f), 180f, 180f, false, paint)
-            c.drawLine(x+9.5f, y+13f, x+9.5f, y+17f, paint)
+            c.drawRoundRect(RectF(x + 1f, y + 8f, x + 18f, y + 21f), 2f, 2f, paint)
+            c.drawArc(RectF(x + 4f, y - 1f, x + 15f, y + 14f), 180f, 180f, false, paint)
+            c.drawLine(x + 9.5f, y + 13f, x + 9.5f, y + 17f, paint)
         }
+
         private fun eye(c: Canvas, x: Float, y: Float) {
             stroke(Color.rgb(139, 151, 186), 1.7f)
             c.drawPath(Path().apply {
-                moveTo(x-10f, y); cubicTo(x-5f, y-10f, x+5f, y-10f, x+11f, y)
-                cubicTo(x+5f, y+10f, x-5f, y+10f, x-10f, y)
+                moveTo(x - 10f, y); cubicTo(x - 5f, y - 10f, x + 5f, y - 10f, x + 11f, y)
+                cubicTo(x + 5f, y + 10f, x - 5f, y + 10f, x - 10f, y)
             }, paint)
-            c.drawCircle(x+.5f, y, 3.5f, paint)
-            if (!revealPassword) c.drawLine(x-8f, y-8f, x+10f, y+9f, paint)
+            c.drawCircle(x + .5f, y, 3.5f, paint)
+            if (!revealPassword) c.drawLine(x - 8f, y - 8f, x + 10f, y + 9f, paint)
         }
+
         private fun googleMark(c: Canvas, x: Float, y: Float) {
-            // Multi-colour vector G: no icon bitmap embedded in this file.
-            val rect = RectF(x-10f, y-10f, x+10f, y+10f)
+            val rect = RectF(x - 10f, y - 10f, x + 10f, y + 10f)
             stroke(Color.rgb(66, 133, 244), 5f)
             paint.strokeCap = Paint.Cap.BUTT
             c.drawArc(rect, 0f, 45f, false, paint)
@@ -464,7 +484,7 @@ open class LoginActivity : Activity() {
             paint.color = Color.rgb(234, 67, 53)
             c.drawArc(rect, 210f, 105f, false, paint)
             paint.color = Color.rgb(66, 133, 244)
-            c.drawLine(x+10f, y, x+1f, y, paint)
+            c.drawLine(x + 10f, y, x + 1f, y, paint)
         }
     }
 }
