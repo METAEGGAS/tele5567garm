@@ -8,9 +8,8 @@
         android:icon="@drawable/icon"
         android:label="QUBEX"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Qubex">
+        android:theme="@style/Theme.TradingApp">
 
-        <!-- شاشة تسجيل الدخول = نقطة البداية -->
         <activity
             android:name=".LoginActivity"
             android:exported="true"
@@ -22,7 +21,6 @@
             </intent-filter>
         </activity>
 
-        <!-- الشاشة الرئيسية -->
         <activity
             android:name=".MainActivity"
             android:exported="false"
