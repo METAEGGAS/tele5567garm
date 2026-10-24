@@ -1,14 +1,19 @@
 package com.qubex.app
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.graphics.*
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.RippleDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
 import android.text.method.PasswordTransformationMethod
+import android.util.Patterns
+import android.util.TypedValue
 import android.view.*
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -19,9 +24,11 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 open class LoginActivity : Activity() {
 
@@ -31,18 +38,25 @@ open class LoginActivity : Activity() {
 
         private const val STATE_EMAIL = "qubex.email"
         private const val STATE_REMEMBER = "qubex.remember"
+        private const val STATE_SIGNUP = "qubex.signup"
+        private const val STATE_NAME = "qubex.signup.name"
+        private const val STATE_SIGNUP_EMAIL = "qubex.signup.email"
+        private const val STATE_PHONE = "qubex.signup.phone"
+        private const val STATE_COUNTRY = "qubex.signup.country"
+        private const val STATE_TERMS = "qubex.signup.terms"
 
-        // نفس مساحة التصميم، دون زيادة طول الصفحة.
         private const val DESIGN_WIDTH = 491f
         private const val DESIGN_HEIGHT = 1120f
 
         private val PLATFORM_BACKGROUND = Color.rgb(17, 25, 39)
+        private val SIGNUP_BACKGROUND = Color.rgb(3, 9, 25)
     }
 
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
     private lateinit var screen: LoginScreen
+    private lateinit var container: FrameLayout
 
     private var downloadStarted = false
 
@@ -54,30 +68,30 @@ open class LoginActivity : Activity() {
 
         actionBar?.hide()
 
+        /*
+         * لا تصغير ولا تحريك للنافذة عند ظهور لوحة المفاتيح.
+         * ستظهر لوحة المفاتيح فوق الجزء السفلي من الصفحة.
+         */
         window.setSoftInputMode(
-            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING or
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
         )
 
         window.statusBarColor = PLATFORM_BACKGROUND
         window.navigationBarColor = PLATFORM_BACKGROUND
-
         window.setBackgroundDrawable(
-            android.graphics.drawable.ColorDrawable(
-                PLATFORM_BACKGROUND
-            )
+            ColorDrawable(PLATFORM_BACKGROUND)
         )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
+        }
 
         screen = LoginScreen(this)
 
-        val container = FrameLayout(this).apply {
+        container = FrameLayout(this).apply {
             setBackgroundColor(PLATFORM_BACKGROUND)
-
-            setPadding(
-                0,
-                getStatusBarHeight(this@LoginActivity),
-                0,
-                getNavigationBarHeight(this@LoginActivity)
-            )
 
             addView(
                 screen,
@@ -88,48 +102,84 @@ open class LoginActivity : Activity() {
             )
         }
 
+        /*
+         * نتعامل مع حواف النظام فقط، ولا نضيف ارتفاع لوحة المفاتيح
+         * إلى padding حتى تظل أبعاد الصفحة ثابتة.
+         *
+         * في الأنظمة القديمة، النظام يتعامل مع حواف النافذة
+         * بالطريقة الافتراضية دون إضافة padding مكرر.
+         */
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false)
+
+            container.setOnApplyWindowInsetsListener { view, insets ->
+                val bars = insets.getInsetsIgnoringVisibility(
+                    WindowInsets.Type.systemBars() or
+                        WindowInsets.Type.displayCutout()
+                )
+
+                if (
+                    view.paddingLeft != bars.left ||
+                    view.paddingTop != bars.top ||
+                    view.paddingRight != bars.right ||
+                    view.paddingBottom != bars.bottom
+                ) {
+                    view.setPadding(
+                        bars.left,
+                        bars.top,
+                        bars.right,
+                        bars.bottom
+                    )
+                }
+
+                insets
+            }
+        }
+
         setContentView(container)
 
-        savedInstanceState?.let {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            container.requestApplyInsets()
+        }
+
+        savedInstanceState?.let { state ->
             screen.email.setText(
-                it.getString(STATE_EMAIL, "")
+                state.getString(STATE_EMAIL, "")
             )
 
-            screen.remember = it.getBoolean(
+            screen.remember = state.getBoolean(
                 STATE_REMEMBER,
                 true
+            )
+
+            screen.fullName.setText(
+                state.getString(STATE_NAME, "")
+            )
+
+            screen.registrationEmail.setText(
+                state.getString(STATE_SIGNUP_EMAIL, "")
+            )
+
+            screen.phone.setText(
+                state.getString(STATE_PHONE, "")
+            )
+
+            screen.countryCode = state.getString(
+                STATE_COUNTRY,
+                ""
+            )
+
+            screen.termsAccepted = state.getBoolean(
+                STATE_TERMS,
+                true
+            )
+
+            screen.showRegistration(
+                state.getBoolean(STATE_SIGNUP, false)
             )
         }
 
         loadHero()
-    }
-
-    private fun getStatusBarHeight(context: Context): Int {
-        val resourceId = context.resources.getIdentifier(
-            "status_bar_height",
-            "dimen",
-            "android"
-        )
-
-        return if (resourceId > 0) {
-            context.resources.getDimensionPixelSize(resourceId)
-        } else {
-            0
-        }
-    }
-
-    private fun getNavigationBarHeight(context: Context): Int {
-        val resourceId = context.resources.getIdentifier(
-            "navigation_bar_height",
-            "dimen",
-            "android"
-        )
-
-        return if (resourceId > 0) {
-            context.resources.getDimensionPixelSize(resourceId)
-        } else {
-            0
-        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -143,9 +193,53 @@ open class LoginActivity : Activity() {
                 STATE_REMEMBER,
                 screen.remember
             )
+
+            outState.putBoolean(
+                STATE_SIGNUP,
+                screen.registrationVisible
+            )
+
+            outState.putString(
+                STATE_NAME,
+                screen.fullName.text.toString()
+            )
+
+            outState.putString(
+                STATE_SIGNUP_EMAIL,
+                screen.registrationEmail.text.toString()
+            )
+
+            outState.putString(
+                STATE_PHONE,
+                screen.phone.text.toString()
+            )
+
+            outState.putString(
+                STATE_COUNTRY,
+                screen.countryCode
+            )
+
+            outState.putBoolean(
+                STATE_TERMS,
+                screen.termsAccepted
+            )
+
+            // لا نحفظ كلمات المرور داخل Bundle.
         }
 
         super.onSaveInstanceState(outState)
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        if (
+            ::screen.isInitialized &&
+            screen.registrationVisible
+        ) {
+            screen.showRegistration(false)
+        } else {
+            super.onBackPressed()
+        }
     }
 
     override fun onDestroy() {
@@ -185,11 +279,49 @@ open class LoginActivity : Activity() {
     }
 
     protected open fun onSignUpRequested() {
+        screen.showRegistration(true)
+    }
+
+    protected open fun onCreateAccountRequested(
+        fullName: String,
+        email: String,
+        phoneNumber: String,
+        password: String,
+        countryCode: String,
+        acceptedTerms: Boolean
+    ) {
         Toast.makeText(
             this,
-            "Connect your sign-up screen",
+            "Connect your registration API in onCreateAccountRequested()",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
+    protected open fun onTermsOfServiceRequested() {
+        Toast.makeText(
+            this,
+            "Connect your Terms of Service page",
             Toast.LENGTH_SHORT
         ).show()
+    }
+
+    protected open fun onPrivacyPolicyRequested() {
+        Toast.makeText(
+            this,
+            "Connect your Privacy Policy page",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun hideKeyboard() {
+        val inputManager = getSystemService(
+            Context.INPUT_METHOD_SERVICE
+        ) as InputMethodManager
+
+        inputManager.hideSoftInputFromWindow(
+            screen.windowToken,
+            0
+        )
     }
 
     private fun submit() {
@@ -208,20 +340,92 @@ open class LoginActivity : Activity() {
             return
         }
 
-        val inputManager = getSystemService(
-            Context.INPUT_METHOD_SERVICE
-        ) as InputMethodManager
-
-        inputManager.hideSoftInputFromWindow(
-            screen.windowToken,
-            0
-        )
+        hideKeyboard()
 
         onLoginRequested(
             identifier,
             password,
             screen.remember
         )
+    }
+
+    private fun submitRegistration() {
+        val name = screen.fullName.text.toString().trim()
+        val email = screen.registrationEmail.text.toString().trim()
+        val phone = screen.phone.text.toString().trim()
+        val password = screen.registrationPassword.text.toString()
+
+        if (name.isEmpty()) {
+            screen.fullName.error = "Enter your full name"
+            screen.fullName.requestFocus()
+            return
+        }
+
+        if (
+            email.isEmpty() ||
+            !Patterns.EMAIL_ADDRESS.matcher(email).matches()
+        ) {
+            screen.registrationEmail.error =
+                "Enter a valid email address"
+
+            screen.registrationEmail.requestFocus()
+            return
+        }
+
+        if (phone.isEmpty()) {
+            screen.phone.error = "Enter your phone number"
+            screen.phone.requestFocus()
+            return
+        }
+
+        if (password.isEmpty()) {
+            screen.registrationPassword.error =
+                "Create a password"
+
+            screen.registrationPassword.requestFocus()
+            return
+        }
+
+        if (screen.countryCode.isBlank()) {
+            hideKeyboard()
+            screen.selectCountry()
+            return
+        }
+
+        if (!screen.termsAccepted) {
+            Toast.makeText(
+                this,
+                "Please agree to the Terms of Service and Privacy Policy",
+                Toast.LENGTH_LONG
+            ).show()
+
+            return
+        }
+
+        hideKeyboard()
+
+        onCreateAccountRequested(
+            fullName = name,
+            email = email,
+            phoneNumber = phone,
+            password = password,
+            countryCode = screen.countryCode,
+            acceptedTerms = screen.termsAccepted
+        )
+    }
+
+    private fun updatePlatformColors(registration: Boolean) {
+        val color =
+            if (registration) {
+                SIGNUP_BACKGROUND
+            } else {
+                PLATFORM_BACKGROUND
+            }
+
+        container.setBackgroundColor(color)
+        window.statusBarColor = color
+        window.navigationBarColor = color
+        window.setBackgroundDrawable(ColorDrawable(color))
     }
 
     private fun loadHero() {
@@ -240,11 +444,15 @@ open class LoginActivity : Activity() {
             try {
                 if (cache.exists()) {
                     result = decodeImage(cache)
+
+                    if (result == null) {
+                        cache.delete()
+                    }
                 }
 
                 if (result == null) {
-                    val connection = URL(HERO_URL)
-                        .openConnection() as HttpURLConnection
+                    val connection =
+                        URL(HERO_URL).openConnection() as HttpURLConnection
 
                     val temporary = File(
                         cacheDir,
@@ -317,7 +525,7 @@ open class LoginActivity : Activity() {
                     }
                 }
             } catch (_: Exception) {
-                // يبقى زر إعادة تحميل الصورة متاحًا عند الفشل.
+                // إعادة التحميل متاحة عند فشل الصورة.
             }
 
             val bitmap = result
@@ -377,15 +585,20 @@ open class LoginActivity : Activity() {
         context: Context
     ) : FrameLayout(context) {
 
-        private val backgroundColor = PLATFORM_BACKGROUND
-
         private val white = Color.rgb(245, 247, 252)
         private val secondary = Color.rgb(180, 190, 207)
         private val muted = Color.rgb(128, 143, 164)
 
-        private val accent = Color.rgb(165, 181, 208)
-        private val inputFill = Color.rgb(25, 35, 51)
-        private val inputBorder = Color.rgb(51, 64, 83)
+        // ألوان تسجيل الدخول الأصلية.
+        private val loginAccent = Color.rgb(165, 181, 208)
+        private val loginInputFill = Color.rgb(25, 35, 51)
+        private val loginInputBorder = Color.rgb(51, 64, 83)
+
+        // ألوان إنشاء الحساب حسب المرجع.
+        private val registrationAccent = Color.rgb(142, 96, 255)
+        private val registrationInputFill = Color.rgb(8, 15, 33)
+        private val registrationInputBorder = Color.rgb(32, 39, 59)
+
         private val iconColor = Color.rgb(165, 182, 209)
 
         private val paint = Paint(
@@ -408,87 +621,253 @@ open class LoginActivity : Activity() {
         private var offsetY = 0f
 
         private var revealPassword = false
+        private var revealRegistrationPassword = false
+
         private var loginPressed = false
+        private var registrationPressed = false
 
         var hero: Bitmap? = null
         var heroFailed = false
 
-        var remember = true
+        var registrationVisible = false
+            private set
+
+        var countryCode: String = ""
             set(value) {
                 field = value
-                checkboxDescription()
+                updateCountryDescription()
                 invalidate()
             }
 
+        var remember = true
+            set(value) {
+                field = value
+                updateRememberDescription()
+                invalidate()
+            }
+
+        var termsAccepted = true
+            set(value) {
+                field = value
+                updateTermsDescription()
+                invalidate()
+            }
+
+        private val backgroundColor: Int
+            get() =
+                if (registrationVisible) {
+                    SIGNUP_BACKGROUND
+                } else {
+                    PLATFORM_BACKGROUND
+                }
+
+        private val inputFill: Int
+            get() =
+                if (registrationVisible) {
+                    registrationInputFill
+                } else {
+                    loginInputFill
+                }
+
+        private val inputBorder: Int
+            get() =
+                if (registrationVisible) {
+                    registrationInputBorder
+                } else {
+                    loginInputBorder
+                }
+
         val email = field(
             "Enter your email or phone",
-            false
+            InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+            EditorInfo.IME_ACTION_NEXT,
+            "Email or Phone",
+            View.AUTOFILL_HINT_USERNAME
         )
 
         val password = field(
             "Enter your password",
-            true
+            InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_VARIATION_PASSWORD,
+            EditorInfo.IME_ACTION_DONE,
+            "Password",
+            View.AUTOFILL_HINT_PASSWORD,
+            secret = true
         )
 
-        private val retry = hit(
-            "Reload artwork"
-        ) {
-            loadHero()
+        val fullName = field(
+            "Enter your full name",
+            InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_VARIATION_PERSON_NAME or
+                InputType.TYPE_TEXT_FLAG_CAP_WORDS,
+            EditorInfo.IME_ACTION_NEXT,
+            "Full Name",
+            View.AUTOFILL_HINT_NAME
+        )
+
+        val registrationEmail = field(
+            "Enter your email address",
+            InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+            EditorInfo.IME_ACTION_NEXT,
+            "Email",
+            View.AUTOFILL_HINT_EMAIL_ADDRESS
+        )
+
+        val phone = field(
+            "Enter your phone number",
+            InputType.TYPE_CLASS_PHONE,
+            EditorInfo.IME_ACTION_NEXT,
+            "Phone Number",
+            View.AUTOFILL_HINT_PHONE
+        )
+
+        val registrationPassword = field(
+            "Create a password",
+            InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_VARIATION_PASSWORD,
+            EditorInfo.IME_ACTION_DONE,
+            "Create a password",
+            View.AUTOFILL_HINT_PASSWORD,
+            secret = true
+        )
+
+        /*
+         * الصورة لا تحتوي على إطار View أو Ripple.
+         * النقر عليها يعيد التحميل فقط عند فشل التحميل.
+         */
+        private val retry = View(context).apply {
+            contentDescription = "Reload artwork"
+            background = null
+
+            setOnClickListener {
+                if (heroFailed) {
+                    loadHero()
+                }
+            }
         }
 
-        private val toggle = hit(
-            "Show password"
-        ) {
+        private val toggle = hit("Show password") {
             revealPassword = !revealPassword
 
-            val cursor = password.selectionStart
-
-            password.transformationMethod =
-                if (revealPassword) {
-                    null
-                } else {
-                    PasswordTransformationMethod.getInstance()
-                }
-
-            password.setSelection(
-                cursor.coerceIn(
-                    0,
-                    password.length()
-                )
+            setPasswordVisibility(
+                password,
+                revealPassword
             )
 
-            toggleDescription()
-            invalidate()
+            updateToggleDescriptions()
         }
 
-        private val checkbox = hit(
-            "Remember me, checked"
-        ) {
+        private val checkbox = hit("Remember me, checked") {
             remember = !remember
         }
 
-        private val forgot = hit(
-            "Forgot password"
-        ) {
+        private val forgot = hit("Forgot password") {
             onForgotPasswordRequested()
         }
 
-        private val login = hit(
-            "Log In"
-        ) {
+        private val login = hit("Log In") {
             submit()
         }
 
-        private val google = hit(
-            "Continue with Google"
-        ) {
+        private val google = hit("Continue with Google") {
             onGoogleLoginRequested()
         }
 
-        private val signup = hit(
-            "Create Account"
-        ) {
+        private val signup = hit("Create Account") {
+            hideKeyboard()
             onSignUpRequested()
+        }
+
+        private val back = hit("Back to Log In") {
+            showRegistration(false)
+        }
+
+        private val registrationToggle = hit("Show password") {
+            revealRegistrationPassword = !revealRegistrationPassword
+
+            setPasswordVisibility(
+                registrationPassword,
+                revealRegistrationPassword
+            )
+
+            updateToggleDescriptions()
+        }
+
+        private val country = hit("Select your country") {
+            hideKeyboard()
+            selectCountry()
+        }
+
+        private val agreement = hit("Terms accepted, checked") {
+            termsAccepted = !termsAccepted
+        }
+
+        private val terms = hit("Terms of Service") {
+            onTermsOfServiceRequested()
+        }
+
+        private val privacy = hit("Privacy Policy") {
+            onPrivacyPolicyRequested()
+        }
+
+        private val createAccount = hit("Create Account") {
+            submitRegistration()
+        }
+
+        private val registrationGoogle = hit("Continue with Google") {
+            onGoogleLoginRequested()
+        }
+
+        private val returnToLogin = hit("Already have an account? Log In") {
+            showRegistration(false)
+        }
+
+        private val loginViews: List<View> = listOf(
+            email,
+            password,
+            retry,
+            toggle,
+            checkbox,
+            forgot,
+            login,
+            google,
+            signup
+        )
+
+        private val registrationViews: List<View> = listOf(
+            fullName,
+            registrationEmail,
+            phone,
+            registrationPassword,
+            back,
+            registrationToggle,
+            country,
+            agreement,
+            terms,
+            privacy,
+            createAccount,
+            registrationGoogle,
+            returnToLogin
+        )
+
+        private val allFields: List<EditText> = listOf(
+            email,
+            password,
+            fullName,
+            registrationEmail,
+            phone,
+            registrationPassword
+        )
+
+        private val countryEntries: List<Pair<String, String>> by lazy {
+            Locale.getISOCountries()
+                .map { code ->
+                    code to Locale("", code)
+                        .getDisplayCountry(Locale.ENGLISH)
+                }
+                .sortedBy { it.second }
         }
 
         init {
@@ -498,21 +877,76 @@ open class LoginActivity : Activity() {
             descendantFocusability =
                 ViewGroup.FOCUS_AFTER_DESCENDANTS
 
-            addView(email)
-            addView(password)
-            addView(retry)
-            addView(toggle)
-            addView(checkbox)
-            addView(forgot)
-            addView(login)
-            addView(google)
-            addView(signup)
+            layoutDirection = View.LAYOUT_DIRECTION_LTR
 
-            password.setOnEditorActionListener {
-                    _, actionId, _ ->
+            loginViews.forEach { addView(it) }
 
+            registrationViews.forEach {
+                addView(it)
+                it.visibility = View.GONE
+            }
+
+            email.id = View.generateViewId()
+            password.id = View.generateViewId()
+            fullName.id = View.generateViewId()
+            registrationEmail.id = View.generateViewId()
+            phone.id = View.generateViewId()
+            registrationPassword.id = View.generateViewId()
+
+            email.nextFocusForwardId = password.id
+            fullName.nextFocusForwardId = registrationEmail.id
+            registrationEmail.nextFocusForwardId = phone.id
+            phone.nextFocusForwardId = registrationPassword.id
+
+            email.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_NEXT) {
+                    password.requestFocus()
+                    true
+                } else {
+                    false
+                }
+            }
+
+            fullName.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_NEXT) {
+                    registrationEmail.requestFocus()
+                    true
+                } else {
+                    false
+                }
+            }
+
+            registrationEmail.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_NEXT) {
+                    phone.requestFocus()
+                    true
+                } else {
+                    false
+                }
+            }
+
+            phone.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_NEXT) {
+                    registrationPassword.requestFocus()
+                    true
+                } else {
+                    false
+                }
+            }
+
+            password.setOnEditorActionListener { _, actionId, _ ->
                 if (actionId == EditorInfo.IME_ACTION_DONE) {
                     submit()
+                    true
+                } else {
+                    false
+                }
+            }
+
+            registrationPassword.setOnEditorActionListener {
+                    _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    submitRegistration()
                     true
                 } else {
                     false
@@ -522,23 +956,125 @@ open class LoginActivity : Activity() {
             login.setOnTouchListener { _, event ->
                 loginPressed =
                     event.actionMasked == MotionEvent.ACTION_DOWN ||
-                    event.actionMasked == MotionEvent.ACTION_MOVE
+                        event.actionMasked == MotionEvent.ACTION_MOVE
+
+                invalidate()
+                false
+            }
+
+            createAccount.setOnTouchListener { _, event ->
+                registrationPressed =
+                    event.actionMasked == MotionEvent.ACTION_DOWN ||
+                        event.actionMasked == MotionEvent.ACTION_MOVE
 
                 invalidate()
                 false
             }
         }
 
-        private fun toggleDescription() {
+        fun showRegistration(show: Boolean) {
+            hideKeyboard()
+
+            allFields.forEach {
+                it.clearFocus()
+                it.error = null
+            }
+
+            registrationVisible = show
+
+            loginViews.forEach {
+                it.visibility =
+                    if (show) View.GONE else View.VISIBLE
+            }
+
+            registrationViews.forEach {
+                it.visibility =
+                    if (show) View.VISIBLE else View.GONE
+            }
+
+            loginPressed = false
+            registrationPressed = false
+
+            requestFocus()
+            updatePlatformColors(show)
+
+            requestLayout()
+            invalidate()
+        }
+
+        private fun countryName(): String {
+            return countryEntries
+                .firstOrNull { it.first == countryCode }
+                ?.second
+                .orEmpty()
+        }
+
+        fun selectCountry() {
+            if (isFinishing || disposed) return
+
+            val labels = countryEntries
+                .map { it.second }
+                .toTypedArray()
+
+            val selected = countryEntries.indexOfFirst {
+                it.first == countryCode
+            }
+
+            AlertDialog.Builder(this@LoginActivity)
+                .setTitle("Country / Region")
+                .setSingleChoiceItems(
+                    labels,
+                    selected
+                ) { dialog, which ->
+                    countryCode = countryEntries[which].first
+                    dialog.dismiss()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        private fun setPasswordVisibility(
+            field: EditText,
+            visible: Boolean
+        ) {
+            val selectionStart = field.selectionStart
+                .coerceIn(0, field.length())
+
+            val selectionEnd = field.selectionEnd
+                .coerceIn(0, field.length())
+
+            field.transformationMethod =
+                if (visible) {
+                    null
+                } else {
+                    PasswordTransformationMethod.getInstance()
+                }
+
+            field.setSelection(
+                min(selectionStart, selectionEnd),
+                max(selectionStart, selectionEnd)
+            )
+
+            invalidate()
+        }
+
+        private fun updateToggleDescriptions() {
             toggle.contentDescription =
                 if (revealPassword) {
                     "Hide password"
                 } else {
                     "Show password"
                 }
+
+            registrationToggle.contentDescription =
+                if (revealRegistrationPassword) {
+                    "Hide password"
+                } else {
+                    "Show password"
+                }
         }
 
-        private fun checkboxDescription() {
+        private fun updateRememberDescription() {
             checkbox.contentDescription =
                 if (remember) {
                     "Remember me, checked"
@@ -547,9 +1083,33 @@ open class LoginActivity : Activity() {
                 }
         }
 
+        private fun updateTermsDescription() {
+            agreement.contentDescription =
+                if (termsAccepted) {
+                    "Terms accepted, checked"
+                } else {
+                    "Terms accepted, unchecked"
+                }
+        }
+
+        private fun updateCountryDescription() {
+            val name = countryName()
+
+            country.contentDescription =
+                if (name.isEmpty()) {
+                    "Select your country"
+                } else {
+                    "Country / Region, $name"
+                }
+        }
+
         private fun field(
             hintText: String,
-            secret: Boolean
+            type: Int,
+            action: Int,
+            description: String,
+            autofillHint: String,
+            secret: Boolean = false
         ): EditText {
             return EditText(context).apply {
                 hint = hintText
@@ -557,50 +1117,37 @@ open class LoginActivity : Activity() {
 
                 setTextColor(white)
                 setHintTextColor(muted)
-                setBackgroundColor(Color.TRANSPARENT)
+
+                background = null
                 setPadding(0, 0, 0, 0)
 
                 gravity = Gravity.CENTER_VERTICAL
                 isSingleLine = true
                 isSaveEnabled = false
+                includeFontPadding = false
 
-                inputType =
-                    if (secret) {
-                        InputType.TYPE_CLASS_TEXT or
-                            InputType.TYPE_TEXT_VARIATION_PASSWORD
-                    } else {
-                        InputType.TYPE_CLASS_TEXT or
-                            InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-                    }
+                minWidth = 0
+                minimumWidth = 0
+                minHeight = 0
+                minimumHeight = 0
+
+                inputType = type
+                imeOptions = action or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+
+                layoutDirection = View.LAYOUT_DIRECTION_LTR
+                textDirection = View.TEXT_DIRECTION_LTR
+                textAlignment = View.TEXT_ALIGNMENT_GRAVITY
 
                 if (secret) {
                     transformationMethod =
                         PasswordTransformationMethod.getInstance()
                 }
 
-                imeOptions =
-                    if (secret) {
-                        EditorInfo.IME_ACTION_DONE
-                    } else {
-                        EditorInfo.IME_ACTION_NEXT
-                    }
-
-                if (Build.VERSION.SDK_INT >= 26) {
-                    setAutofillHints(
-                        if (secret) {
-                            View.AUTOFILL_HINT_PASSWORD
-                        } else {
-                            View.AUTOFILL_HINT_USERNAME
-                        }
-                    )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    setAutofillHints(autofillHint)
                 }
 
-                contentDescription =
-                    if (secret) {
-                        "Password"
-                    } else {
-                        "Email or Phone"
-                    }
+                contentDescription = description
             }
         }
 
@@ -610,7 +1157,6 @@ open class LoginActivity : Activity() {
         ): View {
             return View(context).apply {
                 contentDescription = description
-
                 isClickable = true
                 isFocusable = true
 
@@ -618,21 +1164,13 @@ open class LoginActivity : Activity() {
                     action()
                 }
 
-                background =
-                    android.graphics.drawable.RippleDrawable(
-                        android.content.res.ColorStateList.valueOf(
-                            Color.argb(
-                                35,
-                                170,
-                                190,
-                                220
-                            )
-                        ),
-                        null,
-                        android.graphics.drawable.ColorDrawable(
-                            Color.WHITE
-                        )
-                    )
+                background = RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(
+                        Color.argb(35, 170, 190, 220)
+                    ),
+                    null,
+                    ColorDrawable(Color.WHITE)
+                )
             }
         }
 
@@ -643,8 +1181,6 @@ open class LoginActivity : Activity() {
             val w = MeasureSpec.getSize(widthMeasureSpec)
             val h = MeasureSpec.getSize(heightMeasureSpec)
 
-            // احتواء جميع العناصر ضمن المساحة المتاحة
-            // دون تمديد الصفحة أو إضافة تمرير.
             factor = min(
                 w / DESIGN_WIDTH,
                 h / DESIGN_HEIGHT
@@ -662,68 +1198,110 @@ open class LoginActivity : Activity() {
 
             setMeasuredDimension(w, h)
 
-            email.setTextSize(
-                android.util.TypedValue.COMPLEX_UNIT_PX,
-                16f * factor
-            )
+            allFields.forEach {
+                it.setTextSize(
+                    TypedValue.COMPLEX_UNIT_PX,
+                    (16f * factor).coerceAtLeast(1f)
+                )
+            }
 
-            password.setTextSize(
-                android.util.TypedValue.COMPLEX_UNIT_PX,
-                16f * factor
+            if (registrationVisible) {
+                measureRegistration()
+            } else {
+                measureLogin()
+            }
+        }
+
+        private fun measureLogin() {
+            measureBox(email, 96f, 543f, 447f, 601f)
+            measureBox(password, 96f, 655f, 405f, 713f)
+
+            measureBox(retry, 0f, 0f, 491f, 490f)
+            measureBox(toggle, 405f, 655f, 461f, 713f)
+
+            measureBox(checkbox, 28f, 728f, 235f, 778f)
+            measureBox(forgot, 303f, 728f, 467f, 778f)
+
+            measureBox(login, 34f, 807f, 461f, 869f)
+            measureBox(google, 34f, 944f, 461f, 1007f)
+            measureBox(signup, 34f, 1027f, 461f, 1090f)
+        }
+
+        private fun measureRegistration() {
+            measureBox(back, 20f, 6f, 76f, 60f)
+
+            measureBox(fullName, 96f, 326f, 447f, 384f)
+            measureBox(registrationEmail, 96f, 429f, 447f, 487f)
+            measureBox(phone, 96f, 532f, 447f, 590f)
+
+            measureBox(
+                registrationPassword,
+                96f, 635f,
+                405f, 693f
             )
 
             measureBox(
-                email,
-                96f, 543f,
-                447f, 601f
+                registrationToggle,
+                405f, 635f,
+                461f, 693f
+            )
+
+            measureBox(country, 34f, 738f, 461f, 796f)
+
+            measureBox(agreement, 28f, 807f, 461f, 851f)
+
+            val agreementSize = agreementTextSize()
+            val prefixWidth = textWidth(
+                "I agree to the ",
+                agreementSize
+            )
+
+            val termsWidth = textWidth(
+                "Terms of Service",
+                agreementSize
+            )
+
+            val andWidth = textWidth(
+                " and ",
+                agreementSize
+            )
+
+            val privacyWidth = textWidth(
+                "Privacy Policy",
+                agreementSize
+            )
+
+            val termsStart = 70f + prefixWidth
+            val privacyStart = termsStart + termsWidth + andWidth
+
+            measureBox(
+                terms,
+                termsStart, 807f,
+                termsStart + termsWidth, 851f
             )
 
             measureBox(
-                password,
-                96f, 655f,
-                405f, 713f
+                privacy,
+                privacyStart, 807f,
+                privacyStart + privacyWidth, 851f
             )
 
             measureBox(
-                retry,
-                0f, 0f,
-                491f, 490f
+                createAccount,
+                34f, 874f,
+                461f, 935f
             )
 
             measureBox(
-                toggle,
-                405f, 655f,
-                461f, 713f
+                registrationGoogle,
+                34f, 1001f,
+                461f, 1063f
             )
 
             measureBox(
-                checkbox,
-                28f, 728f,
-                235f, 778f
-            )
-
-            measureBox(
-                forgot,
-                303f, 728f,
-                467f, 778f
-            )
-
-            measureBox(
-                login,
-                34f, 807f,
-                461f, 869f
-            )
-
-            measureBox(
-                google,
-                34f, 944f,
-                461f, 1007f
-            )
-
-            measureBox(
-                signup,
-                34f, 1027f,
-                461f, 1090f
+                returnToLogin,
+                34f, 1071f,
+                461f, 1118f
             )
         }
 
@@ -734,25 +1312,19 @@ open class LoginActivity : Activity() {
             r: Float,
             b: Float
         ) {
-            view.tag = floatArrayOf(
-                l, t, r, b
-            )
-
-            val measuredWidth = (
-                (r - l) * factor
-            ).toInt().coerceAtLeast(0)
-
-            val measuredHeight = (
-                (b - t) * factor
-            ).toInt().coerceAtLeast(0)
+            view.tag = floatArrayOf(l, t, r, b)
 
             view.measure(
                 MeasureSpec.makeMeasureSpec(
-                    measuredWidth,
+                    ((r - l) * factor)
+                        .roundToInt()
+                        .coerceAtLeast(0),
                     MeasureSpec.EXACTLY
                 ),
                 MeasureSpec.makeMeasureSpec(
-                    measuredHeight,
+                    ((b - t) * factor)
+                        .roundToInt()
+                        .coerceAtLeast(0),
                     MeasureSpec.EXACTLY
                 )
             )
@@ -767,15 +1339,18 @@ open class LoginActivity : Activity() {
         ) {
             for (i in 0 until childCount) {
                 val child = getChildAt(i)
-                val box = child.tag as FloatArray
+
+                if (child.visibility == View.GONE) continue
+
+                val box = child.tag as? FloatArray ?: continue
 
                 val x = (
                     offsetX + box[0] * factor
-                ).toInt()
+                ).roundToInt()
 
                 val y = (
                     offsetY + box[1] * factor
-                ).toInt()
+                ).roundToInt()
 
                 child.layout(
                     x,
@@ -791,18 +1366,23 @@ open class LoginActivity : Activity() {
 
             canvas.drawColor(backgroundColor)
 
+            if (factor <= 0f) return
+
             val save = canvas.save()
 
-            canvas.translate(
-                offsetX,
-                offsetY
-            )
+            canvas.translate(offsetX, offsetY)
+            canvas.scale(factor, factor)
 
-            canvas.scale(
-                factor,
-                factor
-            )
+            if (registrationVisible) {
+                drawRegistration(canvas)
+            } else {
+                drawLoginScreen(canvas)
+            }
 
+            canvas.restoreToCount(save)
+        }
+
+        private fun drawLoginScreen(canvas: Canvas) {
             drawHero(canvas)
 
             text(
@@ -826,56 +1406,65 @@ open class LoginActivity : Activity() {
 
             inputBox(canvas, 654f)
             lock(canvas, 56f, 674f)
-            eye(canvas, 429f, 684f)
+
+            eye(
+                canvas,
+                429f,
+                684f,
+                revealPassword
+            )
 
             drawRemember(canvas)
-            drawLogin(canvas)
-            drawDivider(canvas)
-            drawGoogle(canvas)
-            drawCreateAccount(canvas)
 
-            canvas.restoreToCount(save)
+            drawPrimaryButton(
+                canvas,
+                y = 807f,
+                height = 62f,
+                label = "Log In",
+                purple = false,
+                pressed = loginPressed
+            )
+
+            drawDivider(canvas, 907f)
+
+            drawGoogle(
+                canvas,
+                y = 944f,
+                height = 63f
+            )
+
+            drawCreateAccount(canvas)
         }
 
         private fun drawHero(canvas: Canvas) {
             val bitmap = hero
 
             if (bitmap != null) {
+                /*
+                 * الصورة كما هي دون حدود خارجية أو زوايا قص،
+                 * ودون ضغط أو تغيير نسبة العرض إلى الارتفاع.
+                 */
                 val destination = RectF(
                     0f, 0f,
                     491f, 491f
                 )
 
-                val fit = min(
-                    destination.width() / bitmap.width,
-                    destination.height() / bitmap.height
+                drawBitmapFit(
+                    canvas,
+                    bitmap,
+                    source = null,
+                    destination = destination
                 )
 
-                val bitmapWidth = bitmap.width * fit
-                val bitmapHeight = bitmap.height * fit
-
-                paint.shader = null
                 paint.style = Paint.Style.FILL
                 paint.alpha = 255
-
-                canvas.drawBitmap(
-                    bitmap,
-                    null,
-                    RectF(
-                        (491f - bitmapWidth) / 2f,
-                        (491f - bitmapHeight) / 2f,
-                        (491f + bitmapWidth) / 2f,
-                        (491f + bitmapHeight) / 2f
-                    ),
-                    paint
-                )
 
                 paint.shader = LinearGradient(
                     0f, 407f,
                     0f, 496f,
                     intArrayOf(
                         Color.TRANSPARENT,
-                        backgroundColor
+                        PLATFORM_BACKGROUND
                     ),
                     null,
                     Shader.TileMode.CLAMP
@@ -914,73 +1503,299 @@ open class LoginActivity : Activity() {
             }
         }
 
-        private fun drawRemember(canvas: Canvas) {
-            paint.style = Paint.Style.FILL
-            paint.alpha = 255
+        private fun drawRegistration(canvas: Canvas) {
+            drawBackArrow(canvas)
+            drawRegistrationBrand(canvas)
 
-            paint.shader =
-                if (remember) {
-                    LinearGradient(
-                        34f, 737f,
-                        61f, 764f,
-                        intArrayOf(
-                            Color.rgb(105, 128, 163),
-                            Color.rgb(65, 84, 113)
-                        ),
-                        null,
-                        Shader.TileMode.CLAMP
+            text(
+                canvas,
+                "Create Account",
+                245.5f, 225f,
+                31f,
+                white,
+                center = true,
+                bold = true
+            )
+
+            text(
+                canvas,
+                "Join millions of traders worldwide",
+                245.5f, 259f,
+                18f,
+                secondary,
+                center = true
+            )
+
+            text(
+                canvas,
+                "Full Name",
+                34f, 314f,
+                16f,
+                secondary
+            )
+
+            inputBox(canvas, 326f, 58f)
+            person(canvas, 65f, 355f)
+
+            text(
+                canvas,
+                "Email",
+                34f, 417f,
+                16f,
+                secondary
+            )
+
+            inputBox(canvas, 429f, 58f)
+            envelope(canvas, 55f, 450f)
+
+            text(
+                canvas,
+                "Phone Number",
+                34f, 520f,
+                16f,
+                secondary
+            )
+
+            inputBox(canvas, 532f, 58f)
+            phoneIcon(canvas, 55f, 550f)
+
+            text(
+                canvas,
+                "Password",
+                34f, 623f,
+                16f,
+                secondary
+            )
+
+            inputBox(canvas, 635f, 58f)
+            lock(canvas, 56f, 654f)
+
+            eye(
+                canvas,
+                429f,
+                664f,
+                revealRegistrationPassword
+            )
+
+            text(
+                canvas,
+                "Country / Region",
+                34f, 726f,
+                16f,
+                secondary
+            )
+
+            inputBox(canvas, 738f, 58f)
+            globe(canvas, 65f, 767f)
+
+            val selectedCountry = countryName()
+
+            drawFittedText(
+                canvas,
+                if (selectedCountry.isEmpty()) {
+                    "Select your country"
+                } else {
+                    selectedCountry
+                },
+                x = 96f,
+                baseline = 773f,
+                maxWidth = 301f,
+                size = 16f,
+                color =
+                    if (selectedCountry.isEmpty()) {
+                        muted
+                    } else {
+                        white
+                    }
+            )
+
+            chevron(canvas, 432f, 767f)
+
+            drawAgreement(canvas)
+
+            drawPrimaryButton(
+                canvas,
+                y = 874f,
+                height = 61f,
+                label = "Create Account",
+                purple = true,
+                pressed = registrationPressed
+            )
+
+            drawDivider(canvas, 968f)
+
+            drawGoogle(
+                canvas,
+                y = 1001f,
+                height = 62f
+            )
+
+            drawInlineCentered(
+                canvas,
+                first = "Already have an account? ",
+                second = "Log In",
+                baseline = 1101f,
+                size = 16f,
+                firstColor = secondary,
+                secondColor = registrationAccent
+            )
+        }
+
+        private fun drawRegistrationBrand(canvas: Canvas) {
+            val bitmap = hero
+
+            if (bitmap != null) {
+                /*
+                 * نأخذ رمز Q فقط من الصورة الأصلية.
+                 * لا نمدده ولا نضيف إليه إطارًا.
+                 */
+                val source = Rect(
+                    (bitmap.width * 0.395f).roundToInt(),
+                    (bitmap.height * 0.150f).roundToInt(),
+                    (bitmap.width * 0.622f).roundToInt(),
+                    (bitmap.height * 0.395f).roundToInt()
+                )
+
+                drawBitmapFit(
+                    canvas,
+                    bitmap,
+                    source,
+                    RectF(
+                        205.5f, 45f,
+                        285.5f, 132f
                     )
-                } else {
-                    null
-                }
+                )
+            } else {
+                // بديل مؤقت حتى اكتمال تحميل الصورة.
+                drawFallbackQ(canvas)
+            }
 
-            paint.color =
-                if (remember) {
-                    accent
-                } else {
-                    inputFill
-                }
+            drawSpacedWord(
+                canvas,
+                "QUBEX",
+                centerX = 245.5f,
+                baseline = 165f,
+                size = 33f,
+                spacing = 3f
+            )
+        }
 
-            canvas.drawRoundRect(
-                RectF(
-                    34f, 737f,
-                    61f, 764f
-                ),
-                6f, 6f,
-                paint
+        private fun drawBitmapFit(
+            canvas: Canvas,
+            bitmap: Bitmap,
+            source: Rect?,
+            destination: RectF
+        ) {
+            val sourceWidth =
+                source?.width()?.toFloat() ?: bitmap.width.toFloat()
+
+            val sourceHeight =
+                source?.height()?.toFloat() ?: bitmap.height.toFloat()
+
+            if (sourceWidth <= 0f || sourceHeight <= 0f) return
+
+            val fit = min(
+                destination.width() / sourceWidth,
+                destination.height() / sourceHeight
+            )
+
+            val width = sourceWidth * fit
+            val height = sourceHeight * fit
+
+            val target = RectF(
+                destination.centerX() - width / 2f,
+                destination.centerY() - height / 2f,
+                destination.centerX() + width / 2f,
+                destination.centerY() + height / 2f
             )
 
             paint.shader = null
+            paint.style = Paint.Style.FILL
+            paint.alpha = 255
+            paint.color = Color.WHITE
 
-            if (remember) {
-                stroke(
-                    white,
-                    2.5f
-                )
+            canvas.drawBitmap(
+                bitmap,
+                source,
+                target,
+                paint
+            )
+        }
 
-                canvas.drawPath(
-                    Path().apply {
-                        moveTo(41f, 750f)
-                        lineTo(46f, 755f)
-                        lineTo(54f, 745f)
-                    },
-                    paint
-                )
-            } else {
-                stroke(
-                    inputBorder,
-                    1.2f
-                )
+        private fun drawFallbackQ(canvas: Canvas) {
+            paint.style = Paint.Style.FILL
+            paint.alpha = 255
 
-                canvas.drawRoundRect(
-                    RectF(
-                        34f, 737f,
-                        61f, 764f
-                    ),
-                    6f, 6f,
-                    paint
-                )
+            paint.shader = LinearGradient(
+                207f, 46f,
+                286f, 132f,
+                intArrayOf(
+                    Color.rgb(78, 51, 232),
+                    Color.rgb(150, 57, 255)
+                ),
+                null,
+                Shader.TileMode.CLAMP
+            )
+
+            val path = Path().apply {
+                fillType = Path.FillType.EVEN_ODD
+
+                moveTo(245.5f, 45f)
+                lineTo(282f, 66f)
+                lineTo(282f, 109f)
+                lineTo(245.5f, 130f)
+                lineTo(209f, 109f)
+                lineTo(209f, 66f)
+                close()
+
+                moveTo(245.5f, 66f)
+                lineTo(264f, 77f)
+                lineTo(264f, 98f)
+                lineTo(245.5f, 109f)
+                lineTo(227f, 98f)
+                lineTo(227f, 77f)
+                close()
             }
+
+            canvas.drawPath(path, paint)
+
+            val tail = Path().apply {
+                moveTo(245f, 94f)
+                lineTo(284f, 116f)
+                lineTo(284f, 133f)
+                lineTo(245f, 111f)
+                close()
+            }
+
+            canvas.drawPath(tail, paint)
+            paint.shader = null
+        }
+
+        private fun drawBackArrow(canvas: Canvas) {
+            stroke(white, 1.9f)
+
+            canvas.drawPath(
+                Path().apply {
+                    moveTo(50f, 24f)
+                    lineTo(41f, 33f)
+                    lineTo(50f, 42f)
+
+                    moveTo(42f, 33f)
+                    lineTo(59f, 33f)
+                },
+                paint
+            )
+        }
+
+        private fun drawRemember(canvas: Canvas) {
+            drawCheckBox(
+                canvas,
+                x = 34f,
+                y = 737f,
+                size = 27f,
+                checked = remember,
+                purple = false
+            )
 
             text(
                 canvas,
@@ -995,38 +1810,207 @@ open class LoginActivity : Activity() {
                 "Forgot password?",
                 326f, 757f,
                 16f,
-                accent
+                loginAccent
             )
         }
 
-        private fun drawLogin(canvas: Canvas) {
+        private fun agreementTextSize(): Float {
+            val value =
+                "I agree to the Terms of Service and Privacy Policy"
+
+            val naturalWidth = textWidth(value, 14f)
+
+            return if (naturalWidth > 391f) {
+                14f * 391f / naturalWidth
+            } else {
+                14f
+            }
+        }
+
+        private fun drawAgreement(canvas: Canvas) {
+            drawCheckBox(
+                canvas,
+                x = 34f,
+                y = 817f,
+                size = 25f,
+                checked = termsAccepted,
+                purple = true
+            )
+
+            val size = agreementTextSize()
+            var x = 70f
+
+            val prefix = "I agree to the "
+            val termsLabel = "Terms of Service"
+            val join = " and "
+            val privacyLabel = "Privacy Policy"
+
+            text(
+                canvas,
+                prefix,
+                x, 835f,
+                size,
+                secondary
+            )
+
+            x += textWidth(prefix, size)
+
+            text(
+                canvas,
+                termsLabel,
+                x, 835f,
+                size,
+                registrationAccent
+            )
+
+            x += textWidth(termsLabel, size)
+
+            text(
+                canvas,
+                join,
+                x, 835f,
+                size,
+                secondary
+            )
+
+            x += textWidth(join, size)
+
+            text(
+                canvas,
+                privacyLabel,
+                x, 835f,
+                size,
+                registrationAccent
+            )
+        }
+
+        private fun drawCheckBox(
+            canvas: Canvas,
+            x: Float,
+            y: Float,
+            size: Float,
+            checked: Boolean,
+            purple: Boolean
+        ) {
+            paint.style = Paint.Style.FILL
+            paint.alpha = 255
+
+            paint.shader =
+                if (checked) {
+                    LinearGradient(
+                        x, y,
+                        x + size, y + size,
+                        if (purple) {
+                            intArrayOf(
+                                Color.rgb(119, 66, 248),
+                                Color.rgb(151, 53, 255)
+                            )
+                        } else {
+                            intArrayOf(
+                                Color.rgb(105, 128, 163),
+                                Color.rgb(65, 84, 113)
+                            )
+                        },
+                        null,
+                        Shader.TileMode.CLAMP
+                    )
+                } else {
+                    null
+                }
+
+            paint.color =
+                if (checked) {
+                    if (purple) {
+                        registrationAccent
+                    } else {
+                        loginAccent
+                    }
+                } else {
+                    inputFill
+                }
+
+            val bounds = RectF(
+                x, y,
+                x + size, y + size
+            )
+
+            canvas.drawRoundRect(
+                bounds,
+                6f, 6f,
+                paint
+            )
+
+            paint.shader = null
+
+            if (checked) {
+                stroke(white, 2.5f)
+
+                canvas.drawPath(
+                    Path().apply {
+                        moveTo(
+                            x + size * 0.26f,
+                            y + size * 0.49f
+                        )
+
+                        lineTo(
+                            x + size * 0.45f,
+                            y + size * 0.68f
+                        )
+
+                        lineTo(
+                            x + size * 0.76f,
+                            y + size * 0.30f
+                        )
+                    },
+                    paint
+                )
+            } else {
+                stroke(inputBorder, 1.2f)
+
+                canvas.drawRoundRect(
+                    bounds,
+                    6f, 6f,
+                    paint
+                )
+            }
+        }
+
+        private fun drawPrimaryButton(
+            canvas: Canvas,
+            y: Float,
+            height: Float,
+            label: String,
+            purple: Boolean,
+            pressed: Boolean
+        ) {
             paint.style = Paint.Style.FILL
 
             paint.shader = LinearGradient(
-                34f, 807f,
-                461f, 869f,
-                intArrayOf(
-                    Color.rgb(78, 100, 135),
-                    Color.rgb(65, 85, 116),
-                    Color.rgb(48, 66, 94)
-                ),
-                floatArrayOf(
-                    0f, 0.55f, 1f
-                ),
+                34f, y,
+                461f, y + height,
+                if (purple) {
+                    intArrayOf(
+                        Color.rgb(104, 67, 241),
+                        Color.rgb(94, 60, 232),
+                        Color.rgb(84, 50, 220)
+                    )
+                } else {
+                    intArrayOf(
+                        Color.rgb(78, 100, 135),
+                        Color.rgb(65, 85, 116),
+                        Color.rgb(48, 66, 94)
+                    )
+                },
+                floatArrayOf(0f, 0.55f, 1f),
                 Shader.TileMode.CLAMP
             )
 
-            paint.alpha =
-                if (loginPressed) {
-                    200
-                } else {
-                    255
-                }
+            paint.alpha = if (pressed) 200 else 255
 
             canvas.drawRoundRect(
                 RectF(
-                    34f, 807f,
-                    461f, 869f
+                    34f, y,
+                    461f, y + height
                 ),
                 17f, 17f,
                 paint
@@ -1035,98 +2019,118 @@ open class LoginActivity : Activity() {
             paint.alpha = 255
             paint.shader = null
 
-            text(
+            centeredTextInBox(
                 canvas,
-                "Log In",
-                247.5f, 845f,
+                label,
+                RectF(
+                    34f, y,
+                    461f, y + height
+                ),
                 19f,
-                white,
-                center = true
+                white
             )
         }
 
-        private fun drawDivider(canvas: Canvas) {
+        private fun drawDivider(
+            canvas: Canvas,
+            y: Float
+        ) {
             stroke(
-                Color.rgb(55, 67, 85),
+                if (registrationVisible) {
+                    Color.rgb(39, 46, 65)
+                } else {
+                    Color.rgb(55, 67, 85)
+                },
                 1f
             )
 
             canvas.drawLine(
-                34f, 907f,
-                226f, 907f,
+                34f, y,
+                226f, y,
                 paint
             )
 
             canvas.drawLine(
-                269f, 907f,
-                461f, 907f,
+                269f, y,
+                461f, y,
                 paint
             )
 
             text(
                 canvas,
                 "or",
-                247f, 912f,
+                247f, y + 5f,
                 16f,
                 secondary,
                 center = true
             )
         }
 
-        private fun drawGoogle(canvas: Canvas) {
+        private fun drawGoogle(
+            canvas: Canvas,
+            y: Float,
+            height: Float
+        ) {
             paint.shader = null
             paint.style = Paint.Style.FILL
             paint.color = inputFill
+            paint.alpha = 255
+
+            val bounds = RectF(
+                34f, y,
+                461f, y + height
+            )
 
             canvas.drawRoundRect(
-                RectF(
-                    34f, 944f,
-                    461f, 1007f
-                ),
+                bounds,
                 16f, 16f,
                 paint
             )
 
             stroke(
-                Color.rgb(77, 92, 115),
+                if (registrationVisible) {
+                    Color.rgb(63, 72, 94)
+                } else {
+                    Color.rgb(77, 92, 115)
+                },
                 1.1f
             )
 
             canvas.drawRoundRect(
-                RectF(
-                    34f, 944f,
-                    461f, 1007f
-                ),
+                bounds,
                 16f, 16f,
                 paint
             )
 
-            // توسيط الأيقونة والنص كمجموعة واحدة.
-            paint.typeface = regular
-            paint.textSize = 17f
-
             val label = "Continue with Google"
-            val labelWidth = paint.measureText(label)
+            val labelWidth = textWidth(label, 17f)
 
             val iconWidth = 25f
             val gap = 16f
-            val totalWidth = iconWidth + gap + labelWidth
 
             val start = (
-                DESIGN_WIDTH - totalWidth
-            ) / 2f
+                DESIGN_WIDTH -
+                    (iconWidth + gap + labelWidth)
+                ) / 2f
 
             googleMark(
                 canvas,
                 start + iconWidth / 2f,
-                976f
+                bounds.centerY()
             )
+
+            paint.typeface = regular
+            paint.textSize = 17f
+
+            val metrics = paint.fontMetrics
+            val baseline = bounds.centerY() -
+                (metrics.ascent + metrics.descent) / 2f
 
             text(
                 canvas,
                 label,
                 start + iconWidth + gap,
-                982f,
+                baseline,
                 17f,
                 white
             )
@@ -1135,13 +2139,16 @@ open class LoginActivity : Activity() {
         private fun drawCreateAccount(canvas: Canvas) {
             paint.shader = null
             paint.style = Paint.Style.FILL
+            paint.alpha = 255
             paint.color = Color.rgb(30, 42, 60)
 
+            val bounds = RectF(
+                34f, 1027f,
+                461f, 1090f
+            )
+
             canvas.drawRoundRect(
-                RectF(
-                    34f, 1027f,
-                    461f, 1090f
-                ),
+                bounds,
                 16f, 16f,
                 paint
             )
@@ -1152,10 +2159,7 @@ open class LoginActivity : Activity() {
             )
 
             canvas.drawRoundRect(
-                RectF(
-                    34f, 1027f,
-                    461f, 1090f
-                ),
+                bounds,
                 16f, 16f,
                 paint
             )
@@ -1173,34 +2177,45 @@ open class LoginActivity : Activity() {
 
         private fun inputBox(
             canvas: Canvas,
-            y: Float
+            y: Float,
+            height: Float = 59f
         ) {
+            val bounds = RectF(
+                34f, y,
+                461f, y + height
+            )
+
             paint.shader = null
             paint.style = Paint.Style.FILL
+            paint.alpha = 255
             paint.color = inputFill
 
             canvas.drawRoundRect(
-                RectF(
-                    34f, y,
-                    461f, y + 59f
-                ),
+                bounds,
                 15f, 15f,
                 paint
             )
 
-            stroke(
-                inputBorder,
-                1.2f
-            )
+            stroke(inputBorder, 1.2f)
 
             canvas.drawRoundRect(
-                RectF(
-                    34f, y,
-                    461f, y + 59f
-                ),
+                bounds,
                 15f, 15f,
                 paint
             )
+        }
+
+        private fun textWidth(
+            value: String,
+            size: Float,
+            bold: Boolean = false
+        ): Float {
+            paint.typeface =
+                if (bold) medium else regular
+
+            paint.textSize = size
+
+            return paint.measureText(value)
         }
 
         private fun text(
@@ -1220,11 +2235,7 @@ open class LoginActivity : Activity() {
             paint.textSize = size
 
             paint.typeface =
-                if (bold) {
-                    medium
-                } else {
-                    regular
-                }
+                if (bold) medium else regular
 
             paint.textAlign =
                 if (center) {
@@ -1241,6 +2252,134 @@ open class LoginActivity : Activity() {
             )
 
             paint.textAlign = Paint.Align.LEFT
+        }
+
+        private fun centeredTextInBox(
+            canvas: Canvas,
+            value: String,
+            box: RectF,
+            size: Float,
+            color: Int
+        ) {
+            paint.typeface = regular
+            paint.textSize = size
+
+            val metrics = paint.fontMetrics
+
+            val baseline = box.centerY() -
+                (metrics.ascent + metrics.descent) / 2f
+
+            text(
+                canvas,
+                value,
+                box.centerX(),
+                baseline,
+                size,
+                color,
+                center = true
+            )
+        }
+
+        private fun drawInlineCentered(
+            canvas: Canvas,
+            first: String,
+            second: String,
+            baseline: Float,
+            size: Float,
+            firstColor: Int,
+            secondColor: Int
+        ) {
+            val firstWidth = textWidth(first, size)
+            val secondWidth = textWidth(second, size)
+
+            val start = (
+                DESIGN_WIDTH - firstWidth - secondWidth
+                ) / 2f
+
+            text(
+                canvas,
+                first,
+                start, baseline,
+                size,
+                firstColor
+            )
+
+            text(
+                canvas,
+                second,
+                start + firstWidth, baseline,
+                size,
+                secondColor
+            )
+        }
+
+        private fun drawSpacedWord(
+            canvas: Canvas,
+            value: String,
+            centerX: Float,
+            baseline: Float,
+            size: Float,
+            spacing: Float
+        ) {
+            var width = 0f
+
+            value.forEach {
+                width += textWidth(
+                    it.toString(),
+                    size,
+                    bold = true
+                )
+            }
+
+            width += spacing * (value.length - 1).coerceAtLeast(0)
+
+            var x = centerX - width / 2f
+
+            value.forEach { character ->
+                val letter = character.toString()
+
+                text(
+                    canvas,
+                    letter,
+                    x, baseline,
+                    size,
+                    white,
+                    bold = true
+                )
+
+                x += textWidth(
+                    letter,
+                    size,
+                    bold = true
+                ) + spacing
+            }
+        }
+
+        private fun drawFittedText(
+            canvas: Canvas,
+            value: String,
+            x: Float,
+            baseline: Float,
+            maxWidth: Float,
+            size: Float,
+            color: Int
+        ) {
+            val measured = textWidth(value, size)
+
+            val fittedSize =
+                if (measured > maxWidth && measured > 0f) {
+                    size * maxWidth / measured
+                } else {
+                    size
+                }
+
+            text(
+                canvas,
+                value,
+                x, baseline,
+                fittedSize,
+                color
+            )
         }
 
         private fun stroke(
@@ -1261,10 +2400,7 @@ open class LoginActivity : Activity() {
             x: Float,
             y: Float
         ) {
-            stroke(
-                iconColor,
-                1.7f
-            )
+            stroke(iconColor, 1.7f)
 
             canvas.drawRoundRect(
                 RectF(
@@ -1277,20 +2413,9 @@ open class LoginActivity : Activity() {
 
             canvas.drawPath(
                 Path().apply {
-                    moveTo(
-                        x + 1f,
-                        y + 2f
-                    )
-
-                    lineTo(
-                        x + 10.5f,
-                        y + 9f
-                    )
-
-                    lineTo(
-                        x + 20f,
-                        y + 2f
-                    )
+                    moveTo(x + 1f, y + 2f)
+                    lineTo(x + 10.5f, y + 9f)
+                    lineTo(x + 20f, y + 2f)
                 },
                 paint
             )
@@ -1301,10 +2426,7 @@ open class LoginActivity : Activity() {
             x: Float,
             y: Float
         ) {
-            stroke(
-                iconColor,
-                1.8f
-            )
+            stroke(iconColor, 1.8f)
 
             canvas.drawRoundRect(
                 RectF(
@@ -1336,19 +2458,14 @@ open class LoginActivity : Activity() {
         private fun eye(
             canvas: Canvas,
             x: Float,
-            y: Float
+            y: Float,
+            revealed: Boolean
         ) {
-            stroke(
-                iconColor,
-                1.7f
-            )
+            stroke(iconColor, 1.7f)
 
             canvas.drawPath(
                 Path().apply {
-                    moveTo(
-                        x - 10f,
-                        y
-                    )
+                    moveTo(x - 10f, y)
 
                     cubicTo(
                         x - 5f, y - 10f,
@@ -1372,13 +2489,128 @@ open class LoginActivity : Activity() {
                 paint
             )
 
-            if (!revealPassword) {
+            if (!revealed) {
                 canvas.drawLine(
                     x - 8f, y - 8f,
                     x + 10f, y + 9f,
                     paint
                 )
             }
+        }
+
+        private fun person(
+            canvas: Canvas,
+            x: Float,
+            y: Float
+        ) {
+            stroke(iconColor, 1.8f)
+
+            canvas.drawOval(
+                RectF(
+                    x - 5f, y - 11f,
+                    x + 5f, y
+                ),
+                paint
+            )
+
+            canvas.drawPath(
+                Path().apply {
+                    moveTo(x - 10f, y + 11f)
+
+                    cubicTo(
+                        x - 10f, y + 1f,
+                        x + 10f, y + 1f,
+                        x + 10f, y + 11f
+                    )
+                },
+                paint
+            )
+        }
+
+        private fun phoneIcon(
+            canvas: Canvas,
+            x: Float,
+            y: Float
+        ) {
+            stroke(iconColor, 1.8f)
+
+            canvas.drawPath(
+                Path().apply {
+                    moveTo(x + 4f, y + 1f)
+                    lineTo(x + 8f, y + 6f)
+                    lineTo(x + 5f, y + 10f)
+
+                    cubicTo(
+                        x + 7f, y + 14f,
+                        x + 10f, y + 17f,
+                        x + 14f, y + 18f
+                    )
+
+                    lineTo(x + 17f, y + 15f)
+                    lineTo(x + 22f, y + 19f)
+                    lineTo(x + 20f, y + 23f)
+
+                    cubicTo(
+                        x + 18f, y + 27f,
+                        x + 9f, y + 22f,
+                        x + 4f, y + 16f
+                    )
+
+                    cubicTo(
+                        x, y + 11f,
+                        x - 1f, y + 5f,
+                        x + 1f, y + 2f
+                    )
+
+                    close()
+                },
+                paint
+            )
+        }
+
+        private fun globe(
+            canvas: Canvas,
+            x: Float,
+            y: Float
+        ) {
+            stroke(iconColor, 1.7f)
+
+            canvas.drawCircle(
+                x, y,
+                11f,
+                paint
+            )
+
+            canvas.drawOval(
+                RectF(
+                    x - 4.5f, y - 11f,
+                    x + 4.5f, y + 11f
+                ),
+                paint
+            )
+
+            canvas.drawLine(
+                x - 10.5f, y,
+                x + 10.5f, y,
+                paint
+            )
+        }
+
+        private fun chevron(
+            canvas: Canvas,
+            x: Float,
+            y: Float
+        ) {
+            stroke(iconColor, 1.8f)
+
+            canvas.drawPath(
+                Path().apply {
+                    moveTo(x - 6f, y - 3f)
+                    lineTo(x, y + 3f)
+                    lineTo(x + 6f, y - 3f)
+                },
+                paint
+            )
         }
 
         private fun googleMark(
@@ -1400,8 +2632,7 @@ open class LoginActivity : Activity() {
 
             canvas.drawArc(
                 rect,
-                0f,
-                45f,
+                0f, 45f,
                 false,
                 paint
             )
@@ -1410,8 +2641,7 @@ open class LoginActivity : Activity() {
 
             canvas.drawArc(
                 rect,
-                45f,
-                100f,
+                45f, 100f,
                 false,
                 paint
             )
@@ -1420,8 +2650,7 @@ open class LoginActivity : Activity() {
 
             canvas.drawArc(
                 rect,
-                145f,
-                65f,
+                145f, 65f,
                 false,
                 paint
             )
@@ -1430,8 +2659,7 @@ open class LoginActivity : Activity() {
 
             canvas.drawArc(
                 rect,
-                210f,
-                105f,
+                210f, 105f,
                 false,
                 paint
             )
@@ -1439,10 +2667,8 @@ open class LoginActivity : Activity() {
             paint.color = Color.rgb(66, 133, 244)
 
             canvas.drawLine(
-                x + 10f,
-                y,
-                x + 1f,
-                y,
+                x + 10f, y,
+                x + 1f, y,
                 paint
             )
         }
